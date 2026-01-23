@@ -29,6 +29,13 @@ Notation "x '|->' v ';' m" := (update m x v)
 Notation "x '|->' v" := (update empty x v)
   (at level 100).
 
+Lemma empty_map_none : 
+  forall {A : Type} (x : string),
+  @empty A x = None.
+Proof.
+  intros. unfold empty. unfold t_empty. reflexivity.
+Qed.
+
 
 Inductive ty : Type :=
   | Ty_Bool  : ty
@@ -205,4 +212,23 @@ Proof.
   induction HTy as [? ? ? H| | | | |].
   - subst. discriminate H.
   - left. constructor.
-  -  
+  - destruct IHHTy1 as [HVal1 | HStep1]; 
+    destruct IHHTy2 as [HVal2 | HStep2]; auto.
+    + right. inversion HVal1; subst; simpl in *; 
+      try (exists <{ [x0 := t2] t0 }>; econstructor; assumption); 
+      inversion HTy1.
+    + right. destruct HStep2 as [t2' HStep2']. exists <{ t1 t2' }>. 
+      econstructor; auto.
+    + right. destruct HStep1 as [t1' HStep1']. exists <{ t1' t2 }>.
+      econstructor. assumption.
+    + right. destruct HStep1 as [t1' HStep1']. exists <{ t1' t2 }>.
+      econstructor. assumption.
+  - left. constructor.
+  - left. econstructor.
+  - destruct IHHTy1 as [HValT1 | [t1' HStepT1]]; auto.
+    + right. subst. inversion HValT1.
+      * subst. inversion HTy1.
+      * exists t2. constructor.
+      * exists t3. constructor.
+    + right. exists <{ if t1' then t2 else t3 }>. constructor. assumption.
+Qed.
