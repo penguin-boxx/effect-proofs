@@ -36,6 +36,16 @@ Proof.
   intros. unfold empty. unfold t_empty. reflexivity.
 Qed.
 
+Definition includedin {A : Type} (m m' : partial_map A) :=
+  ∀ x v, m x = Some v -> m' x = Some v.
+
+Lemma includedin_update : ∀ (A : Type) (m m' : partial_map A)
+                                 (x : string) (vx : A),
+  includedin m m' ->
+  includedin (x |-> vx ; m) (x |-> vx ; m').
+Proof. Admitted.
+ 
+
 
 Inductive ty : Type :=
   | Ty_Bool  : ty
@@ -232,3 +242,71 @@ Proof.
       * exists t3. constructor.
     + right. exists <{ if t1' then t2 else t3 }>. constructor. assumption.
 Qed.
+
+Lemma weakening : ∀ Gamma Gamma' t T,
+     includedin Gamma Gamma' ->
+     Gamma  |- t \in T  ->
+     Gamma' |- t \in T.
+Proof.
+  intros Gamma Gamma' t T H Ht.
+  generalize dependent Gamma'.
+  induction Ht; eauto using includedin_update.
+Qed.
+
+Lemma weakening_empty : ∀ Gamma t T,
+     empty |- t \in T  ->
+     Gamma |- t \in T.
+Proof.
+  intros Gamma t T.
+  eapply weakening.
+  discriminate.
+Qed.
+
+Print nat.
+Print nat_ind.
+Print list_ind.
+Print value_ind.
+Print multi_ind.
+Print has_type_ind.
+
+(* Lemma reflect_string : forall (s1 s2 : string),
+  String.eqb s1 s2 = true <-> s1 = s2.
+Proof.
+  intros. split.
+  { intro H. apply String.eqb_eq. assumption. } *)
+  
+Print tm_ind.
+
+Lemma substitution_preserves_typing : ∀ Gamma x U t v T,
+  x |-> U ; Gamma |- t \in T ->
+  empty |- v \in U   ->
+  Gamma |- [x:=v]t \in T.
+Proof.
+  intros Gamma x U t v T HTy_t HTy_v.
+  remember (<{ [x := v] t }>) as Gamma'.
+  generalize dependent Gamma.
+  generalize dependent x.
+  generalize dependent v.
+  generalize dependent U.
+  induction t; subst; eauto.
+  - intros. admit. 
+  - intros.
+
+  generalize dependent Gamma.
+  induction HTy_t.
+  - 
+
+  remember (<{ [x := v] t }>) as t'.
+  induction HTy_t; subst.
+  - 
+
+
+  induction t.
+  - subst. simpl. destruct (x =? s)%string eqn:E.
+    + apply String.eqb_eq in E. subst. inversion HTy_t; subst. 
+      unfold update in H1. unfold t_update in H1. rewrite String.eqb_refl in H1.
+      inversion H1. subst. apply weakening_empty. assumption.
+    + inversion HTy_t; subst. unfold update in *. unfold t_update in *.
+      rewrite E in H1. constructor. assumption.
+  - 
+
