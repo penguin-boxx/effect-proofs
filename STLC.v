@@ -323,6 +323,25 @@ Proof.
       rewrite no_match_head. apply dub_head. auto. auto.
 Qed.
 
+Lemma substitution_preserves_typing : ∀ Gamma x U t v T,
+  x |-> U ; Gamma |- t \in T ->
+  empty |- v \in U   ->
+  Gamma |- [x:=v]t \in T.
+Proof.
+  intros Gamma x U t v T HTy_t HTy_v.
+  generalize dependent T.
+  generalize dependent Gamma.
+  induction t; intros Gamma T HTy_t.
+  - simpl. destruct (x =? s)%string eqn:E.
+    + apply String.eqb_eq in E; subst. apply weakening_empty.
+      inversion HTy_t; subst. rewrite match_head in H1. inversion H1; subst.
+      assumption.
+    + constructor. apply String.eqb_neq in E. inversion HTy_t; subst. 
+      erewrite no_match_head in H1. auto. auto.
+  - simpl. inversion HTy_t; subst. eauto.
+  - simpl. admit.
+Admitted.
+
 Lemma substitution_preserves_typing_from_typing_ind : ∀ Gamma x U t v T,
   x |-> U ; Gamma |- t \in T ->
   empty |- v \in U   ->
@@ -343,3 +362,19 @@ Proof.
       constructor. apply IHHTy_t. apply functional_extensionality. intro x'. apply permut_head. auto.
 Qed.
 
+Theorem preservation : ∀ t t' T,
+  empty |- t \in T  ->
+  t --> t'  ->
+  empty |- t' \in T.
+Proof.
+  intros t t' T HTy HStep.
+  remember empty as Gamma.
+  generalize dependent t'.
+  induction HTy; intros t' HStep. Show Proof.
+  - inversion HStep.
+  - inversion HStep.
+  - inversion HStep; subst; eauto. eapply substitution_preserves_typing; eauto. inversion HTy1; subst. assumption.
+  - inversion HStep.
+  - inversion HStep.
+  - inversion HStep; subst; eauto.
+Qed.
