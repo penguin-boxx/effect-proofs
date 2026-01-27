@@ -2,6 +2,7 @@ Set Warnings "-notation-overridden,-parsing,-deprecated-hint-without-locality".
 From Stdlib Require Import Arith.Arith.
 From Stdlib Require Import Strings.String.
 From Stdlib Require Import Relations.
+From Stdlib Require Import Logic.FunctionalExtensionality.
 Require Import Coq.FSets.FMapList.
 Require Import Coq.Unicode.Utf8.
 
@@ -36,6 +37,26 @@ Proof.
   intros. unfold empty. unfold t_empty. reflexivity.
 Qed.
 
+Lemma match_head :
+  forall {A : Type} (k : string) (v : A) (m : partial_map A),
+  (k |-> v ; m) k = Some v.
+Proof.
+  intros.
+  unfold update. unfold t_update.
+  rewrite String.eqb_refl. 
+  reflexivity.
+Qed.
+
+Lemma no_match_head :
+  forall {A : Type} {k k' : string} (v : A) (m : partial_map A),
+  k <> k' -> (k |-> v ; m) k' = m k'.
+Proof.
+  intros.
+  unfold update. unfold t_update.
+  rewrite <- String.eqb_neq in H. rewrite H.
+  reflexivity.
+Qed.
+
 Definition includedin {A : Type} (m m' : partial_map A) :=
   ∀ x v, m x = Some v -> m' x = Some v.
 
@@ -45,7 +66,31 @@ Lemma includedin_update : ∀ (A : Type) (m m' : partial_map A)
   includedin (x |-> vx ; m) (x |-> vx ; m').
 Proof. Admitted.
  
+Lemma dub_head :
+  forall {A : Type} (k k' : string) (v v' : A) (m : partial_map A),
+  (k |-> v ; m) k' = (k |-> v ; k |-> v' ; m) k'.
+Proof.
+  intros.
+  destruct (k =? k')%string eqn:E.
+  - apply String.eqb_eq in E; subst.
+    rewrite match_head. rewrite -> match_head. reflexivity.
+  - apply String.eqb_neq in E.
+    repeat (rewrite no_match_head); auto.
+Qed.
 
+Lemma permut_head :
+  forall {A : Type} (k k' k'' : string) (v v' : A) (m : partial_map A),
+  k <> k' -> (k |-> v ; k' |-> v' ; m) k'' = (k' |-> v' ; k |-> v ; m) k''.
+Proof.
+  intros.
+  destruct (k =? k'')%string eqn:E1; destruct (k' =? k'')%string eqn:E2;
+  try (apply String.eqb_eq in E1); try (apply String.eqb_eq in E2); subst;
+  try (apply String.eqb_neq in E1); try (apply String.eqb_neq in E2);
+  try contradiction.
+  - rewrite match_head. rewrite no_match_head. rewrite match_head. auto. auto.
+  - rewrite match_head. rewrite no_match_head; auto. rewrite match_head. auto.
+  - repeat (rewrite no_match_head; auto).
+Qed.
 
 Inductive ty : Type :=
   | Ty_Bool  : ty
@@ -262,51 +307,39 @@ Proof.
   discriminate.
 Qed.
 
-Print nat.
-Print nat_ind.
-Print list_ind.
-Print value_ind.
-Print multi_ind.
-Print has_type_ind.
-
-(* Lemma reflect_string : forall (s1 s2 : string),
-  String.eqb s1 s2 = true <-> s1 = s2.
+Lemma same_head_typing {x : string} {t : tm} {T T1 T2 : ty} {Gamma : partial_map ty}
+  (HTy : (x |-> T1 ; x |-> T2 ; Gamma |- t \in T)) : (x |-> T1 ; Gamma |- t \in T).
 Proof.
-  intros. split.
-  { intro H. apply String.eqb_eq. assumption. } *)
-  
-Print tm_ind.
+  remember (x |-> T1 ; x |-> T2 ; Gamma) as Gamma'.
+  generalize dependent Gamma.
+  generalize dependent x.
+  generalize dependent T1.
+  induction HTy; intros T1' x' Gamma' Geq; subst; eauto.
+  - constructor. rewrite <- H. apply dub_head.
+  - constructor. apply IHHTy. apply functional_extensionality. intro. erewrite <- dub_head.
+    destruct (x0 =? x1)%string eqn:E.
+    + apply String.eqb_eq in E; subst. rewrite match_head. rewrite match_head. reflexivity.
+    + apply String.eqb_neq in E. rewrite no_match_head. symmetry. 
+      rewrite no_match_head. apply dub_head. auto. auto.
+Qed.
 
-Lemma substitution_preserves_typing : ∀ Gamma x U t v T,
+Lemma substitution_preserves_typing_from_typing_ind : ∀ Gamma x U t v T,
   x |-> U ; Gamma |- t \in T ->
   empty |- v \in U   ->
   Gamma |- [x:=v]t \in T.
 Proof.
   intros Gamma x U t v T HTy_t HTy_v.
-  remember (<{ [x := v] t }>) as Gamma'.
+  remember (x |-> U; Gamma) as Gamma'.
   generalize dependent Gamma.
-  generalize dependent x.
-  generalize dependent v.
-  generalize dependent U.
-  induction t; subst; eauto.
-  - intros. admit. 
-  - intros.
-
-  generalize dependent Gamma.
-  induction HTy_t.
-  - 
-
-  remember (<{ [x := v] t }>) as t'.
-  induction HTy_t; subst.
-  - 
-
-
-  induction t.
-  - subst. simpl. destruct (x =? s)%string eqn:E.
-    + apply String.eqb_eq in E. subst. inversion HTy_t; subst. 
-      unfold update in H1. unfold t_update in H1. rewrite String.eqb_refl in H1.
-      inversion H1. subst. apply weakening_empty. assumption.
-    + inversion HTy_t; subst. unfold update in *. unfold t_update in *.
-      rewrite E in H1. constructor. assumption.
-  - 
+  induction HTy_t; intros Gamma' GEq; subst;  simpl; eauto.
+  - destruct (x =? x0)%string eqn:E.
+    + apply String.eqb_eq in E. subst. rewrite match_head in H. 
+      inversion H. subst. apply weakening_empty. assumption.
+    + constructor. apply String.eqb_neq in E. rewrite (no_match_head U Gamma' E) in H.
+      assumption.
+  - destruct (x =? x0)%string eqn:E.
+    + rewrite String.eqb_eq in E; subst. constructor. eapply same_head_typing. eassumption.
+    + apply String.eqb_neq in E. 
+      constructor. apply IHHTy_t. apply functional_extensionality. intro x'. apply permut_head. auto.
+Qed.
 
