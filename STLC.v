@@ -373,7 +373,9 @@ Proof.
   induction HTy; intros t' HStep. Show Proof.
   - inversion HStep.
   - inversion HStep.
-  - inversion HStep; subst; eauto. eapply substitution_preserves_typing; eauto. inversion HTy1; subst. assumption.
+  - inversion HStep; subst; eauto. 
+    eapply substitution_preserves_typing; eauto. 
+    inversion HTy1; subst. assumption.
   - inversion HStep.
   - inversion HStep.
   - inversion HStep; subst; eauto.
