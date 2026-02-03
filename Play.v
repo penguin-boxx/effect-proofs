@@ -1,22 +1,30 @@
-(*
-Trying to proof something for effects research:
-language with effect handlers and escape analysis should be good.
+From Stdlib Require Import Arith.Arith.
+From Stdlib Require Import Strings.String.
+Require Import Coq.Unicode.Utf8.
 
-What does it mean to be good?
-- Progress
-- Preservation
+Inductive term : Type :=
+  | bvar (i : nat) (* bound var *)
+  | fvar (x : nat) (* free var *)
+  | app (lhs : term) (rhs : term)
+  | lam (body : term).
 
-Is there any code that I can reuse?
-*)
+Inductive type : Type :=
+  | ftvar (x : nat) (* free type variable *)
+  | tfun (arg : type) (res : type).
 
-Inductive syntax : Set :=
-  | var (idx : nat)
-  | app (lhs : syntax) (args : list syntax)
-  | lam (body : syntax).
+Declare Custom Entry mylang.
+Notation "<{ e }>" := e (e custom mylang at level 99).
+Notation "( x )" := x (in custom mylang, x at level 99).
+Notation "'\f' ( A1 , .. , An ) -> T" := (tfun (cons A1 .. (cons An nil) ..) T) 
+  (in custom mylang at level 50, 
+    A1 custom mylang at level 99,
+    An custom mylang at level 99,
+    right associativity).
+(* Coercion ftvar : nat >-> type. *)
 
-Inductive type : Set :=
-  | tvar (idx : nat)
-  | tfun (args : list type) (res : type).
+Example term0 : type := <{ \f ( (ftvar 1) ) -> (ftvar 3) }>.
+
+
 
 Definition ctx := partial_map
 
