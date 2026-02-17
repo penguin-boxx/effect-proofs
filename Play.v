@@ -3,15 +3,19 @@ From Stdlib Require Import Strings.String.
 Require Import Coq.Unicode.Utf8.
 From TLC Require Import LibLN.
 
+Inductive type : Type :=
+  | type_fvar (x : var) (* free type variable *)
+  | type_bvar (i : nat) (* bound type variable *)
+  | type_fun (arg : type) (res : type)
+  | type_all (body : type).
+
 Inductive term : Type :=
   | term_bvar (i : nat) (* bound var *)
   | term_fvar (x : var) (* free var *)
   | term_app (lhs : term) (rhs : term)
-  | term_lam (body : term).
-
-Inductive type : Type :=
-  | type_fvar (x : var) (* free type variable *)
-  | type_fun (arg : type) (res : type).
+  | term_lam (body : term)
+  | term_tapp (lhs : term) (ty : type)
+  | term_tlam (body : term).
 
 Coercion term_bvar : nat >-> term.
 Coercion term_fvar : var >-> term.
@@ -35,13 +39,27 @@ Fixpoint open_rec (k : nat) (u : term) (t : term) : term :=
   | term_fvar x => t
   | term_app lhs rhs => term_app (open_rec k u lhs) (open_rec k u rhs)
   | term_lam body => term_lam (open_rec (S k) u body)
+  | term_tapp lhs ty => term_tapp (open_rec k u lhs) ty
+  | term_tlam body => term_tlam (open_rec k u body)
   end.
-
 Definition open t u := open_rec 0 u t.
 
 Notation "{ k ~> u } t" := (open_rec k u t) (at level 67).
 Notation "t ^^ u" := (open t u) (at level 67).
 Notation "t ^ x" := (open t (term_fvar x)).
+
+Fixpoint open_rec_type (k : nat) (u : type) (t : type) : type :=
+  match t with
+  | type_bvar i => if Nat.eqb k i then u else t
+  | type_fvar x => t
+  | type_fun arg res => type_fun (open_rec_type k u arg) (open_rec_type k u res)
+  | type_all body => type_all (open_rec_type (S k) u body)
+  end.
+Definition open_type t u := open_rec_type 0 u t.
+
+Notation "{ k ~>* u } t" := (open_rec_type k u t) (at level 67).
+Notation "t ^^* u" := (open_type t u) (at level 67).
+Notation "t ^* x" := (open_type t (type_fvar x)) (at level 67).
 
 Inductive is_term : term -> Prop :=
   | is_term_var : forall x,
@@ -52,11 +70,29 @@ Inductive is_term : term -> Prop :=
   | is_term_app : forall t1 t2,
       is_term t1 ->
       is_term t2 ->
-      is_term (term_app t1 t2).
+      is_term (term_app t1 t2)
+  | is_term_tapp : forall t ty,
+      is_term t ->
+      is_term (term_tapp t ty)
+  | is_term_tlam : forall t,
+      is_term t ->
+      is_term (term_tlam t).
+
+Inductive is_type : type -> Prop :=
+  | is_type_fvar : forall x,
+      is_type (type_fvar x)
+  | is_type_fun : forall arg res,
+      is_type arg ->
+      is_type res ->
+      is_type (type_fun arg res)
+  | is_type_all : forall L body,
+      (forall X, X \notin L -> is_type (body ^* X)) ->
+      is_type (type_all body).
 
 Inductive value : term -> Prop :=
-  | value_lam : forall t, is_term (term_lam t) -> value (term_lam t).
-      
+  | value_lam : forall t, is_term (term_lam t) -> value (term_lam t)
+  | value_tlam : forall t, is_term (term_tlam t) -> value (term_tlam t).
+
 Inductive step_beta : term -> term -> Prop :=
   | step_app1 : forall t1 t1' t2,
       step_beta t1 t1' ->
@@ -68,7 +104,13 @@ Inductive step_beta : term -> term -> Prop :=
   | step_red : forall t v,
       value v ->
       is_term t ->
-      step_beta (term_app (term_lam t) v) (t ^^ v).
+      step_beta (term_app (term_lam t) v) (t ^^ v)
+  | step_tapp : forall t t' ty,
+      step_beta t t' ->
+      step_beta (term_tapp t ty) (term_tapp t' ty)
+  | step_tred : forall t ty,
+      is_term t ->
+      step_beta (term_tapp (term_tlam t) ty) t.
 
 Notation "t --> t'" := (step_beta t t') (at level 68).
 
@@ -89,6 +131,9 @@ Inductive typing : ctx -> term -> type -> Prop :=
       E |= t1 ~: (type_fun S T) ->
       E |= t2 ~: S ->
       E |= (term_app t1 t2) ~: T
+  | typing_tlam : forall L E T t,
+      E |= t ~: T ->
+      E |= (term_tlam t) ~: (type_all T)
 
 where "E |= t ~: T" := (typing E t T).
 
