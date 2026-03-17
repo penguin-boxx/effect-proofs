@@ -1,41 +1,3 @@
-(* Definition name := nat.
-
-Inductive term : Set := 
-  | term_var : name -> term
-  | term_app : term -> term -> term
-  | term_abs : (name -> term) -> term.
-
-Example term_id : term := term_abs (fun x => term_var x).
-
-Example term_composition : term := 
-  term_abs (fun f => 
-  term_abs (fun g => 
-  term_abs (fun x => term_app (term_var f) (term_app (term_var g) (term_var x))))).
-
-Inductive type : Set :=
-  | type_var : name -> type
-  | type_arrow : type -> type -> type.
-
-Fixpoint flatten (x : name) (new : term) (t : term) : term :=
-  match t with
-  | term_var y => if Nat.eqb x y then new else t
-  | term_app t1 t2 => term_app (flatten x new t1) (flatten x new t2)
-  | term_abs f => term_abs (fun y => if Nat.eqb x y then f y else flatten x new (f y))
-  end.
-
-Inductive step : term -> term -> Prop :=
-  | step_beta : forall f g x,
-      step (term_app (term_abs f) g) (flatten x g (f x))
-  | step_app1 : forall t1 t1' t2,
-      step t1 t1' ->
-      step (term_app t1 t2) (term_app t1' t2)
-  | step_app2 : forall t1 t2 t2',
-      step t2 t2' ->
-      step (term_app t1 t2) (term_app t1 t2')
-  | step_abs : forall f f',
-      (forall x, step (f x) (f' x)) ->
-      step (term_abs f) (term_abs f'). *)
-
 From Stdlib Require Import Program.Equality.
 
 Definition name := nat.
@@ -48,7 +10,7 @@ Hint Constructors type.
 Infix "-->" := type_fun (right associativity, at level 60).
 
 Inductive term' {var : type -> Type} : type -> Type :=
-  | term_var' : forall {ty}, var ty -> term' ty
+  | term_var : forall {ty}, var ty -> term' ty
   | term_app' : forall {arg} {res}, term' (arg --> res) -> term' arg -> term' res
   | term_abs' : forall {arg} {res}, (var arg -> term' res) -> term' (arg --> res).
 
@@ -63,11 +25,17 @@ Definition term_app {arg} {res} (f : term (arg --> res)) (arg : term arg) : term
 Definition term_abs {arg} {res} (t : term1 arg res) : term (arg --> res) :=
   fun var => term_abs' (fun x => t var x).
 
+Example id_example : term (type_var 0 --> type_var 0) := 
+  fun var => term_abs (fun _ x => term_var x) var.
+
+Example id_example2 : term ((type_var 0 --> type_var 0) --> (type_var 0 --> type_var 0)) := 
+  fun var => term_abs (fun _ x => term_var x) var.
+
 Fixpoint flatten {var : type -> Type} {ty : type} (t : term' (var := term') ty) {struct t} : term' ty :=
   match t with
-  | term_var' v => v
+  | term_var v => v
   | term_app' f arg => term_app' (flatten f) (flatten arg)
-  | term_abs' f => term_abs' (fun x => flatten (f (term_var' (var := var) x)))
+  | term_abs' f => term_abs' (fun x => flatten (f (term_var (var := var) x)))
   end.
 
 Definition subst {ty1} {ty2} (inner : term ty1) (outer : term1 ty1 ty2) : term ty2 := 
@@ -93,6 +61,12 @@ Inductive step : forall {ty}, term ty -> term ty -> Prop :=
       t2 ==> t2' ->
       step (ty := res) (term_app t1 t2) (term_app t1 t2')
   where "t ==> t'" := (step t t').
+
+Example step_example : 
+  term_app id_example2 id_example ==> id_example.
+Proof.
+  eapply step_beta; auto. constructor.
+Qed.
 
 Hint Constructors step.
 
