@@ -47,14 +47,28 @@ Inductive term'
   | term_tapp' :
       forall {k_arg} {f : type1 k_arg kind_type} (t : term' (type_all' (f tvar))) (ty : type' k_arg), 
       term' (subst_type' ty f)
-  | term_tabs' : forall {k_arg} {ty} (arg : tvar k_arg), term' (ty arg) -> term' (type_all' ty).
+  | term_tabs' : forall {k_arg} {ty}, (forall (arg : tvar k_arg), term' (ty arg)) -> term' (type_all' ty).
 
 Hint Constructors term'.
 Infix "@" := term_app' (left associativity, at level 50).
 Infix "t@" := term_tapp' (left associativity, at level 50).
 
-Example id_term_example : term' (type_all' (fun _ ty => type_var' ty --> type_var' ty)) :=
-  term_tabs' _ (fun x => term_abs' (fun y => term_var' y)).
+Example id_term_example {tvar} {var} :
+  term' (tvar := tvar) (var := var) (type_all' (fun ty => type_var' ty --> type_var' ty)) :=
+  term_tabs' (fun _ => term_abs' (fun x => term_var' x)).
+
+Check term_tabs' (fun a =>
+  term_tapp' (f := fun _ b => type_var' b --> type_var' b) id_term_example (type_var' a)) 
+  : term' (type_all' (fun a => type_var' a --> type_var' a)).
+
+Check term_tabs' (fun a =>
+  term_app'
+    (term_tapp' (f := fun _ b => type_var' b --> type_var' b) id_term_example (type_var' a --> type_var' a))
+    (term_tapp' (f := fun _ b => type_var' b --> type_var' b) id_term_example (type_var' a)))
+  : term' (type_all' (fun a => type_var' a --> type_var' a)).
+
+  (* term' (tvar := tvar) (var := var) (type_all' (fun ty => type_all' (fun _ => type_var' ty --> type_var' ty))) :=
+  term_tabs' (fun ty => term_tabs' (fun _ => term_abs' (fun x => term_var' x))). *)
 
 Definition term (ty : type' kind_type) := forall tvar var, term' (tvar := tvar) (var := var) ty.
 Definition term1 (ty_free : type kind_type) (ty : type kind_type) := 
