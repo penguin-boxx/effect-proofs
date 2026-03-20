@@ -1,0 +1,837 @@
+DIGEST 45bcbe1cadc88471ca19065d789ee56f
+Fphoas_lambda2
+R27:42 Stdlib.Program.Equality <> <> lib
+def 57:60 <> name
+R65:67 Corelib.Init.Datatypes <> nat ind
+ind 81:84 <> kind
+constr 100:108 <> kind_type
+constr 121:127 <> kind_lt
+R112:115 phoas_lambda2 <> kind:1 ind
+R131:134 phoas_lambda2 <> kind:1 ind
+scheme 81:84 <> kind_rect
+scheme 81:84 <> kind_ind
+scheme 81:84 <> kind_rec
+scheme 81:84 <> kind_sind
+ind 148:152 <> type'
+constr 198:206 <> type_var'
+constr 244:252 <> type_fun'
+constr 314:322 <> type_all'
+R166:169 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R162:165 phoas_lambda2 <> kind ind
+binder 155:158 <> tvar:3
+R182:185 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R178:181 phoas_lambda2 <> kind ind
+binder 218:218 <> k:6
+R228:231 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R222:225 phoas_lambda2 <> tvar:3 var
+R227:227 phoas_lambda2 <> k:6 var
+R232:236 phoas_lambda2 <> type':4 ind
+R238:238 phoas_lambda2 <> k:6 var
+R271:274 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R256:260 phoas_lambda2 <> type':4 ind
+R262:270 phoas_lambda2 <> kind_type constr
+R290:293 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R275:279 phoas_lambda2 <> type':4 ind
+R281:289 phoas_lambda2 <> kind_type constr
+R294:298 phoas_lambda2 <> type':4 ind
+R300:308 phoas_lambda2 <> kind_type constr
+binder 334:334 <> k:7
+R338:338 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R364:368 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R345:348 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R339:342 phoas_lambda2 <> tvar:3 var
+R344:344 phoas_lambda2 <> k:7 var
+R349:353 phoas_lambda2 <> type':4 ind
+R355:363 phoas_lambda2 <> kind_type constr
+R369:373 phoas_lambda2 <> type':4 ind
+R375:383 phoas_lambda2 <> kind_type constr
+scheme 148:152 <> type'_rect
+scheme 148:152 <> type'_ind
+scheme 148:152 <> type'_rec
+scheme 148:152 <> type'_sind
+R405:409 phoas_lambda2 <> type' ind
+def 424:427 <> type
+binder 429:429 <> k:8
+binder 441:444 <> tvar:9
+R447:451 phoas_lambda2 <> type' ind
+R468:468 phoas_lambda2 <> k:8 var
+R462:465 phoas_lambda2 <> tvar:9 var
+def 482:486 <> type1
+R498:501 phoas_lambda2 <> kind ind
+binder 489:494 <> k_free:10
+R513:516 phoas_lambda2 <> kind ind
+binder 505:509 <> k_res:11
+binder 529:532 <> tvar:12
+R546:549 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R535:538 phoas_lambda2 <> tvar:12 var
+R540:545 phoas_lambda2 <> k_free:10 var
+R550:554 phoas_lambda2 <> type' ind
+R571:575 phoas_lambda2 <> k_res:11 var
+R565:568 phoas_lambda2 <> tvar:12 var
+def 589:596 <> type_var
+binder 599:599 <> k:13
+binder 603:606 <> tvar:14
+R614:617 phoas_lambda2 <> tvar:14 var
+R619:619 phoas_lambda2 <> k:13 var
+binder 610:610 <> x:15
+R625:633 phoas_lambda2 <> type_var' constr
+R635:635 phoas_lambda2 <> x:15 var
+def 649:656 <> type_fun
+R669:672 phoas_lambda2 <> type def
+R674:682 phoas_lambda2 <> kind_type constr
+binder 659:661 <> arg:16
+binder 663:665 <> res:17
+R687:690 phoas_lambda2 <> type def
+R692:700 phoas_lambda2 <> kind_type constr
+binder 711:714 <> tvar:18
+R719:727 phoas_lambda2 <> type_fun' constr
+R741:743 phoas_lambda2 <> res:17 var
+R745:748 phoas_lambda2 <> tvar:18 var
+R730:732 phoas_lambda2 <> arg:16 var
+R734:737 phoas_lambda2 <> tvar:18 var
+def 763:770 <> type_all
+R777:780 phoas_lambda2 <> kind ind
+binder 773:773 <> k:19
+R788:792 phoas_lambda2 <> type1 def
+R794:794 phoas_lambda2 <> k:19 var
+R796:804 phoas_lambda2 <> kind_type constr
+binder 784:784 <> t:20
+R809:812 phoas_lambda2 <> type def
+R814:822 phoas_lambda2 <> kind_type constr
+binder 833:835 <> var:21
+R840:848 phoas_lambda2 <> type_all' constr
+binder 855:855 <> x:22
+R860:860 phoas_lambda2 <> t:20 var
+R862:864 phoas_lambda2 <> var:21 var
+R866:866 phoas_lambda2 <> x:22 var
+R886:894 phoas_lambda2 <> type_fun' constr
+not 877:877 <> :::x_'-->'_x
+R948:955 phoas_lambda2 <> type_fun def
+not 938:938 <> :::x_'c-->'_x
+def 1003:1014 <> flatten_type
+R1028:1031 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R1024:1027 phoas_lambda2 <> kind ind
+binder 1017:1020 <> tvar:23
+R1043:1046 phoas_lambda2 <> kind ind
+binder 1039:1039 <> k:24
+R1054:1058 phoas_lambda2 <> type' ind
+R1060:1060 phoas_lambda2 <> k:24 var
+binder 1050:1050 <> t:25
+R1076:1080 phoas_lambda2 <> type' ind
+R1082:1082 phoas_lambda2 <> k:24 var
+R1095:1095 phoas_lambda2 <> t:25 var
+R1106:1114 phoas_lambda2 <> type_var' constr
+R1127:1135 phoas_lambda2 <> type_fun' constr
+R1148:1156 phoas_lambda2 <> type_fun' constr
+R1178:1189 phoas_lambda2 <> flatten_type:26 def
+R1159:1170 phoas_lambda2 <> flatten_type:26 def
+R1200:1208 phoas_lambda2 <> type_all' constr
+R1215:1223 phoas_lambda2 <> type_all' constr
+binder 1230:1230 <> x:28
+R1235:1246 phoas_lambda2 <> flatten_type:26 def
+R1252:1260 phoas_lambda2 <> type_var' constr
+R1277:1277 phoas_lambda2 <> x:28 var
+R1271:1274 phoas_lambda2 <> tvar:23 var
+def 1301:1311 <> subst_type'
+binder 1317:1321 <> k_arg:29
+binder 1325:1329 <> k_res:30
+R1344:1347 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R1340:1343 phoas_lambda2 <> kind ind
+binder 1333:1336 <> tvar:31
+R1366:1370 phoas_lambda2 <> type' ind
+R1387:1391 phoas_lambda2 <> k_arg:29 var
+R1381:1384 phoas_lambda2 <> tvar:31 var
+binder 1358:1362 <> inner:32
+R1403:1407 phoas_lambda2 <> type1 def
+R1409:1413 phoas_lambda2 <> k_arg:29 var
+R1415:1419 phoas_lambda2 <> k_res:30 var
+binder 1395:1399 <> outer:33
+R1424:1428 phoas_lambda2 <> type' ind
+R1430:1434 phoas_lambda2 <> k_res:30 var
+R1442:1453 phoas_lambda2 <> flatten_type def
+R1456:1460 phoas_lambda2 <> outer:33 var
+R1462:1466 phoas_lambda2 <> type' ind
+R1468:1472 phoas_lambda2 <> inner:32 var
+def 1488:1497 <> subst_type
+binder 1500:1504 <> k_arg:34
+R1516:1519 phoas_lambda2 <> type def
+R1521:1525 phoas_lambda2 <> k_arg:34 var
+binder 1508:1512 <> inner:35
+R1537:1541 phoas_lambda2 <> type1 def
+R1543:1547 phoas_lambda2 <> k_arg:34 var
+R1549:1557 phoas_lambda2 <> kind_type constr
+binder 1529:1533 <> outer:36
+R1562:1565 phoas_lambda2 <> type def
+R1567:1575 phoas_lambda2 <> kind_type constr
+binder 1586:1589 <> tvar:37
+R1594:1604 phoas_lambda2 <> subst_type' def
+R1619:1623 phoas_lambda2 <> outer:36 var
+R1607:1611 phoas_lambda2 <> inner:35 var
+R1613:1616 phoas_lambda2 <> tvar:37 var
+def 1635:1649 <> id_type_example
+R1653:1656 phoas_lambda2 <> type def
+R1658:1666 phoas_lambda2 <> kind_type constr
+R1671:1678 phoas_lambda2 <> type_all def
+binder 1687:1688 <> ty:38
+R1705:1709 phoas_lambda2 <> :::x_'-->'_x not
+R1693:1701 phoas_lambda2 <> type_var' constr
+R1703:1704 phoas_lambda2 <> ty:38 var
+R1710:1717 phoas_lambda2 <> type_var def
+R1719:1720 phoas_lambda2 <> ty:38 var
+ind 1735:1739 <> term'
+constr 1864:1872 <> term_var'
+constr 1912:1920 <> term_app'
+constr 1994:2002 <> term_abs'
+constr 2076:2085 <> term_tapp'
+constr 2227:2236 <> term_tabs'
+R1756:1759 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R1752:1755 phoas_lambda2 <> kind ind
+binder 1745:1748 <> tvar:39
+R1803:1806 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R1773:1777 phoas_lambda2 <> type' ind
+R1794:1802 phoas_lambda2 <> kind_type constr
+R1788:1791 phoas_lambda2 <> tvar:39 var
+binder 1767:1769 <> var:40
+R1848:1851 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R1818:1822 phoas_lambda2 <> type' ind
+R1839:1847 phoas_lambda2 <> kind_type constr
+binder 1884:1885 <> ty:43
+R1895:1898 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R1889:1891 phoas_lambda2 <> var:40 var
+R1893:1894 phoas_lambda2 <> ty:43 var
+R1899:1903 phoas_lambda2 <> term':41 ind
+R1905:1906 phoas_lambda2 <> ty:43 var
+binder 1932:1934 <> arg:44
+binder 1938:1940 <> res:45
+R1963:1966 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R1944:1948 phoas_lambda2 <> term':41 ind
+R1954:1958 phoas_lambda2 <> :::x_'-->'_x not
+R1951:1953 phoas_lambda2 <> arg:44 var
+R1959:1961 phoas_lambda2 <> res:45 var
+R1976:1979 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R1967:1971 phoas_lambda2 <> term':41 ind
+R1973:1975 phoas_lambda2 <> arg:44 var
+R1980:1984 phoas_lambda2 <> term':41 ind
+R1986:1988 phoas_lambda2 <> res:45 var
+binder 2014:2016 <> arg:46
+binder 2020:2022 <> res:47
+R2026:2026 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R2047:2051 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R2034:2037 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R2027:2029 phoas_lambda2 <> var:40 var
+R2031:2033 phoas_lambda2 <> arg:46 var
+R2038:2042 phoas_lambda2 <> term':41 ind
+R2044:2046 phoas_lambda2 <> res:47 var
+R2052:2056 phoas_lambda2 <> term':41 ind
+R2062:2066 phoas_lambda2 <> :::x_'-->'_x not
+R2059:2061 phoas_lambda2 <> arg:46 var
+R2067:2069 phoas_lambda2 <> res:47 var
+binder 2103:2107 <> k_arg:48
+R2115:2119 phoas_lambda2 <> type1 def
+R2121:2125 phoas_lambda2 <> k_arg:48 var
+R2127:2135 phoas_lambda2 <> kind_type constr
+binder 2111:2111 <> f:49
+R2143:2147 phoas_lambda2 <> term':41 ind
+R2150:2158 phoas_lambda2 <> type_all' constr
+R2161:2161 phoas_lambda2 <> f:49 var
+R2163:2166 phoas_lambda2 <> tvar:39 var
+binder 2139:2139 <> t:50
+R2177:2181 phoas_lambda2 <> type' ind
+R2183:2187 phoas_lambda2 <> k_arg:48 var
+binder 2172:2173 <> ty:51
+R2198:2202 phoas_lambda2 <> term':41 ind
+R2205:2215 phoas_lambda2 <> subst_type' def
+R2220:2220 phoas_lambda2 <> f:49 var
+R2217:2218 phoas_lambda2 <> ty:51 var
+binder 2248:2252 <> k_arg:52
+binder 2256:2257 <> ty:53
+R2261:2261 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R2303:2307 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R2276:2279 phoas_lambda2 <> tvar:39 var
+R2281:2285 phoas_lambda2 <> k_arg:52 var
+binder 2270:2272 <> arg:54
+R2289:2293 phoas_lambda2 <> term':41 ind
+R2296:2297 phoas_lambda2 <> ty:53 var
+R2299:2301 phoas_lambda2 <> arg:54 var
+R2308:2312 phoas_lambda2 <> term':41 ind
+R2315:2323 phoas_lambda2 <> type_all' constr
+R2325:2326 phoas_lambda2 <> ty:53 var
+scheme 1735:1739 <> term'_rect
+scheme 1735:1739 <> term'_ind
+scheme 1735:1739 <> term'_rec
+scheme 1735:1739 <> term'_sind
+R2349:2353 phoas_lambda2 <> term' ind
+R2369:2377 phoas_lambda2 <> term_app' constr
+not 2362:2362 <> :::x_'@'_x
+R2428:2437 phoas_lambda2 <> term_tapp' constr
+not 2420:2420 <> :::x_'t@'_x
+def 2483:2497 <> id_term_example
+binder 2500:2503 <> tvar:55
+binder 2507:2509 <> var:56
+R2516:2520 phoas_lambda2 <> term' ind
+R2551:2559 phoas_lambda2 <> type_all' constr
+binder 2566:2567 <> ty:57
+R2584:2588 phoas_lambda2 <> :::x_'-->'_x not
+R2572:2580 phoas_lambda2 <> type_var' constr
+R2582:2583 phoas_lambda2 <> ty:57 var
+R2589:2597 phoas_lambda2 <> type_var' constr
+R2599:2600 phoas_lambda2 <> ty:57 var
+R2545:2547 phoas_lambda2 <> var:56 var
+R2531:2534 phoas_lambda2 <> tvar:55 var
+R2609:2618 phoas_lambda2 <> term_tabs' constr
+R2630:2638 phoas_lambda2 <> term_abs' constr
+binder 2645:2645 <> x:58
+R2650:2658 phoas_lambda2 <> term_var' constr
+R2660:2660 phoas_lambda2 <> x:58 var
+R2783:2787 phoas_lambda2 <> term' ind
+R2790:2798 phoas_lambda2 <> type_all' constr
+binder 2805:2805 <> a:59
+R2821:2825 phoas_lambda2 <> :::x_'-->'_x not
+R2810:2818 phoas_lambda2 <> type_var' constr
+R2820:2820 phoas_lambda2 <> a:59 var
+R2826:2834 phoas_lambda2 <> type_var' constr
+R2836:2836 phoas_lambda2 <> a:59 var
+R2672:2681 phoas_lambda2 <> term_tabs' constr
+binder 2688:2688 <> a:60
+R2695:2704 phoas_lambda2 <> term_tapp' constr
+R2764:2772 phoas_lambda2 <> type_var' constr
+R2774:2774 phoas_lambda2 <> a:60 var
+R2747:2761 phoas_lambda2 <> id_term_example ex
+binder 2713:2713 <> b:61
+R2729:2733 phoas_lambda2 <> :::x_'-->'_x not
+R2718:2726 phoas_lambda2 <> type_var' constr
+R2728:2728 phoas_lambda2 <> b:61 var
+R2734:2742 phoas_lambda2 <> type_var' constr
+R2744:2744 phoas_lambda2 <> b:61 var
+R3078:3082 phoas_lambda2 <> term' ind
+R3085:3093 phoas_lambda2 <> type_all' constr
+binder 3100:3100 <> a:62
+R3116:3120 phoas_lambda2 <> :::x_'-->'_x not
+R3105:3113 phoas_lambda2 <> type_var' constr
+R3115:3115 phoas_lambda2 <> a:62 var
+R3121:3129 phoas_lambda2 <> type_var' constr
+R3131:3131 phoas_lambda2 <> a:62 var
+R2848:2857 phoas_lambda2 <> term_tabs' constr
+binder 2864:2864 <> a:63
+R2871:2879 phoas_lambda2 <> term_app' constr
+R2990:2999 phoas_lambda2 <> term_tapp' constr
+R3059:3067 phoas_lambda2 <> type_var' constr
+R3069:3069 phoas_lambda2 <> a:63 var
+R3042:3056 phoas_lambda2 <> id_term_example ex
+binder 3008:3008 <> b:64
+R3024:3028 phoas_lambda2 <> :::x_'-->'_x not
+R3013:3021 phoas_lambda2 <> type_var' constr
+R3023:3023 phoas_lambda2 <> b:64 var
+R3029:3037 phoas_lambda2 <> type_var' constr
+R3039:3039 phoas_lambda2 <> b:64 var
+R2886:2895 phoas_lambda2 <> term_tapp' constr
+R2966:2970 phoas_lambda2 <> :::x_'-->'_x not
+R2955:2963 phoas_lambda2 <> type_var' constr
+R2965:2965 phoas_lambda2 <> a:63 var
+R2971:2979 phoas_lambda2 <> type_var' constr
+R2981:2981 phoas_lambda2 <> a:63 var
+R2938:2952 phoas_lambda2 <> id_term_example ex
+binder 2904:2904 <> b:65
+R2920:2924 phoas_lambda2 <> :::x_'-->'_x not
+R2909:2917 phoas_lambda2 <> type_var' constr
+R2919:2919 phoas_lambda2 <> b:65 var
+R2925:2933 phoas_lambda2 <> type_var' constr
+R2935:2935 phoas_lambda2 <> b:65 var
+def 3148:3151 <> term
+R3159:3162 phoas_lambda2 <> type def
+R3164:3172 phoas_lambda2 <> kind_type constr
+binder 3154:3155 <> ty:66
+binder 3185:3188 <> tvar:67
+binder 3190:3192 <> var:68
+R3195:3199 phoas_lambda2 <> term' ind
+R3230:3231 phoas_lambda2 <> ty:66 var
+R3233:3236 phoas_lambda2 <> tvar:67 var
+R3224:3226 phoas_lambda2 <> var:68 var
+R3210:3213 phoas_lambda2 <> tvar:67 var
+def 3251:3255 <> term1
+R3268:3271 phoas_lambda2 <> type def
+R3273:3281 phoas_lambda2 <> kind_type constr
+binder 3258:3264 <> ty_free:69
+R3290:3293 phoas_lambda2 <> type def
+R3295:3303 phoas_lambda2 <> kind_type constr
+binder 3285:3286 <> ty:70
+binder 3319:3322 <> tvar:71
+binder 3324:3326 <> var:72
+R3347:3350 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R3329:3331 phoas_lambda2 <> var:72 var
+R3334:3340 phoas_lambda2 <> ty_free:69 var
+R3342:3345 phoas_lambda2 <> tvar:71 var
+R3351:3355 phoas_lambda2 <> term' ind
+R3371:3372 phoas_lambda2 <> ty:70 var
+R3374:3377 phoas_lambda2 <> tvar:71 var
+R3365:3367 phoas_lambda2 <> var:72 var
+def 3392:3399 <> term_ty1
+R3411:3414 phoas_lambda2 <> kind ind
+binder 3402:3407 <> k_free:73
+R3422:3426 phoas_lambda2 <> type1 def
+R3428:3433 phoas_lambda2 <> k_free:73 var
+R3435:3443 phoas_lambda2 <> kind_type constr
+binder 3418:3418 <> f:74
+binder 3459:3462 <> tvar:75
+binder 3464:3466 <> var:76
+R3473:3476 phoas_lambda2 <> tvar:75 var
+R3478:3483 phoas_lambda2 <> k_free:73 var
+binder 3469:3469 <> a:77
+R3487:3491 phoas_lambda2 <> term' ind
+R3507:3507 phoas_lambda2 <> f:74 var
+R3509:3512 phoas_lambda2 <> tvar:75 var
+R3514:3514 phoas_lambda2 <> a:77 var
+R3501:3503 phoas_lambda2 <> var:76 var
+def 3529:3536 <> term_abs
+binder 3539:3541 <> arg:78
+binder 3545:3547 <> res:79
+R3555:3559 phoas_lambda2 <> term1 def
+R3561:3563 phoas_lambda2 <> arg:78 var
+R3565:3567 phoas_lambda2 <> res:79 var
+binder 3551:3551 <> t:80
+R3572:3575 phoas_lambda2 <> term def
+R3581:3586 phoas_lambda2 <> :::x_'c-->'_x not
+R3578:3580 phoas_lambda2 <> arg:78 var
+R3587:3589 phoas_lambda2 <> res:79 var
+binder 3601:3604 <> tvar:81
+binder 3606:3608 <> var:82
+R3613:3621 phoas_lambda2 <> term_abs' constr
+binder 3628:3628 <> x:83
+R3633:3633 phoas_lambda2 <> t:80 var
+R3635:3638 phoas_lambda2 <> tvar:81 var
+R3640:3642 phoas_lambda2 <> var:82 var
+R3644:3644 phoas_lambda2 <> x:83 var
+def 3659:3667 <> term_tabs
+binder 3672:3676 <> k_arg:84
+R3684:3688 phoas_lambda2 <> type1 def
+R3690:3694 phoas_lambda2 <> k_arg:84 var
+R3696:3704 phoas_lambda2 <> kind_type constr
+binder 3680:3680 <> f:85
+R3714:3721 phoas_lambda2 <> term_ty1 def
+R3723:3727 phoas_lambda2 <> k_arg:84 var
+R3729:3729 phoas_lambda2 <> f:85 var
+binder 3710:3710 <> t:86
+R3734:3737 phoas_lambda2 <> term def
+R3740:3747 phoas_lambda2 <> type_all def
+R3749:3749 phoas_lambda2 <> f:85 var
+binder 3761:3764 <> tvar:87
+binder 3766:3768 <> var:88
+R3773:3782 phoas_lambda2 <> term_tabs' constr
+binder 3789:3791 <> arg:89
+R3796:3796 phoas_lambda2 <> t:86 var
+R3798:3801 phoas_lambda2 <> tvar:87 var
+R3803:3805 phoas_lambda2 <> var:88 var
+R3807:3809 phoas_lambda2 <> arg:89 var
+def 3824:3832 <> term_tapp
+binder 3837:3841 <> k_arg:90
+R3849:3853 phoas_lambda2 <> type1 def
+R3855:3859 phoas_lambda2 <> k_arg:90 var
+R3861:3869 phoas_lambda2 <> kind_type constr
+binder 3845:3845 <> f:91
+R3879:3882 phoas_lambda2 <> term def
+R3885:3892 phoas_lambda2 <> type_all def
+R3894:3894 phoas_lambda2 <> f:91 var
+binder 3875:3875 <> t:92
+R3904:3907 phoas_lambda2 <> type def
+R3909:3913 phoas_lambda2 <> k_arg:90 var
+binder 3899:3900 <> ty:93
+R3918:3921 phoas_lambda2 <> term def
+R3924:3933 phoas_lambda2 <> subst_type def
+R3938:3938 phoas_lambda2 <> f:91 var
+R3935:3936 phoas_lambda2 <> ty:93 var
+binder 3950:3953 <> tvar:94
+binder 3955:3957 <> var:95
+R3962:3971 phoas_lambda2 <> term_tapp' constr
+R3989:3990 phoas_lambda2 <> ty:93 var
+R3992:3995 phoas_lambda2 <> tvar:94 var
+R3976:3976 phoas_lambda2 <> t:92 var
+R3978:3981 phoas_lambda2 <> tvar:94 var
+R3983:3985 phoas_lambda2 <> var:95 var
+R3973:3973 phoas_lambda2 <> f:91 var
+def 4010:4017 <> term_app
+binder 4020:4022 <> arg:96
+binder 4026:4028 <> res:97
+R4036:4039 phoas_lambda2 <> term def
+R4045:4050 phoas_lambda2 <> :::x_'c-->'_x not
+R4042:4044 phoas_lambda2 <> arg:96 var
+R4051:4053 phoas_lambda2 <> res:97 var
+binder 4032:4032 <> f:98
+R4062:4065 phoas_lambda2 <> term def
+R4067:4069 phoas_lambda2 <> arg:96 var
+binder 4058:4058 <> x:99
+R4074:4077 phoas_lambda2 <> term def
+R4079:4081 phoas_lambda2 <> res:97 var
+binder 4092:4095 <> tvar:100
+binder 4097:4099 <> var:101
+R4104:4112 phoas_lambda2 <> term_app' constr
+R4128:4128 phoas_lambda2 <> x:99 var
+R4130:4133 phoas_lambda2 <> tvar:100 var
+R4135:4137 phoas_lambda2 <> var:101 var
+R4115:4115 phoas_lambda2 <> f:98 var
+R4117:4120 phoas_lambda2 <> tvar:100 var
+R4122:4124 phoas_lambda2 <> var:101 var
+def 4151:4157 <> flatten
+R4173:4176 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R4169:4172 phoas_lambda2 <> kind ind
+binder 4162:4165 <> tvar:102
+R4205:4208 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R4190:4194 phoas_lambda2 <> type' ind
+R4196:4204 phoas_lambda2 <> kind_type constr
+binder 4184:4186 <> var:103
+R4221:4225 phoas_lambda2 <> type' ind
+R4227:4235 phoas_lambda2 <> kind_type constr
+binder 4216:4217 <> ty:104
+R4246:4250 phoas_lambda2 <> term' ind
+R4282:4283 phoas_lambda2 <> ty:104 var
+R4275:4279 phoas_lambda2 <> term' ind
+R4261:4264 phoas_lambda2 <> tvar:102 var
+binder 4242:4242 <> t:105
+R4299:4303 phoas_lambda2 <> term' ind
+R4305:4306 phoas_lambda2 <> ty:104 var
+R4319:4319 phoas_lambda2 <> t:105 var
+R4330:4338 phoas_lambda2 <> term_var' constr
+R4351:4359 phoas_lambda2 <> term_app' constr
+R4370:4378 phoas_lambda2 <> term_app' constr
+R4393:4399 phoas_lambda2 <> flatten:106 def
+R4381:4387 phoas_lambda2 <> flatten:106 def
+R4410:4418 phoas_lambda2 <> term_abs' constr
+R4425:4433 phoas_lambda2 <> term_abs' constr
+binder 4440:4440 <> x:108
+R4445:4451 phoas_lambda2 <> flatten:106 def
+R4457:4465 phoas_lambda2 <> term_var' constr
+R4480:4480 phoas_lambda2 <> x:108 var
+R4475:4477 phoas_lambda2 <> var:103 var
+R4489:4498 phoas_lambda2 <> term_tapp' constr
+R4510:4519 phoas_lambda2 <> term_tapp' constr
+R4535:4536 phoas_lambda2 <> ty:104 var
+R4524:4530 phoas_lambda2 <> flatten:106 def
+R4532:4532 phoas_lambda2 <> t:105 var
+R4542:4551 phoas_lambda2 <> term_tabs' constr
+R4558:4567 phoas_lambda2 <> term_tabs' constr
+binder 4574:4574 <> a:109
+R4579:4585 phoas_lambda2 <> flatten:106 def
+R4588:4588 phoas_lambda2 <> t:105 var
+R4590:4590 phoas_lambda2 <> a:109 var
+def 4613:4617 <> subst
+binder 4620:4622 <> ty1:110
+binder 4626:4628 <> ty2:111
+R4640:4643 phoas_lambda2 <> term def
+R4645:4647 phoas_lambda2 <> ty1:110 var
+binder 4632:4636 <> inner:112
+R4659:4663 phoas_lambda2 <> term1 def
+R4665:4667 phoas_lambda2 <> ty1:110 var
+R4669:4671 phoas_lambda2 <> ty2:111 var
+binder 4651:4655 <> outer:113
+R4676:4679 phoas_lambda2 <> term def
+R4681:4683 phoas_lambda2 <> ty2:111 var
+binder 4695:4698 <> tvar:114
+binder 4700:4702 <> var:115
+R4707:4713 phoas_lambda2 <> flatten def
+R4716:4720 phoas_lambda2 <> outer:113 var
+R4722:4725 phoas_lambda2 <> tvar:114 var
+R4728:4732 phoas_lambda2 <> term' ind
+R4757:4759 phoas_lambda2 <> var:115 var
+R4743:4746 phoas_lambda2 <> tvar:114 var
+R4764:4768 phoas_lambda2 <> inner:112 var
+R4770:4773 phoas_lambda2 <> tvar:114 var
+R4775:4777 phoas_lambda2 <> var:115 var
+ax 4789:4801 <> subst_ty_term
+binder 4815:4819 <> k_arg:116
+R4827:4831 phoas_lambda2 <> type1 def
+R4833:4837 phoas_lambda2 <> k_arg:116 var
+R4839:4847 phoas_lambda2 <> kind_type constr
+binder 4823:4823 <> f:117
+R4871:4874 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R4855:4862 phoas_lambda2 <> term_ty1 def
+R4864:4868 phoas_lambda2 <> k_arg:116 var
+R4870:4870 phoas_lambda2 <> f:117 var
+R4888:4891 phoas_lambda2 <> type def
+R4893:4897 phoas_lambda2 <> k_arg:116 var
+binder 4883:4884 <> ty:118
+R4901:4904 phoas_lambda2 <> term def
+R4907:4916 phoas_lambda2 <> subst_type def
+R4921:4921 phoas_lambda2 <> f:117 var
+R4918:4919 phoas_lambda2 <> ty:118 var
+ind 4936:4943 <> is_value
+constr 4983:4994 <> is_value_abs
+constr 5064:5076 <> is_value_tabs
+binder 4955:4956 <> ty:121
+R4967:4970 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R4960:4963 phoas_lambda2 <> term def
+R4965:4966 phoas_lambda2 <> ty:121 var
+binder 5006:5008 <> arg:124
+binder 5012:5014 <> res:125
+R5022:5026 phoas_lambda2 <> term1 def
+R5028:5030 phoas_lambda2 <> arg:124 var
+R5032:5034 phoas_lambda2 <> res:125 var
+binder 5018:5018 <> f:126
+R5038:5045 phoas_lambda2 <> is_value:122 ind
+R5048:5055 phoas_lambda2 <> term_abs def
+R5057:5057 phoas_lambda2 <> f:126 var
+binder 5095:5099 <> k_arg:127
+R5107:5111 phoas_lambda2 <> type1 def
+R5113:5117 phoas_lambda2 <> k_arg:127 var
+R5119:5127 phoas_lambda2 <> kind_type constr
+binder 5103:5103 <> f:128
+R5135:5142 phoas_lambda2 <> term_ty1 def
+R5144:5148 phoas_lambda2 <> k_arg:127 var
+R5150:5150 phoas_lambda2 <> f:128 var
+binder 5131:5131 <> t:129
+R5161:5168 phoas_lambda2 <> is_value:122 ind
+R5171:5179 phoas_lambda2 <> term_tabs def
+R5181:5181 phoas_lambda2 <> t:129 var
+scheme 4936:4943 <> is_value_ind
+scheme 4936:4943 <> is_value_sind
+R5204:5211 phoas_lambda2 <> is_value ind
+ind 5287:5290 <> step
+constr 5341:5349 <> step_beta
+constr 5478:5486 <> step_app1
+constr 5669:5677 <> step_app2
+constr 5849:5857 <> step_tapp
+constr 6094:6103 <> step_tbeta
+binder 5302:5303 <> ty:130
+R5314:5317 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R5307:5310 phoas_lambda2 <> term def
+R5312:5313 phoas_lambda2 <> ty:130 var
+R5325:5328 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R5318:5321 phoas_lambda2 <> term def
+R5323:5324 phoas_lambda2 <> ty:130 var
+R6289:6292 phoas_lambda2 <> step:132 ind
+binder 5366:5368 <> arg:133
+binder 5370:5372 <> res:134
+R5379:5383 phoas_lambda2 <> term1 def
+R5385:5387 phoas_lambda2 <> arg:133 var
+R5389:5391 phoas_lambda2 <> res:134 var
+binder 5375:5375 <> f:135
+R5399:5402 phoas_lambda2 <> term def
+R5404:5406 phoas_lambda2 <> arg:133 var
+binder 5395:5395 <> v:136
+R5426:5435 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R5416:5423 phoas_lambda2 <> is_value ind
+R5425:5425 phoas_lambda2 <> v:136 var
+R5459:5463 phoas_lambda2 <> :::x_'==>'_x not
+R5436:5443 phoas_lambda2 <> term_app def
+R5458:5458 phoas_lambda2 <> v:136 var
+R5446:5453 phoas_lambda2 <> term_abs def
+R5455:5455 phoas_lambda2 <> f:135 var
+R5464:5468 phoas_lambda2 <> subst def
+R5472:5472 phoas_lambda2 <> f:135 var
+R5470:5470 phoas_lambda2 <> v:136 var
+binder 5504:5506 <> arg:137
+binder 5510:5512 <> res:138
+R5521:5524 phoas_lambda2 <> term def
+R5530:5535 phoas_lambda2 <> :::x_'c-->'_x not
+R5527:5529 phoas_lambda2 <> arg:137 var
+R5536:5538 phoas_lambda2 <> res:138 var
+binder 5516:5517 <> t1:139
+R5549:5552 phoas_lambda2 <> term def
+R5558:5563 phoas_lambda2 <> :::x_'c-->'_x not
+R5555:5557 phoas_lambda2 <> arg:137 var
+R5564:5566 phoas_lambda2 <> res:138 var
+binder 5543:5545 <> t1':140
+R5576:5579 phoas_lambda2 <> term def
+R5581:5583 phoas_lambda2 <> arg:137 var
+binder 5571:5572 <> t2:141
+R5603:5612 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R5595:5599 phoas_lambda2 <> :::x_'==>'_x not
+R5593:5594 phoas_lambda2 <> t1:139 var
+R5600:5602 phoas_lambda2 <> t1':140 var
+R5613:5616 phoas_lambda2 <> step:131 ind
+R5648:5655 phoas_lambda2 <> term_app def
+R5661:5662 phoas_lambda2 <> t2:141 var
+R5657:5659 phoas_lambda2 <> t1':140 var
+R5631:5638 phoas_lambda2 <> term_app def
+R5643:5644 phoas_lambda2 <> t2:141 var
+R5640:5641 phoas_lambda2 <> t1:139 var
+R5625:5627 phoas_lambda2 <> res:138 var
+binder 5695:5697 <> arg:142
+binder 5701:5703 <> res:143
+R5712:5715 phoas_lambda2 <> term def
+R5721:5726 phoas_lambda2 <> :::x_'c-->'_x not
+R5718:5720 phoas_lambda2 <> arg:142 var
+R5727:5729 phoas_lambda2 <> res:143 var
+binder 5707:5708 <> t1:144
+R5739:5742 phoas_lambda2 <> term def
+R5744:5746 phoas_lambda2 <> arg:142 var
+binder 5734:5735 <> t2:145
+R5756:5759 phoas_lambda2 <> term def
+R5761:5763 phoas_lambda2 <> arg:142 var
+binder 5750:5752 <> t2':146
+R5783:5792 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R5775:5779 phoas_lambda2 <> :::x_'==>'_x not
+R5773:5774 phoas_lambda2 <> t2:145 var
+R5780:5782 phoas_lambda2 <> t2':146 var
+R5793:5796 phoas_lambda2 <> step:131 ind
+R5828:5835 phoas_lambda2 <> term_app def
+R5840:5842 phoas_lambda2 <> t2':146 var
+R5837:5838 phoas_lambda2 <> t1:144 var
+R5811:5818 phoas_lambda2 <> term_app def
+R5823:5824 phoas_lambda2 <> t2:145 var
+R5820:5821 phoas_lambda2 <> t1:144 var
+R5805:5807 phoas_lambda2 <> res:143 var
+binder 5875:5879 <> k_arg:147
+R5887:5891 phoas_lambda2 <> type1 def
+R5893:5897 phoas_lambda2 <> k_arg:147 var
+R5899:5907 phoas_lambda2 <> kind_type constr
+binder 5883:5883 <> f:148
+R5923:5926 phoas_lambda2 <> term def
+R5929:5936 phoas_lambda2 <> type_all def
+R5938:5938 phoas_lambda2 <> f:148 var
+binder 5919:5919 <> t:149
+R5948:5951 phoas_lambda2 <> term def
+R5954:5961 phoas_lambda2 <> type_all def
+R5963:5963 phoas_lambda2 <> f:148 var
+binder 5943:5944 <> t':150
+R5977:5980 phoas_lambda2 <> type def
+R5982:5986 phoas_lambda2 <> k_arg:147 var
+binder 5968:5973 <> ty_arg:151
+R6004:6013 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R5997:6001 phoas_lambda2 <> :::x_'==>'_x not
+R5996:5996 phoas_lambda2 <> t:149 var
+R6002:6003 phoas_lambda2 <> t':150 var
+R6014:6017 phoas_lambda2 <> step:131 ind
+R6069:6077 phoas_lambda2 <> term_tapp def
+R6082:6087 phoas_lambda2 <> ty_arg:151 var
+R6079:6080 phoas_lambda2 <> t':150 var
+R6048:6056 phoas_lambda2 <> term_tapp def
+R6060:6065 phoas_lambda2 <> ty_arg:151 var
+R6058:6058 phoas_lambda2 <> t:149 var
+R6026:6035 phoas_lambda2 <> subst_type def
+R6044:6044 phoas_lambda2 <> f:148 var
+R6037:6042 phoas_lambda2 <> ty_arg:151 var
+binder 6121:6125 <> k_arg:152
+R6133:6137 phoas_lambda2 <> type1 def
+R6139:6143 phoas_lambda2 <> k_arg:152 var
+R6145:6153 phoas_lambda2 <> kind_type constr
+binder 6129:6129 <> f:153
+R6161:6168 phoas_lambda2 <> term_ty1 def
+R6170:6174 phoas_lambda2 <> k_arg:152 var
+R6176:6176 phoas_lambda2 <> f:153 var
+binder 6157:6157 <> t:154
+R6189:6192 phoas_lambda2 <> type def
+R6194:6198 phoas_lambda2 <> k_arg:152 var
+binder 6180:6185 <> ty_arg:155
+R6238:6242 phoas_lambda2 <> :::x_'==>'_x not
+R6208:6216 phoas_lambda2 <> term_tapp def
+R6232:6237 phoas_lambda2 <> ty_arg:155 var
+R6219:6227 phoas_lambda2 <> term_tabs def
+R6229:6229 phoas_lambda2 <> t:154 var
+R6243:6255 phoas_lambda2 <> subst_ty_term prfax
+R6259:6264 phoas_lambda2 <> ty_arg:155 var
+R6257:6257 phoas_lambda2 <> t:154 var
+scheme 5287:5290 <> step_ind
+scheme 5287:5290 <> step_sind
+R6289:6292 phoas_lambda2 <> step ind
+not 6274:6274 <> :::x_'==>'_x
+R6320:6323 phoas_lambda2 <> step ind
+prf 6513:6524 <> preservation
+binder 6536:6537 <> ty:156
+R6548:6551 phoas_lambda2 <> term def
+R6553:6554 phoas_lambda2 <> ty:156 var
+binder 6541:6541 <> t:157
+binder 6543:6544 <> t':158
+R6569:6574 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R6560:6563 phoas_lambda2 <> step ind
+R6567:6568 phoas_lambda2 <> t':158 var
+R6565:6565 phoas_lambda2 <> t:157 var
+R6575:6578 Corelib.Init.Logic <> True ind
+ind 6613:6623 <> closed_term
+constr 6663:6672 <> closed_app
+constr 6820:6829 <> closed_abs
+constr 6908:6918 <> closed_tabs
+constr 7025:7035 <> closed_tapp
+binder 6635:6636 <> ty:159
+R6647:6650 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R6640:6643 phoas_lambda2 <> term def
+R6645:6646 phoas_lambda2 <> ty:159 var
+binder 6684:6686 <> arg:162
+binder 6690:6692 <> res:163
+R6700:6703 phoas_lambda2 <> term def
+R6709:6714 phoas_lambda2 <> :::x_'c-->'_x not
+R6706:6708 phoas_lambda2 <> arg:162 var
+R6715:6717 phoas_lambda2 <> res:163 var
+binder 6696:6696 <> f:164
+R6726:6729 phoas_lambda2 <> term def
+R6731:6733 phoas_lambda2 <> arg:162 var
+binder 6722:6722 <> t:165
+R6756:6765 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R6743:6753 phoas_lambda2 <> closed_term:160 ind
+R6755:6755 phoas_lambda2 <> f:164 var
+R6779:6788 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R6766:6776 phoas_lambda2 <> closed_term:160 ind
+R6778:6778 phoas_lambda2 <> t:165 var
+R6789:6799 phoas_lambda2 <> closed_term:160 ind
+R6802:6809 phoas_lambda2 <> term_app def
+R6813:6813 phoas_lambda2 <> t:165 var
+R6811:6811 phoas_lambda2 <> f:164 var
+binder 6841:6843 <> arg:166
+binder 6847:6849 <> res:167
+R6857:6861 phoas_lambda2 <> term1 def
+R6863:6865 phoas_lambda2 <> arg:166 var
+R6867:6869 phoas_lambda2 <> res:167 var
+binder 6853:6853 <> f:168
+R6879:6889 phoas_lambda2 <> closed_term:160 ind
+R6892:6899 phoas_lambda2 <> term_abs def
+R6901:6901 phoas_lambda2 <> f:168 var
+binder 6930:6934 <> k_arg:169
+R6942:6946 phoas_lambda2 <> type1 def
+R6948:6952 phoas_lambda2 <> k_arg:169 var
+R6954:6962 phoas_lambda2 <> kind_type constr
+binder 6938:6938 <> f:170
+R6970:6977 phoas_lambda2 <> term_ty1 def
+R6979:6983 phoas_lambda2 <> k_arg:169 var
+R6985:6985 phoas_lambda2 <> f:170 var
+binder 6966:6966 <> t:171
+R6995:7005 phoas_lambda2 <> closed_term:160 ind
+R7008:7016 phoas_lambda2 <> term_tabs def
+R7018:7018 phoas_lambda2 <> t:171 var
+binder 7047:7051 <> k_arg:172
+R7059:7063 phoas_lambda2 <> type1 def
+R7065:7069 phoas_lambda2 <> k_arg:172 var
+R7071:7079 phoas_lambda2 <> kind_type constr
+binder 7055:7055 <> f:173
+R7087:7090 phoas_lambda2 <> term def
+R7093:7100 phoas_lambda2 <> type_all def
+R7102:7102 phoas_lambda2 <> f:173 var
+binder 7083:7083 <> t:174
+R7116:7119 phoas_lambda2 <> type def
+R7121:7125 phoas_lambda2 <> k_arg:172 var
+binder 7107:7112 <> ty_arg:175
+R7148:7157 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R7135:7145 phoas_lambda2 <> closed_term:160 ind
+R7147:7147 phoas_lambda2 <> t:174 var
+R7158:7168 phoas_lambda2 <> closed_term:160 ind
+R7171:7179 phoas_lambda2 <> term_tapp def
+R7183:7188 phoas_lambda2 <> ty_arg:175 var
+R7181:7181 phoas_lambda2 <> t:174 var
+scheme 6613:6623 <> closed_term_ind
+scheme 6613:6623 <> closed_term_sind
+R7211:7221 phoas_lambda2 <> closed_term ind
+ax 7231:7247 <> every_term_closed
+binder 7259:7260 <> ty:176
+R7268:7271 phoas_lambda2 <> term def
+R7273:7274 phoas_lambda2 <> ty:176 var
+binder 7264:7264 <> t:177
+R7278:7288 phoas_lambda2 <> closed_term ind
+R7290:7290 phoas_lambda2 <> t:177 var
+prf 7300:7312 <> canonical_abs
+binder 7326:7328 <> arg:180
+binder 7330:7332 <> res:181
+R7340:7343 phoas_lambda2 <> term def
+R7349:7354 phoas_lambda2 <> :::x_'c-->'_x not
+R7346:7348 phoas_lambda2 <> arg:180 var
+R7355:7357 phoas_lambda2 <> res:181 var
+binder 7336:7336 <> v:182
+R7376:7379 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R7366:7373 phoas_lambda2 <> is_value ind
+R7375:7375 phoas_lambda2 <> v:182 var
+R7380:7386 Corelib.Init.Logic <> ::type_scope:'exists'_x_'..'_x_','_x not
+R7404:7405 Corelib.Init.Logic <> ::type_scope:'exists'_x_'..'_x_','_x not
+R7391:7395 phoas_lambda2 <> term1 def
+R7397:7399 phoas_lambda2 <> arg:180 var
+R7401:7403 phoas_lambda2 <> res:181 var
+binder 7387:7387 <> f:183
+R7407:7409 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R7406:7406 phoas_lambda2 <> v:182 var
+R7410:7417 phoas_lambda2 <> term_abs def
+R7419:7419 phoas_lambda2 <> f:183 var

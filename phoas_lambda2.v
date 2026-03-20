@@ -36,6 +36,9 @@ Definition subst_type'
   (inner : type' (tvar := tvar) k_arg) (outer : type1 k_arg k_res) : type' k_res := 
   flatten_type (outer type' inner).
 
+Definition subst_type {k_arg} (inner : type k_arg) (outer : type1 k_arg kind_type) : type kind_type :=
+  fun tvar => subst_type' (inner tvar) outer.
+
 Example id_type_example : type kind_type := type_all (fun _ ty => type_var' ty --> type_var ty).
 
 Inductive term' 
@@ -70,21 +73,20 @@ Check term_tabs' (fun a =>
 Definition term (ty : type kind_type) := forall tvar var, term' (tvar := tvar) (var := var) (ty tvar).
 Definition term1 (ty_free : type kind_type) (ty : type kind_type) := 
   forall tvar var, var (ty_free tvar) -> term' (var := var) (ty tvar).
-Definition term_ty1 (k_free : kind) (ty : type kind_type) := 
-  forall tvar var, tvar k_free -> term' (var := var) (ty tvar).
+Definition term_ty1 (k_free : kind) (f : type1 k_free kind_type) := 
+  forall tvar var (a : tvar k_free), term' (var := var) (f tvar a).
 Definition term_abs {arg} {res} (t : term1 arg res) : term (arg c--> res) :=
   fun tvar var => term_abs' (fun x => t tvar var x).
 Definition term_tabs
   {k_arg} {f : type1 k_arg kind_type}
-  (t : term f) : term (type_all f) :=
+  (t : term_ty1 k_arg f) : term (type_all f) :=
   fun tvar var => term_tabs' (fun arg => t tvar var arg).
-(* Definition term_app {arg} {res} (f : term (arg --> res)) (arg : term arg) : term res :=
-  fun var => term_app' (f var) (arg var).
-Definition term_tapp 
+Definition term_tapp
   {k_arg} {f : type1 k_arg kind_type}
   (t : term (type_all f)) (ty : type k_arg) : term (subst_type ty f) :=
-  fun var => term_tapp' (t var) ty.
- *)
+  fun tvar var => term_tapp' f (t tvar var) (ty tvar).
+Definition term_app {arg} {res} (f : term (arg c--> res)) (x : term arg) : term res :=
+  fun tvar var => term_app' (f tvar var) (x tvar var).
 
 Fixpoint flatten
   {tvar : kind -> Type} {var : type' kind_type -> Type} {ty : type' kind_type} 
@@ -100,9 +102,15 @@ Fixpoint flatten
 Definition subst {ty1} {ty2} (inner : term ty1) (outer : term1 ty1 ty2) : term ty2 := 
   fun tvar var => flatten (outer tvar (term' (tvar := tvar) (var := var)) (inner tvar var)).
 
+Axiom subst_ty_term :
+  forall {k_arg} {f : type1 k_arg kind_type},
+    term_ty1 k_arg f -> forall (ty : type k_arg), term (subst_type ty f).
+
 Inductive is_value : forall {ty}, term ty -> Prop :=
   | is_value_abs : forall {arg} {res} (f : term1 arg res), is_value (term_abs f)
-  | is_value_tabs : forall {k_arg} (f : type1 k_arg kind_type) (t : term_ty1 f), is_value (term_tabs t).
+  | is_value_tabs : 
+      forall {k_arg} {f : type1 k_arg kind_type} (t : term_ty1 k_arg f), 
+      is_value (term_tabs t).
 
 Hint Constructors is_value.
 
@@ -113,43 +121,73 @@ Inductive step : forall {ty}, term ty -> term ty -> Prop :=
       is_value v ->
       term_app (term_abs f) v ==> subst v f
   | step_app1 :
-      forall {arg} {res} {t1 : term (arg --> res)} {t1' : term (arg --> res)} {t2 : term arg},
+      forall {arg} {res} {t1 : term (arg c--> res)} {t1' : term (arg c--> res)} {t2 : term arg},
       t1 ==> t1' ->
       step (ty := res) (term_app t1 t2) (term_app t1' t2)
   | step_app2 :
-      forall {arg} {res} {t1 : term (arg --> res)} {t2 : term arg} {t2' : term arg},
+      forall {arg} {res} {t1 : term (arg c--> res)} {t2 : term arg} {t2' : term arg},
       t2 ==> t2' ->
       step (ty := res) (term_app t1 t2) (term_app t1 t2')
+  | step_tapp :
+      forall {k_arg} {f : type1 k_arg kind_type}
+        {t : term (type_all f)} {t' : term (type_all f)} (ty_arg : type k_arg),
+      t ==> t' ->
+      step (ty := subst_type ty_arg f) (term_tapp t ty_arg) (term_tapp t' ty_arg)
+  | step_tbeta :
+      forall {k_arg} {f : type1 k_arg kind_type} (t : term_ty1 k_arg f) (ty_arg : type k_arg),
+      term_tapp (term_tabs t) ty_arg ==> subst_ty_term t ty_arg
   where "t ==> t'" := (step t t').
 
 Hint Constructors step.
 
+(* In an intrinsically typed representation, preservation is free:
+   step : forall {ty}, term ty -> term ty -> Prop
+   guarantees that the type is preserved by construction. *)
 Theorem preservation : forall {ty} (t t' : term ty),
   step t t' ->
   True.
-Proof. intros. trivial. Qed.
+Proof. trivial. Qed.
 
 Inductive closed_term : forall {ty}, term ty -> Prop :=
-  | closed_app : forall {arg} {res} (f : term (arg --> res)) (t : term arg),
+  | closed_app : forall {arg} {res} (f : term (arg c--> res)) (t : term arg),
       closed_term f ->
       closed_term t ->
       closed_term (term_app f t)
   | closed_abs : forall {arg} {res} (f : term1 arg res),
-      closed_term (term_abs f).
+      closed_term (term_abs f)
+  | closed_tabs : forall {k_arg} {f : type1 k_arg kind_type} (t : term_ty1 k_arg f),
+      closed_term (term_tabs t)
+  | closed_tapp : forall {k_arg} {f : type1 k_arg kind_type} (t : term (type_all f)) (ty_arg : type k_arg),
+      closed_term t ->
+      closed_term (term_tapp t ty_arg).
 
 Hint Constructors closed_term.
 
 Axiom every_term_closed : forall {ty} (t : term ty), closed_term t.
+
+Axiom canonical_abs :
+  forall {arg res} (v : term (arg c--> res)),
+    is_value v -> exists f : term1 arg res, v = term_abs f.
+
+Axiom canonical_tabs :
+  forall {k_arg} {f : type1 k_arg kind_type} (v : term (type_all f)),
+    is_value v -> exists t : term_ty1 k_arg f, v = term_tabs t.
 
 Theorem progress : forall {ty} (t : term ty), 
   closed_term t -> is_value t \/ (exists t', step t t').
 Proof. 
   intros. 
   induction H.
-  { destruct IHclosed_term1; auto; destruct IHclosed_term2; auto.
-    { right. inversion H1; subst. simpl_existT; subst. exists (subst t f0). eapply step_beta; auto. }
-    { right. destruct H2 as [t' Ht']. exists (term_app f t'). eapply step_app2; auto. }
-    { right. destruct H1 as [t' Ht']. exists (term_app t' t). eapply step_app1; auto. }
-    { right. destruct H1 as [f' Hf']. exists (term_app f' t). eapply step_app1; auto. } }
+  { destruct IHclosed_term1 as [Hvf | [f' Hf']].
+    - destruct IHclosed_term2 as [Hvt | [t' Ht']].
+      + destruct (canonical_abs f Hvf) as [f0 ->].
+        right. exists (subst t f0). eapply step_beta; eauto.
+      + right. exists (term_app f t'). eapply step_app2. exact Ht'.
+    - right. exists (term_app f' t). eapply step_app1. exact Hf'. }
   { left. constructor. }
+  { left. constructor. }
+  { destruct IHclosed_term as [Hvt | [t' Ht']].
+    - destruct (canonical_tabs t Hvt) as [t0 ->].
+      right. exists (subst_ty_term t0 ty_arg). eapply step_tbeta.
+    - right. exists (term_tapp t' ty_arg). eapply step_tapp. exact Ht'. }
 Qed.

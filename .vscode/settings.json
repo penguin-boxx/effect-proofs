@@ -9,5 +9,9 @@
         "other": "on",
         "comments": "off",
         "strings": "on"
+    },
+    "chat.tools.terminal.autoApprove": {
+        "coqc": true,
+        "coqtop": true
     }
 }
