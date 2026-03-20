@@ -45,7 +45,7 @@ Inductive term'
   | term_app' : forall {arg} {res}, term' (arg --> res) -> term' arg -> term' res
   | term_abs' : forall {arg} {res}, (var arg -> term' res) -> term' (arg --> res)
   | term_tapp' :
-      forall {k_arg} {f : type1 k_arg kind_type} (t : term' (type_all' (f tvar))) (ty : type' k_arg), 
+      forall {k_arg} (f : type1 k_arg kind_type) (t : term' (type_all' (f tvar))) (ty : type' k_arg), 
       term' (subst_type' ty f)
   | term_tabs' : forall {k_arg} {ty}, (forall (arg : tvar k_arg), term' (ty arg)) -> term' (type_all' ty).
 
@@ -58,57 +58,53 @@ Example id_term_example {tvar} {var} :
   term_tabs' (fun _ => term_abs' (fun x => term_var' x)).
 
 Check term_tabs' (fun a =>
-  term_tapp' (f := fun _ b => type_var' b --> type_var' b) id_term_example (type_var' a)) 
+  term_tapp' (fun _ b => type_var' b --> type_var' b) id_term_example (type_var' a)) 
   : term' (type_all' (fun a => type_var' a --> type_var' a)).
 
 Check term_tabs' (fun a =>
   term_app'
-    (term_tapp' (f := fun _ b => type_var' b --> type_var' b) id_term_example (type_var' a --> type_var' a))
-    (term_tapp' (f := fun _ b => type_var' b --> type_var' b) id_term_example (type_var' a)))
+    (term_tapp' (fun _ b => type_var' b --> type_var' b) id_term_example (type_var' a --> type_var' a))
+    (term_tapp' (fun _ b => type_var' b --> type_var' b) id_term_example (type_var' a)))
   : term' (type_all' (fun a => type_var' a --> type_var' a)).
 
-  (* term' (tvar := tvar) (var := var) (type_all' (fun ty => type_all' (fun _ => type_var' ty --> type_var' ty))) :=
-  term_tabs' (fun ty => term_tabs' (fun _ => term_abs' (fun x => term_var' x))). *)
-
-Definition term (ty : type' kind_type) := forall tvar var, term' (tvar := tvar) (var := var) ty.
+Definition term (ty : type kind_type) := forall tvar var, term' (tvar := tvar) (var := var) (ty tvar).
 Definition term1 (ty_free : type kind_type) (ty : type kind_type) := 
-  forall var, var ty_free -> term' (var := var) ty. 
-Definition term_app {arg} {res} (f : term (arg --> res)) (arg : term arg) : term res :=
+  forall tvar var, var (ty_free tvar) -> term' (var := var) (ty tvar).
+Definition term_ty1 (k_free : kind) (ty : type kind_type) := 
+  forall tvar var, tvar k_free -> term' (var := var) (ty tvar).
+Definition term_abs {arg} {res} (t : term1 arg res) : term (arg c--> res) :=
+  fun tvar var => term_abs' (fun x => t tvar var x).
+Definition term_tabs
+  {k_arg} {f : type1 k_arg kind_type}
+  (t : term f) : term (type_all f) :=
+  fun tvar var => term_tabs' (fun arg => t tvar var arg).
+(* Definition term_app {arg} {res} (f : term (arg --> res)) (arg : term arg) : term res :=
   fun var => term_app' (f var) (arg var).
-Definition term_abs {arg} {res} (t : term1 arg res) : term (arg --> res) :=
-  fun var => term_abs' (fun x => t var x).
 Definition term_tapp 
   {k_arg} {f : type1 k_arg kind_type}
   (t : term (type_all f)) (ty : type k_arg) : term (subst_type ty f) :=
   fun var => term_tapp' (t var) ty.
-Definition term_tabs
-  {k_arg} {f : type1 k_arg kind_type}
-  (t : term (type_all f)) : term (type_all f) :=
-  fun var => term_tabs' (t var).
+ *)
 
-Fixpoint flatten 
-  {var : type kind_type -> Type} {ty : type kind_type} 
-  (t : term' (var := term') ty) {struct t} : term' ty :=
+Fixpoint flatten
+  {tvar : kind -> Type} {var : type' kind_type -> Type} {ty : type' kind_type} 
+  (t : term' (tvar := tvar) (var := term') ty) {struct t} : term' ty :=
   match t with
-  | term_var v => v
+  | term_var' v => v
   | term_app' f arg => term_app' (flatten f) (flatten arg)
-  | term_abs' f => term_abs' (fun x => flatten (f (term_var (var := var) x)))
-  | term_tapp' t ty => term_tapp' (flatten t) ty
-  | term_tabs' t => term_tabs' (flatten t)
+  | term_abs' f => term_abs' (fun x => flatten (f (term_var' (var := var) x)))
+  | term_tapp' _ t ty => term_tapp' _ (flatten t) ty
+  | term_tabs' t => term_tabs' (fun a => flatten (t a))
   end.
 
 Definition subst {ty1} {ty2} (inner : term ty1) (outer : term1 ty1 ty2) : term ty2 := 
-  fun var => flatten (outer (term' (var := var)) (inner var)).
+  fun tvar var => flatten (outer tvar (term' (tvar := tvar) (var := var)) (inner tvar var)).
 
 Inductive is_value : forall {ty}, term ty -> Prop :=
   | is_value_abs : forall {arg} {res} (f : term1 arg res), is_value (term_abs f)
-  | is_value_tabs : forall {k_arg} {f : type1 k_arg kind_type} (t : term (type_all f)), is_value (term_tabs t).
+  | is_value_tabs : forall {k_arg} (f : type1 k_arg kind_type) (t : term_ty1 f), is_value (term_tabs t).
 
 Hint Constructors is_value.
-
-Example id_example : term 
-  (type_all (k := kind_type) (fun _ ty => type_fun' (type_var ty) (type_var ty))) := 
-  term_tabs (fun _ ty => term_abs' (_)).
 
 Reserved Notation "t ==> t'" (no associativity, at level 90).
 Inductive step : forall {ty}, term ty -> term ty -> Prop :=
