@@ -1,3 +1,7 @@
+(*
+Here I'm playing with STLC from Software Foundations.
+*)
+
 Set Warnings "-notation-overridden,-parsing,-deprecated-hint-without-locality".
 From Stdlib Require Import Arith.Arith.
 From Stdlib Require Import Strings.String.

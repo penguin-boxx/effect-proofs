@@ -244,7 +244,7 @@ Inductive step : forall {ty}, term ty -> term ty -> Prop :=
           (brs tvar var))
         ==>
         (fun tvar var => apply_branch 
-          (lookup_branch d (brs tvar var)
+          (lookup_branch d (brs tvar var) 
             (eq_rect _ (fun tc0 => In d (dcons_of tc0)) (dcons_of_correct d) tc Htc))
           (fields tvar var))
   | step_match_scrut :

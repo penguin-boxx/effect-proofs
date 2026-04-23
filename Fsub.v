@@ -1,3 +1,8 @@
+(* 
+Here I'm trying to take a System F implementation on
+locally nameless framework and extend it with lifetimes.
+*)
+
 Set Implicit Arguments.
 From TLC Require Import LibLN.
 Require Import Coq.MSets.MSetAVL.
