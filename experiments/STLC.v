@@ -149,7 +149,7 @@ Notation k := <{\x:Bool, \y:Bool, x}>.
 Notation notB := <{\x:Bool, if x then false else true}>.
 
 Inductive value : tm -> Prop :=
-  | v_abs : ∀ x T2 t1,
+  | value_lam : ∀ x T2 t1,
       value <{\x:T2, t1}>
   | v_true :
       value <{true}>
@@ -209,7 +209,7 @@ Lemma step_example1 :
 Proof.
   eapply multi_step.
     apply ST_AppAbs.
-    apply v_abs.
+    apply value_lam.
   simpl.
   apply multi_refl. Qed.
 

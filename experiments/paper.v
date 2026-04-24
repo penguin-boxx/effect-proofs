@@ -37,7 +37,7 @@ Inductive tm : Type :=
 Inductive value : tm -> Prop :=
   | v_true  : value tm_true
   | v_false : value tm_false
-  | v_abs   : forall T t, value (tm_abs T t)
+  | value_lam   : forall T t, value (tm_abs T t)
   | v_pair  : forall v1 v2, value v1 -> value v2 -> value (tm_pair v1 v2).
 Hint Constructors value : core.
 
@@ -345,7 +345,7 @@ Proof. intros. eapply (substitution G t T 0 U v); simpl; auto. lia. Qed.
 
 (* ========== Typing inversion ========== *)
 
-Lemma typing_inv_abs : forall G T1 body T,
+Lemma typing_invalue_lam : forall G T1 body T,
   has_type G (tm_abs T1 body) T ->
   exists T2 d, sub_ty (Ty_Arrow T1 d T2) T /\ has_type (T1 :: G) body T2.
 Proof.
@@ -423,7 +423,7 @@ Proof.
 
   - (* S_AppAbs *)
     destruct (has_type_app_inv _ _ _ _ Hty) as [T1 [d [T2 [Ht1 [Ht2 Hsub]]]]].
-    destruct (typing_inv_abs _ _ _ _ Ht1) as [T2' [d' [Hsub2 Hbody]]].
+    destruct (typing_invalue_lam _ _ _ _ Ht1) as [T2' [d' [Hsub2 Hbody]]].
     apply sub_ty_arrow_inv in Hsub2.
     destruct Hsub2 as [S1 [d'' [S2 [Heq [Hs1 [_ Hs2]]]]]].
     injection Heq as <- <- <-.

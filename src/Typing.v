@@ -2,16 +2,17 @@ Require Import Stdlib.Lists.List.
 Require Import Stdlib.Arith.PeanoNat.
 Import ListNotations.
 Require Import Syntax.
+Require Import Substitution.
 
 (* ================================================================== *)
-(* Typing Context                                                      *)
-(*                                                                     *)
-(* Γ ::= ∅  |  x:T, Γ  |  α<:B, Γ  |  l<:Δ, Γ                     *)
-(*                                                                     *)
-(* Each namespace uses independent de Bruijn indices.                  *)
-(* ctx_lookup_tm Γ x  — x-th  bind_tm  entry (innermost = 0)         *)
-(* ctx_lookup_ty Γ α  — α-th  bind_ty  entry (innermost = 0)         *)
-(* ctx_lookup_lt Γ l  — l-th  bind_lt  entry (innermost = 0)         *)
+(* Typing Context                                                     *)
+(*                                                                    *)
+(* Γ ::= ∅  |  x:T, Γ  |  α<:B, Γ  |  l<:Δ, Γ                         *)
+(*                                                                    *)
+(* Each namespace uses independent de Bruijn indices.                 *)
+(* ctx_lookup_tm Γ x  — x-th  bind_tm  entry (innermost = 0)          *)
+(* ctx_lookup_ty Γ α  — α-th  bind_ty  entry (innermost = 0)          *)
+(* ctx_lookup_lt Γ l  — l-th  bind_lt  entry (innermost = 0)          *)
 (* ================================================================== *)
 
 Inductive binding : Type :=

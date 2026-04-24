@@ -59,8 +59,8 @@ Inductive tm : Type :=
 (* Values: v ::= () | λ(x:τ).t | K v                                      *)
 Inductive value : tm -> Prop :=
   | V_Unit : value tunit
-  | V_Abs  : forall T body, value (tabs T body)
-  | V_Ctor : forall K v, value v -> value (tctor K v).
+  | value_lam  : forall T body, value (tabs T body)
+  | value_ctor : forall K v, value v -> value (tctor K v).
 
 Hint Constructors value : core.
 

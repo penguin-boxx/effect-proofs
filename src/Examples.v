@@ -2,6 +2,7 @@ Require Import Stdlib.Lists.List.
 Require Import Stdlib.Arith.PeanoNat.
 Import ListNotations.
 Require Import Syntax.
+Require Import Substitution.
 Require Import Typing.
 
 (* ================================================================== *)

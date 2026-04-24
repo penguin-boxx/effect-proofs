@@ -1434,7 +1434,7 @@ Qed.
 (* ********************************************************************** *)
 (** Inversions for Typing (13) *)
 
-Lemma typing_inv_abs : forall E S1 e1 T,
+Lemma typing_invalue_lam : forall E S1 e1 T,
   typing E (trm_abs S1 e1) T ->
   forall U1 U2, sub E T (typ_arrow U1 U2) ->
      sub E U1 S1
@@ -1472,7 +1472,7 @@ Proof. (* 19 lines *)
    try solve [ inversion Red ].
   (* case: app *)
   inversions Red; try solve [ apply* typing_app ].
-  lets~ (P1&S2&L&P2): typing_inv_abs Typ1 T1 T2.
+  lets~ (P1&S2&L&P2): typing_invalue_lam Typ1 T1 T2.
     apply* sub_reflexivity.
     pick_fresh X. forwards~ (K1&K2): (P2 X).
      rewrite* (@subst_ee_intro X).

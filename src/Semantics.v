@@ -2,7 +2,15 @@ Require Import Stdlib.Lists.List.
 Require Import Stdlib.Arith.PeanoNat.
 Import ListNotations.
 Require Import Syntax.
+Require Import Substitution.
 
+(* ================================================================== *)
+(* Small-step call-by-value operational semantics                     *)
+(*                                                                    *)
+(*  (β)     (λ(x:T). t) v   ==>  [0↦v] t                              *)
+(*  (β_ty)  (Λα. t) [T]     ==>  [0↦T] t                              *)
+(*  (β_lt)  (Λl. t) {Δ}     ==>  [0↦Δ] t                              *)
+(*  plus congruence rules for the call-by-value evaluation context    *)
 (* ================================================================== *)
 
 Reserved Notation "t '==>' t'" (at level 40).
@@ -45,8 +53,8 @@ Inductive step : term -> term -> Prop :=
       term_lt_app t l ==> term_lt_app t' l
 
   (* ---- congruence: constructor arguments (left-to-right) ---------- *)
-  (* vs are already-evaluated (value) arguments to the left of the    *)
-  (* redex; ts are the remaining unevaluated arguments to the right.  *)
+  (* vs are already-evaluated (value) arguments to the left of the     *)
+  (* redex; ts are the remaining unevaluated arguments to the right.   *)
 
   | S_Ctor : forall K l Ts vs t t' ts,
       Forall value vs ->
@@ -54,8 +62,8 @@ Inductive step : term -> term -> Prop :=
       term_ctor K l Ts (vs ++ t :: ts) ==> term_ctor K l Ts (vs ++ t' :: ts)
 
   (* ---- match β-rules -------------------------------------------- *)
-  (* The matched constructor value is substituted for variable 0 in   *)
-  (* yes_body; no_body has no new binders.                            *)
+  (* The matched constructor value is substituted for variable 0 in  *)
+  (* yes_body; no_body has no new binders.                           *)
 
   | S_MatchYes : forall K l Ts vs yes_body no_body,
       Forall value vs ->
