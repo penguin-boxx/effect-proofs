@@ -30,7 +30,7 @@ Inductive frame : Type :=
       (* stored function value; expects argument value *)
   | F_TyApp : type -> frame
   | F_LtApp : lifetime -> frame
-  | F_Ctor  : ctor_tag -> lifetime -> list type
+  | F_Ctor  : ctor_tag -> lifetime -> list lifetime -> list type
               -> list term     (* already-evaluated args (values), left-to-right *)
               -> list term     (* pending args, left-to-right *)
               -> frame
@@ -56,8 +56,8 @@ Definition plug_frame (f : frame) (inner : term) : term :=
   | F_App2 v           => term_app v inner
   | F_TyApp T          => term_ty_app inner T
   | F_LtApp l          => term_lt_app inner l
-  | F_Ctor K l Ts vs ts =>
-      term_ctor K l Ts (vs ++ inner :: ts)
+  | F_Ctor K l lts Ts vs ts =>
+      term_ctor K l lts Ts (vs ++ inner :: ts)
   | F_Match K ar y n   => term_match inner K ar y n
   end.
 
@@ -98,14 +98,14 @@ Inductive ck_step : state -> state -> Prop :=
         -c-> (CK_eval scrut, F_Match K ar y n :: k)
 
   (* Ctor: no args → immediate value *)
-  | CK_Ctor_nil : forall K l Ts k,
-      (CK_eval (term_ctor K l Ts []), k)
-        -c-> (CK_ret (term_ctor K l Ts []), k)
+  | CK_Ctor_nil : forall K l lts Ts k,
+      (CK_eval (term_ctor K l lts Ts []), k)
+        -c-> (CK_ret (term_ctor K l lts Ts []), k)
 
   (* Ctor: start evaluating the first pending argument *)
-  | CK_Ctor_push : forall K l Ts t ts k,
-      (CK_eval (term_ctor K l Ts (t :: ts)), k)
-        -c-> (CK_eval t, F_Ctor K l Ts [] ts :: k)
+  | CK_Ctor_push : forall K l lts Ts t ts k,
+      (CK_eval (term_ctor K l lts Ts (t :: ts)), k)
+        -c-> (CK_eval t, F_Ctor K l lts Ts [] ts :: k)
 
   (* ========= values: report via CK_ret =========================== *)
 
@@ -146,26 +146,26 @@ Inductive ck_step : state -> state -> Prop :=
         -c-> (CK_eval (subst_lt_in_tm 0 l body), k)
 
   (* Constructor: argument done; advance or finish *)
-  | CK_Ret_Ctor_next : forall K l Ts vs t ts v k,
+  | CK_Ret_Ctor_next : forall K l lts Ts vs t ts v k,
       value v ->
-      (CK_ret v, F_Ctor K l Ts vs (t :: ts) :: k)
-        -c-> (CK_eval t, F_Ctor K l Ts (vs ++ [v]) ts :: k)
+      (CK_ret v, F_Ctor K l lts Ts vs (t :: ts) :: k)
+        -c-> (CK_eval t, F_Ctor K l lts Ts (vs ++ [v]) ts :: k)
 
-  | CK_Ret_Ctor_done : forall K l Ts vs v k,
+  | CK_Ret_Ctor_done : forall K l lts Ts vs v k,
       value v ->
-      (CK_ret v, F_Ctor K l Ts vs [] :: k)
-        -c-> (CK_ret (term_ctor K l Ts (vs ++ [v])), k)
+      (CK_ret v, F_Ctor K l lts Ts vs [] :: k)
+        -c-> (CK_ret (term_ctor K l lts Ts (vs ++ [v])), k)
 
   (* Match on a ctor value *)
-  | CK_Ret_MatchYes : forall K l Ts vs y n k,
+  | CK_Ret_MatchYes : forall K l lts Ts vs y n k,
       Forall value vs ->
-      (CK_ret (term_ctor K l Ts vs), F_Match K (List.length vs) y n :: k)
-        -c-> (CK_eval (subst_list_tm vs y), k)
+      (CK_ret (term_ctor K l lts Ts vs), F_Match K (List.length vs) y n :: k)
+        -c-> (CK_eval (subst_list_tm vs (subst_list_lt_in_tm lts y)), k)
 
-  | CK_Ret_MatchNo : forall K K' ar l Ts vs y n k,
+  | CK_Ret_MatchNo : forall K K' ar l lts Ts vs y n k,
       Forall value vs ->
       K <> K' ->
-      (CK_ret (term_ctor K' l Ts vs), F_Match K ar y n :: k)
+      (CK_ret (term_ctor K' l lts Ts vs), F_Match K ar y n :: k)
         -c-> (CK_eval n, k)
 
 where "s '-c->' s'" := (ck_step s s').

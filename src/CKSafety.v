@@ -35,8 +35,8 @@ Inductive frame_ok : frame -> Prop :=
   | fok_App2  : forall v, value v -> frame_ok (F_App2 v)
   | fok_TyApp : forall T, frame_ok (F_TyApp T)
   | fok_LtApp : forall l, frame_ok (F_LtApp l)
-  | fok_Ctor  : forall K l Ts vs ts,
-      Forall value vs -> frame_ok (F_Ctor K l Ts vs ts)
+  | fok_Ctor  : forall K l lts Ts vs ts,
+      Forall value vs -> frame_ok (F_Ctor K l lts Ts vs ts)
   | fok_Match : forall K ar y n, frame_ok (F_Match K ar y n).
 
 Definition kont_ok (k : kont) : Prop := Forall frame_ok k.
@@ -128,7 +128,7 @@ Proof.
   - eexists. apply CK_Val_TyLam.
   - eexists. apply CK_LtApp_push.
   - eexists. apply CK_Val_LtLam.
-  - destruct l1 as [|t' ts'].
+  - destruct l2 as [|t' ts'].
     + eexists. apply CK_Ctor_nil.
     + eexists. apply CK_Ctor_push.
   - eexists. apply CK_Match_push.

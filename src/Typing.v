@@ -31,35 +31,35 @@ Definition ctx := list binding.
 
 Fixpoint ctx_lookup_tm (Γ : ctx) (x : nat) : option type :=
   match Γ with
-  | []                  => None
+  | []                => None
   | bind_tm T :: rest =>
       match x with
       | O   => Some T
       | S n => ctx_lookup_tm rest n
       end
-  | _ :: rest           => ctx_lookup_tm rest x
+  | _ :: rest         => ctx_lookup_tm rest x
   end.
 
 Fixpoint ctx_lookup_ty (Γ : ctx) (α : nat) : option type :=
   match Γ with
-  | []                  => None
+  | []                => None
   | bind_ty B :: rest =>
       match α with
       | O   => Some B
       | S n => ctx_lookup_ty rest n
       end
-  | _ :: rest           => ctx_lookup_ty rest α
+  | _ :: rest         => ctx_lookup_ty rest α
   end.
 
 Fixpoint ctx_lookup_lt (Γ : ctx) (l : nat) : option lifetime :=
   match Γ with
-  | []                  => None
+  | []                => None
   | bind_lt Δ :: rest =>
       match l with
       | O   => Some Δ
       | S n => ctx_lookup_lt rest n
       end
-  | _ :: rest           => ctx_lookup_lt rest l
+  | _ :: rest         => ctx_lookup_lt rest l
   end.
 
 (* Look up a constructor signature by tag.  Returns                    *)
@@ -77,22 +77,22 @@ Fixpoint ctx_lookup_ctor (Γ : ctx) (K : ctor_tag)
   end.
 
 (* ================================================================== *)
-(* Lifetime subtyping                                                  *)
-(*                                                                     *)
-(* Γ ⊢ₗ Δ' <: Δ  means Δ' "outlives" Δ in the paper's lattice:       *)
-(*   free (bottom) <: local (top)                                      *)
-(*   lt_min l1 l2 is the join (= least upper bound) of l1 and l2     *)
-(*                                                                     *)
-(* Rules (Figure 4 of the paper):                                      *)
-(*   LS_Free    :  Γ ⊢ₗ free  <: Δ          (free is bottom)         *)
-(*   LS_Local   :  Γ ⊢ₗ Δ <: local          (local is top)           *)
-(*   LS_Var     :  (l <: Δ) ∈ Γ → Γ ⊢ₗ l <: Δ  (SubCtx_Δ)          *)
+(* Lifetime subtyping                                                 *)
+(*                                                                    *)
+(* Γ ⊢ₗ Δ' <: Δ  means Δ' "outlives" Δ in the paper's lattice:        *)
+(*   free (bottom) <: local (top)                                     *)
+(*   lt_min l1 l2 is the join (= least upper bound) of l1 and l2      *)
+(*                                                                    *)
+(* Rules (Figure 4 of the paper):                                     *)
+(*   LS_Free    :  Γ ⊢ₗ free  <: Δ          (free is bottom)          *)
+(*   LS_Local   :  Γ ⊢ₗ Δ <: local          (local is top)            *)
+(*   LS_Var     :  (l <: Δ) ∈ Γ → Γ ⊢ₗ l <: Δ  (SubCtx_Δ)             *)
 (*   LS_Refl    :  Γ ⊢ₗ Δ <: Δ                                        *)
-(*   LS_Trans   :  transitivity                                        *)
-(*   LS_MinL    :  Γ ⊢ₗ l1 <: l → Γ ⊢ₗ l2 <: l →                   *)
+(*   LS_Trans   :  transitivity                                       *)
+(*   LS_MinL    :  Γ ⊢ₗ l1 <: l → Γ ⊢ₗ l2 <: l →                      *)
 (*                  Γ ⊢ₗ lt_min l1 l2 <: l    (Sub+: join ≤ upper bd) *)
-(*   LS_MinR1   :  Γ ⊢ₗ l <: l1 → Γ ⊢ₗ l <: lt_min l1 l2            *)
-(*   LS_MinR2   :  Γ ⊢ₗ l <: l2 → Γ ⊢ₗ l <: lt_min l1 l2            *)
+(*   LS_MinR1   :  Γ ⊢ₗ l <: l1 → Γ ⊢ₗ l <: lt_min l1 l2              *)
+(*   LS_MinR2   :  Γ ⊢ₗ l <: l2 → Γ ⊢ₗ l <: lt_min l1 l2              *)
 (* ================================================================== *)
 
 Reserved Notation "G '⊢ₗ' l1 '<:' l2" (at level 40, l1 at next level).
@@ -139,16 +139,16 @@ Hint Constructors lt_sub : core.
 
 (* ================================================================== *)
 (* lt_of_ty : compute lt_∅(τ)                                         *)
-(*                                                                     *)
+(*                                                                    *)
 (* lt_∅(τ) is the minimum of all lifetime restrictions in τ when      *)
-(* evaluated at the empty context (type variables have no bound →      *)
+(* evaluated at the empty context (type variables have no bound →     *)
 (* contribute nothing; quantified lt/ty vars are excluded).           *)
-(*                                                                     *)
-(*   lt_∅(α)            = free          (no bound in empty ctx)       *)
-(*   lt_∅(T Δ τ̄)       = lt_min Δ (lt_min of lt_∅(τ̄))              *)
-(*   lt_∅(τ̄ Δ → σ)    = Δ             (only the closure lt matters) *)
+(*                                                                    *)
+(*   lt_∅(α)           = free          (no bound in empty ctx)        *)
+(*   lt_∅(T Δ τ̄)       = lt_min Δ      (lt_min of lt_∅(τ̄))            *)
+(*   lt_∅(τ̄ Δ → σ)     = Δ             (only the closure lt matters)  *)
 (*   lt_∅(∀l.τ)        = free          (quantified lt removed)        *)
-(*   lt_∅(∀(α<:B).τ)   = free          (quantified ty var removed)   *)
+(*   lt_∅(∀(α<:B).τ)   = free          (quantified ty var removed)    *)
 (* ================================================================== *)
 
 Fixpoint lt_of_ty (T : type) : lifetime :=
@@ -171,12 +171,12 @@ Definition lt_of_ty_list (Ts : list type) : lifetime :=
 
 (* ================================================================== *)
 (* Γ-aware lt_Γ(τ): paper-faithful variant of lt_of_ty                *)
-(*                                                                     *)
+(*                                                                    *)
 (*   lt_Γ(α) = lt_Γ(B)    if (α <: B) ∈ Γ                             *)
-(*   lt_Γ(α) = free       otherwise                                    *)
-(*                                                                     *)
-(* Fuel is used to guarantee termination; calling with fuel = |Γ|      *)
-(* bounds the chain length through type variables.                     *)
+(*   lt_Γ(α) = free       otherwise                                   *)
+(*                                                                    *)
+(* Fuel is used to guarantee termination; calling with fuel = |Γ|     *)
+(* bounds the chain length through type variables.                    *)
 (* ================================================================== *)
 
 Fixpoint lt_of_ty_ctx (fuel : nat) (Γ : ctx) (T : type) : lifetime :=
@@ -237,14 +237,14 @@ Fixpoint no_local_ty (T : type) : bool :=
   end.
 
 (* ================================================================== *)
-(* Free term variables and capture lifetime                            *)
-(*                                                                     *)
-(* free_tm_vars c t : indices of free term vars in t that lie          *)
-(*   ≥ c (with c subtracted).  Used with c = 1 inside T_Lam (the       *)
-(*   lambda's own binder is "consumed").                               *)
-(*                                                                     *)
+(* Free term variables and capture lifetime                           *)
+(*                                                                    *)
+(* free_tm_vars c t : indices of free term vars in t that lie         *)
+(*   ≥ c (with c subtracted).  Used with c = 1 inside T_Lam (the      *)
+(*   lambda's own binder is "consumed").                              *)
+(*                                                                    *)
 (* capture_lt Γ body : +lt_Γ(τ̄) over captured variables' types —      *)
-(*   the paper's closure-lifetime bound in the Lam rule.               *)
+(*   the paper's closure-lifetime bound in the Lam rule.              *)
 (* ================================================================== *)
 
 Fixpoint free_tm_vars (cutoff : nat) (t : term) : list nat :=
@@ -263,7 +263,7 @@ Fixpoint free_tm_vars (cutoff : nat) (t : term) : list nat :=
   | term_ty_lam _ body   => free_tm_vars cutoff body
   | term_lt_app t _      => free_tm_vars cutoff t
   | term_lt_lam body     => free_tm_vars cutoff body
-  | term_ctor _ _ _ ts   => go ts
+  | term_ctor _ _ _ _ ts => go ts
   | term_match scrut _ arity y n =>
       free_tm_vars cutoff scrut
         ++ free_tm_vars (cutoff + arity) y
@@ -282,7 +282,7 @@ Definition capture_lt (Γ : ctx) (body : term) : lifetime :=
     (free_tm_vars 1 body).
 
 (* ================================================================== *)
-(* Variance positions for elim                                         *)
+(* Variance positions for elim                                        *)
 (* ================================================================== *)
 
 Inductive variance : Type :=
@@ -300,14 +300,14 @@ Definition flip_var (p : variance) : variance :=
 
 (* ================================================================== *)
 (* elim_var : eliminate a single fresh lifetime variable from a type  *)
-(*                                                                     *)
-(* elim_var lvar Δ p T                                                 *)
+(*                                                                    *)
+(* elim_var lvar Δ p T                                                *)
 (*   eliminates lt_var lvar from T, approximating with:               *)
-(*     Δ     in positive (covariant) positions                         *)
-(*     free  in negative (contravariant) positions                     *)
-(*     error (returns None) in invariant positions                     *)
-(*                                                                     *)
-(* We return option type; None = error.                                *)
+(*     Δ     in positive (covariant) positions                        *)
+(*     free  in negative (contravariant) positions                    *)
+(*     error (returns None) in invariant positions                    *)
+(*                                                                    *)
+(* We return option type; None = error.                               *)
 (* We eliminate multiple vars by folding over the list.               *)
 (* ================================================================== *)
 
@@ -363,7 +363,7 @@ Fixpoint elim_ty (lvar : nat) (bound : lifetime) (p : variance) (T : type)
       | None    => None
       end
   | type_ty_all B A =>
-      match elim_ty lvar bound p B, elim_ty lvar bound p A with
+      match elim_ty lvar bound (flip_var p) B, elim_ty lvar bound p A with
       | Some B', Some A' => Some (type_ty_all B' A')
       | _, _ => None
       end
@@ -388,22 +388,22 @@ Fixpoint elim_ty_n (n : nat) (bound : lifetime) (p : variance) (T : type)
   end.
 
 (* ================================================================== *)
-(* Type subtyping                                                      *)
-(*                                                                     *)
+(* Type subtyping                                                     *)
+(*                                                                    *)
 (* Γ ⊢ S <: T  (Figure 4 of the paper)                                *)
-(*                                                                     *)
-(*   SA_Refl    : reflexivity                                          *)
-(*   SA_Trans   : transitivity                                         *)
-(*   SA_VarCtx  : (α <: B) ∈ Γ → Γ ⊢ α <: B             (SubCtx)    *)
-(*   SA_Data    : Γ ⊢ₗ l <: l' → Γ ⊢ T l τ̄ <: T l' τ̄   (SubData)   *)
-(*                covariant in lifetime, invariant in type args        *)
-(*   SA_Fun     : Γ ⊢ A <: A' (contra) ∧ Γ ⊢ₗ l <: l' (co) ∧        *)
-(*                Γ ⊢ B <: B' (co) → Γ ⊢ A' l → B <: A l' → B'      *)
+(*                                                                    *)
+(*   SA_Refl    : reflexivity                                         *)
+(*   SA_Trans   : transitivity                                        *)
+(*   SA_VarCtx  : (α <: B) ∈ Γ → Γ ⊢ α <: B             (SubCtx)      *)
+(*   SA_Data    : Γ ⊢ₗ l <: l' → Γ ⊢ T l τ̄ <: T l' τ̄   (SubData)      *)
+(*                covariant in lifetime, invariant in type args       *)
+(*   SA_Fun     : Γ ⊢ A <: A' (contra) ∧ Γ ⊢ₗ l <: l' (co) ∧          *)
+(*                Γ ⊢ B <: B' (co) → Γ ⊢ A' l → B <: A l' → B'        *)
 (*                (SubFun — contra domain, co lifetime, co codomain)  *)
 (*   SA_LtAll   : (∀l is covariant) body under a fresh bound-local lt *)
-(*   SA_TyAll   : F₋<: rule — contra in bound, co in body            *)
-(*                Γ ⊢ B' <: B → (α<:B')::Γ ⊢ A <: A' →              *)
-(*                  Γ ⊢ ∀(α<:B).A <: ∀(α<:B').A'                     *)
+(*   SA_TyAll   : F₋<: rule — contra in bound, co in body             *)
+(*                Γ ⊢ B' <: B → (α<:B')::Γ ⊢ A <: A' →                *)
+(*                  Γ ⊢ ∀(α<:B).A <: ∀(α<:B').A'                      *)
 (* ================================================================== *)
 
 Reserved Notation "G '⊢' S '<::' T" (at level 40, S at next level).
@@ -436,8 +436,8 @@ Inductive sub : ctx -> type -> type -> Prop :=
 
   (* SubFun: contravariant in domain type, covariant in closure        *)
   (* lifetime and codomain.  (Paper figure 4, SubFun.)                 *)
-  (* Subtype: A' -l-> B   Supertype: A -l'-> B'                       *)
-  (* Requires: A <: A' (contra),  l <: l' (co),  B <: B' (co)        *)
+  (* Subtype: A' -l-> B   Supertype: A -l'-> B'                        *)
+  (* Requires: A <: A' (contra),  l <: l' (co),  B <: B' (co)          *)
   | SA_Fun    : forall Γ A A' l l' B B',
       Γ ⊢ A <:: A' ->
       Γ ⊢ₗ l <: l' ->
@@ -451,8 +451,8 @@ Inductive sub : ctx -> type -> type -> Prop :=
       Γ ⊢ type_lt_all A <:: type_lt_all A'
 
   (* Kernel F<: for bounded type abstraction.                          *)
-  (* ∀(α<:B).A <: ∀(α<:B').A' when B'<:B (contra) and                *)
-  (* A <: A' under the tighter bound B'.                              *)
+  (* ∀(α<:B).A <: ∀(α<:B').A' when B'<:B (contra) and                  *)
+  (* A <: A' under the tighter bound B'.                               *)
   | SA_TyAll  : forall Γ B B' A A',
       Γ ⊢ B' <:: B ->
       (bind_ty B' :: Γ) ⊢ A <:: A' ->
@@ -463,8 +463,8 @@ where "G '⊢' S '<::' T" := (sub G S T).
 Hint Constructors sub : core.
 
 (* ================================================================== *)
-(* Helpers for constructor typing and match elimination                *)
-(*                                                                     *)
+(* Helpers for constructor typing and match elimination               *)
+(*                                                                    *)
 (* These must be defined before `typing` so T_Ctor / T_Match can use  *)
 (* them as proper inductive constructors rather than Axioms.          *)
 (* ================================================================== *)
@@ -477,13 +477,62 @@ Fixpoint inst_ty_vars (n : nat) (Ts : list type) (T : type) : type :=
   | S _, []         => T
   end.
 
-(* Instantiate n_lt lt-binders (outermost-first) by substituting lts. *)
-Fixpoint inst_lt_vars (n : nat) (lts : list lifetime) (T : type) : type :=
-  match n, lts with
-  | O, _            => T
-  | S n', l :: rest => inst_lt_vars n' rest (subst_lt_in_ty 0 l T)
-  | S _, []         => T
+(* ------------------------------------------------------------------ *)
+(* Parallel substitution of lifetime schema variables.                 *)
+(*                                                                     *)
+(* `multi_subst_lt cutoff lts l` and `multi_subst_lt_in_ty` walk under  *)
+(* binders and replace `lt_var i` (with i ≥ cutoff) by either:         *)
+(*   - lts[i - cutoff], lifted under `cutoff` extra binders, when      *)
+(*     i - cutoff < |lts|, or                                          *)
+(*   - lt_var (i - |lts|), otherwise (closing |lts| schema binders).   *)
+(*                                                                     *)
+(* This gives a clean semantics: lts[k] replaces schema-var-k, and    *)
+(* lts[k] itself is read in the *outer* (post-instantiation) ctx —     *)
+(* the user does NOT need to pre-shift entries.                        *)
+(* ------------------------------------------------------------------ *)
+
+Fixpoint multi_subst_lt (cutoff : nat) (lts : list lifetime) (l : lifetime)
+    : lifetime :=
+  match l with
+  | lt_free       => lt_free
+  | lt_local      => lt_local
+  | lt_min l1 l2  => lt_min (multi_subst_lt cutoff lts l1)
+                            (multi_subst_lt cutoff lts l2)
+  | lt_var x =>
+      if Nat.ltb x cutoff then lt_var x
+      else
+        let x' := x - cutoff in
+        if Nat.ltb x' (List.length lts) then
+          shift_lt cutoff 0 (List.nth x' lts lt_free)
+        else
+          lt_var (x - List.length lts)
   end.
+
+Fixpoint multi_subst_lt_in_ty (cutoff : nat) (lts : list lifetime) (T : type)
+    : type :=
+  let fix go (Ts : list type) : list type :=
+    match Ts with
+    | []        => []
+    | A :: rest => multi_subst_lt_in_ty cutoff lts A :: go rest
+    end
+  in
+  match T with
+  | type_var n        => type_var n
+  | type_fun A l B    => type_fun (multi_subst_lt_in_ty cutoff lts A)
+                                  (multi_subst_lt cutoff lts l)
+                                  (multi_subst_lt_in_ty cutoff lts B)
+  | type_ctor K l Ts  => type_ctor K (multi_subst_lt cutoff lts l) (go Ts)
+  | type_lt_all A     => type_lt_all (multi_subst_lt_in_ty (S cutoff) lts A)
+  | type_ty_all B A   => type_ty_all (multi_subst_lt_in_ty cutoff lts B)
+                                     (multi_subst_lt_in_ty cutoff lts A)
+  end.
+
+(* Instantiate the n_lt lt-binders of a schema by parallel substitution.*)
+(* lts[k] replaces schema-var-k and lives in the outer context (no     *)
+(* pre-shifting required). The `n` parameter is kept for documentation *)
+(* and is intended to satisfy `n = length lts` at all call sites.      *)
+Definition inst_lt_vars (_n : nat) (lts : list lifetime) (T : type) : type :=
+  multi_subst_lt_in_ty 0 lts T.
 
 (* Instantiate a constructor field/result type: first type vars, then  *)
 (* lt vars.                                                            *)
@@ -498,35 +547,33 @@ Fixpoint push_lt_vars (n : nat) (bound : lifetime) (Γ : ctx) : ctx :=
   | S n' => push_lt_vars n' bound (bind_lt bound :: Γ)
   end.
 
-(* [lt_var (n-1); ...; lt_var 0] — de Bruijn indices of the n freshly *)
-(* pushed lt-vars, with lt_var 0 being the innermost.                 *)
-Fixpoint lt_var_list (n : nat) : list lifetime :=
-  match n with
-  | O    => []
-  | S n' => lt_var n' :: lt_var_list n'
-  end.
+(* [lt_var 0; lt_var 1; ...; lt_var (n-1)] — de Bruijn indices of the *)
+(* n freshly pushed lt-vars in the order matching `inst_lt_vars`:      *)
+(* schema-var-k is replaced by lt_var k (lt_var 0 is innermost).       *)
+Definition lt_var_list (n : nat) : list lifetime :=
+  List.map lt_var (List.seq 0 n).
 
 (* ================================================================== *)
-(* Typing relation                                                     *)
-(*                                                                     *)
-(* Γ ⊢ₜ t : T  (Figures 6–7 of the paper)                            *)
-(*                                                                     *)
-(* T_Var    : ctx_lookup_tm Γ x = Some T → Γ ⊢ₜ x : T     (Var)    *)
-(* T_Sub    : Γ ⊢ₜ t : T → Γ ⊢ T <:: U → Γ ⊢ₜ t : U      (Sub)    *)
-(* T_Lam    : (x:A)::Γ ⊢ₜ body : B →                                 *)
-(*              Γ ⊢ₜ λ(x:A).body : A -l-> B             (Lam)       *)
+(* Typing relation                                                    *)
+(*                                                                    *)
+(* Γ ⊢ₜ t : T  (Figures 6–7 of the paper)                             *)
+(*                                                                    *)
+(* T_Var    : ctx_lookup_tm Γ x = Some T → Γ ⊢ₜ x : T     (Var)       *)
+(* T_Sub    : Γ ⊢ₜ t : T → Γ ⊢ T <:: U → Γ ⊢ₜ t : U      (Sub)        *)
+(* T_Lam    : (x:A)::Γ ⊢ₜ body : B →                                  *)
+(*              Γ ⊢ₜ λ(x:A).body : A -l-> B             (Lam)         *)
 (*            (closure lifetime l is left unconstrained;              *)
-(*             the paper says l = +lt_Γ(captures); use T_Sub)        *)
-(* T_App    : Γ ⊢ₜ t1 : A -l-> B → Γ ⊢ₜ t2 : A →                   *)
-(*              Γ ⊢ₜ t1 t2 : B                           (App)       *)
-(* T_TyLam  : (α<:B)::Γ ⊢ₜ body : T →                               *)
-(*              Γ ⊢ₜ Λ(α<:B).body : ∀(α<:B).T           (TLam)      *)
-(* T_TyApp  : Γ ⊢ₜ t : ∀(α<:B).U → Γ ⊢ S <:: B →                   *)
-(*              Γ ⊢ₜ t [S] : [α↦S] U                    (TApp)      *)
-(* T_LtLam  : (l<:local)::Γ ⊢ₜ body : T →                           *)
-(*              Γ ⊢ₜ Λl.body : ∀l.T                      (TLam, lt) *)
-(* T_LtApp  : Γ ⊢ₜ t : ∀l.T →                                       *)
-(*              Γ ⊢ₜ t {Δ} : [l↦Δ] T                    (TApp, lt) *)
+(*             the paper says l = +lt_Γ(captures); use T_Sub)         *)
+(* T_App    : Γ ⊢ₜ t1 : A -l-> B → Γ ⊢ₜ t2 : A →                      *)
+(*              Γ ⊢ₜ t1 t2 : B                           (App)        *)
+(* T_TyLam  : (α<:B)::Γ ⊢ₜ body : T →                                 *)
+(*              Γ ⊢ₜ Λ(α<:B).body : ∀(α<:B).T           (TLam)        *)
+(* T_TyApp  : Γ ⊢ₜ t : ∀(α<:B).U → Γ ⊢ S <:: B →                      *)
+(*              Γ ⊢ₜ t [S] : [α↦S] U                    (TApp)        *)
+(* T_LtLam  : (l<:local)::Γ ⊢ₜ body : T →                             *)
+(*              Γ ⊢ₜ Λl.body : ∀l.T                      (TLam, lt)   *)
+(* T_LtApp  : Γ ⊢ₜ t : ∀l.T →                                         *)
+(*              Γ ⊢ₜ t {Δ} : [l↦Δ] T                    (TApp, lt)    *)
 (* ================================================================== *)
 
 Reserved Notation "G '⊢ₜ' t ':' T" (at level 40, t at next level).
@@ -548,7 +595,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
 
   (* Paper Lam rule: closure lifetime ≥ capture lifetime, and `local`  *)
   (* must not appear in the return type (preventing tracked-value      *)
-  (* leakage through function returns).                                 *)
+  (* leakage through function returns).                                *)
   | T_Lam   : forall Γ body A l B,
       (bind_tm A :: Γ) ⊢ₜ body : B ->
       Γ ⊢ₗ capture_lt Γ body <: l ->
@@ -588,31 +635,32 @@ Inductive typing : ctx -> term -> type -> Prop :=
       Γ ⊢ₜ term_lt_app t l : subst_lt_in_ty 0 l T
 
   (* --- Constructor typing (Figure 7 — Ctor) ----------------------- *)
-  (* K[l, T̄](v̄) : type_ctor K l T̄                                   *)
-  (*   Look up K's signature ∀ l̄(n_lt) ᾱ(n_ty). σ̄ → T@(+lt_∅(σ̄)). *)
-  (*   Instantiate field types σ̄ with the supplied T̄ and the fresh   *)
-  (*   lt-vars [lt_var(n_lt-1)..lt_var 0] to obtain ρ̄.              *)
-  (*   vs[i] : ρ[i]; result lifetime l = lt_of_ty_list ρ̄.           *)
+  (* K[l, T̄](v̄) : type_ctor K l T̄                                     *)
+  (*   Look up K's signature ∀ l̄(n_lt) ᾱ(n_ty). σ̄ → T@(+lt_∅(σ̄)).     *)
+  (*   Instantiate field types σ̄ with the supplied T̄ and the fresh    *)
+  (*   lt-vars [lt_var(n_lt-1)..lt_var 0] to obtain ρ̄.                *)
+  (*   vs[i] : ρ[i]; result lifetime l = lt_of_ty_list ρ̄.             *)
   | T_Ctor  : forall Γ K n_lt n_ty sigma_fields result_ty_schema
                      lts Ts rho_fields l vs,
       ctx_lookup_ctor Γ K = Some (n_lt, n_ty, sigma_fields, result_ty_schema) ->
-      lts = lt_var_list n_lt ->
+      List.length lts = n_lt ->
       rho_fields = List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields ->
       List.length Ts = n_ty ->
       l = lt_of_ty_list rho_fields ->
       List.length vs = List.length rho_fields ->
       Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rho_fields ->
-      Γ ⊢ₜ term_ctor K l Ts vs : type_ctor K l Ts
+      Γ ⊢ₜ term_ctor K l lts Ts vs : type_ctor K l Ts
 
   (* --- Pattern match typing (Figure 7 — Match) -------------------- *)
-  (* match scrut { K arity yes | _ => no } : elim_result             *)
-  (*   Push n_lt fresh lt-vars bounded by Δ → extended ctx Γ'.      *)
-  (*   Instantiate K's field types → ρ̄; type yes_body under the ρ̄   *)
+  (* match scrut { K arity yes | _ => no } : elim_result              *)
+  (*   Push n_lt fresh lt-vars bounded by Δ → extended ctx Γ'.        *)
+  (*   Instantiate K's field types → ρ̄; type yes_body under the ρ̄     *)
   (*   term-binders on top of Γ'. Eliminate the fresh lt-vars (elim⁺) *)
-  (*   from the branch result type η to get elim_result.             *)
+  (*   from the branch result type η to get elim_result.              *)
   | T_Match : forall Γ scrut K n_lt n_ty sigma_fields result_ty_schema
                      Ts Delta arity lts rho_fields
                      Γ' yes_body eta elim_result no_body,
+      K <> any_tag ->
       Γ ⊢ₜ scrut : type_ctor K Delta Ts ->
       ctx_lookup_ctor Γ K = Some (n_lt, n_ty, sigma_fields, result_ty_schema) ->
       lts = lt_var_list n_lt ->

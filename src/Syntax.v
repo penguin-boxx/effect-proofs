@@ -35,7 +35,7 @@ Inductive term : Type :=
   | term_ty_lam : type -> term -> term  (* bound, body *)
   | term_lt_app : term -> lifetime -> term
   | term_lt_lam : term -> term
-  | term_ctor : ctor_tag -> lifetime -> list type -> list term -> term
+  | term_ctor : ctor_tag -> lifetime -> list lifetime -> list type -> list term -> term
   (* match scrutinee against one constructor; yes_body binds each       *)
   (* constructor argument (variables 0..arity-1, outermost-first);      *)
   (* no_body is the else branch (no new binders).                       *)
@@ -52,9 +52,9 @@ Inductive value : term -> Prop :=
   | value_lam    : forall body T,     value (term_lam body T)
   | value_ty_lam : forall bound body, value (term_ty_lam bound body)
   | value_lt_lam : forall body,       value (term_lt_lam body)
-  | value_ctor   : forall K l Ts vs,
+  | value_ctor   : forall K l lts Ts vs,
       Forall value vs ->
-      value (term_ctor K l Ts vs).
+      value (term_ctor K l lts Ts vs).
 
 Hint Constructors value : core.
 
@@ -77,6 +77,6 @@ Fixpoint is_value (t : term) : bool :=
   | term_lam _ _        => true
   | term_ty_lam _ _     => true
   | term_lt_lam _       => true
-  | term_ctor _ _ _ vs  => go vs
+  | term_ctor _ _ _ _ vs  => go vs
   | _                   => false
   end.

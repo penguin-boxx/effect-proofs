@@ -56,24 +56,24 @@ Inductive step : term -> term -> Prop :=
   (* vs are already-evaluated (value) arguments to the left of the     *)
   (* redex; ts are the remaining unevaluated arguments to the right.   *)
 
-  | S_Ctor : forall K l Ts vs t t' ts,
+  | S_Ctor : forall K l lts Ts vs t t' ts,
       Forall value vs ->
       t ==> t' ->
-      term_ctor K l Ts (vs ++ t :: ts) ==> term_ctor K l Ts (vs ++ t' :: ts)
+      term_ctor K l lts Ts (vs ++ t :: ts) ==> term_ctor K l lts Ts (vs ++ t' :: ts)
 
   (* ---- match β-rules -------------------------------------------- *)
   (* The matched constructor value is substituted for variable 0 in  *)
   (* yes_body; no_body has no new binders.                           *)
 
-  | S_MatchYes : forall K l Ts vs yes_body no_body,
+  | S_MatchYes : forall K l lts Ts vs yes_body no_body,
       Forall value vs ->
-      term_match (term_ctor K l Ts vs) K (List.length vs) yes_body no_body
-        ==> subst_list_tm vs yes_body
+      term_match (term_ctor K l lts Ts vs) K (List.length vs) yes_body no_body
+        ==> subst_list_tm vs (subst_list_lt_in_tm lts yes_body)
 
-  | S_MatchNo : forall K K' l Ts vs arity yes_body no_body,
+  | S_MatchNo : forall K K' l lts Ts vs arity yes_body no_body,
       Forall value vs ->
       K <> K' ->
-      term_match (term_ctor K' l Ts vs) K arity yes_body no_body ==> no_body
+      term_match (term_ctor K' l lts Ts vs) K arity yes_body no_body ==> no_body
 
   (* ---- congruence: match scrutinee ------------------------------- *)
 

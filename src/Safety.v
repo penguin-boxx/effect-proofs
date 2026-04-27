@@ -10,13 +10,13 @@ Require Import Typing.
 (*                                                                    *)
 (*                 PROGRESS AND PRESERVATION                          *)
 (*                                                                    *)
-(* We prove type safety for CoreΔ under a top-level evaluation ctx   *)
-(* that contains only lifetime and constructor bindings (no bind_tm, *)
-(* no bind_ty).  This blocks SA_VarCtx at the top level and matches  *)
+(* We prove type safety for CoreΔ under a top-level evaluation ctx    *)
+(* that contains only lifetime and constructor bindings (no bind_tm,  *)
+(* no bind_ty).  This blocks SA_VarCtx at the top level and matches   *)
 (* the paper's "program-level" evaluation scenario.                   *)
 (*                                                                    *)
-(* Substitution-style lemmas (beta for tm/ty/lt, and the match-yes   *)
-(* simultaneous substitution) are axiomatized; they are standard de  *)
+(* Substitution-style lemmas (beta for tm/ty/lt, and the match-yes    *)
+(* simultaneous substitution) are axiomatized; they are standard de   *)
 (* Bruijn manipulations orthogonal to the paper's contribution.       *)
 (* ================================================================== *)
 
@@ -157,7 +157,7 @@ Lemma canonical_ctor : forall Γ v K l Ts,
   Γ ⊢ₜ v : type_ctor K l Ts ->
   value v ->
   K <> any_tag ->
-  exists K' l' Ts' vs, v = term_ctor K' l' Ts' vs /\ Forall value vs.
+  exists K' l' lts' Ts' vs, v = term_ctor K' l' lts' Ts' vs /\ Forall value vs.
 Proof.
   intros Γ v K l Ts Hec Hty Hval HK.
   remember (type_ctor K l Ts) as T0 eqn:HT.
@@ -170,7 +170,7 @@ Proof.
     eapply IHHty; eauto.
   - (* T_Ctor *)
     inversion Hval; subst.
-    eexists; eexists; eexists; eexists; split; eauto.
+    eexists; eexists; eexists; eexists; eexists; split; eauto.
 Qed.
 
 Lemma canonical_lt_all : forall Γ v T,
@@ -218,46 +218,36 @@ Qed.
 (* Forall2 of IHs. We axiomatize the elementwise progress lifting for *)
 (* constructor argument lists (straightforward structural induction   *)
 (* using the `typing`-induction principle with a sufficiently rich    *)
-(* scheme would prove it).                                             *)
+(* scheme would prove it).                                            *)
 Axiom progress_ctor_aux : forall Γ vs rhos,
   eval_ctx Γ ->
   Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rhos ->
   Forall (fun v => value v \/ exists v', v ==> v') vs.
 
 (* A well-typed ctor value has |vs| matching its declared sig arity. *)
-Lemma ctor_value_arity : forall Γ K l Ts vs K' l' Ts',
+Lemma ctor_value_arity : forall Γ K l lts Ts vs K' l' Ts',
   eval_ctx Γ ->
-  Γ ⊢ₜ term_ctor K l Ts vs : type_ctor K' l' Ts' ->
+  Γ ⊢ₜ term_ctor K l lts Ts vs : type_ctor K' l' Ts' ->
   K' <> any_tag ->
   exists n_lt n_ty sigma result,
     ctx_lookup_ctor Γ K' = Some (n_lt, n_ty, sigma, result) /\
     List.length vs = List.length sigma.
 Proof.
-  intros Γ K l Ts vs K' l' Ts' Hec Hty HK.
-  remember (term_ctor K l Ts vs) as t eqn:Ht.
+  intros Γ K l lts Ts vs K' l' Ts' Hec Hty HK.
+  remember (term_ctor K l lts Ts vs) as t eqn:Ht.
   remember (type_ctor K' l' Ts') as T eqn:HT.
-  revert K l Ts vs K' l' Ts' Ht HT HK.
-  induction Hty; intros K0 l0 Ts0 vs0 K1 l1 Ts1 Ht HT HK; try discriminate Ht.
+  revert K l lts Ts vs K' l' Ts' Ht HT HK.
+  induction Hty; intros K0 l0 lts0 Ts0 vs0 K1 l1 Ts1 Ht HT HK; try discriminate Ht.
   - (* T_Sub *) subst U.
     destruct (sub_ctor_inv _ _ _ _ _ Hec H HK) as [l'' [HeqS Hlsub]].
     eapply IHHty; eauto.
   - (* T_Ctor *)
-    injection Ht; intros Hvs HTs0 Hl0 HK0.
+    injection Ht; intros Hvs HTs0 Hlts0 Hl0 HK0.
     injection HT; intros HTs1 Hl1 HK1.
-    subst K0 l0 Ts0 vs0 K1 l1 Ts1.
+    subst K0 l0 lts0 Ts0 vs0 K1 l1 Ts1.
     exists n_lt, n_ty, sigma_fields, result_ty_schema. split; auto.
     rewrite H4. subst rho_fields. rewrite List.length_map. auto.
 Qed.
-
-(* Progress for the degenerate K = any_tag match corner (axiomatized  *)
-(* because SA_Any allows the scrutinee to be any value, which may    *)
-(* not be a constructor — a cleaner fix is to add `K <> any_tag` to  *)
-(* T_Match; we keep the original rule and close this corner).        *)
-Axiom progress_any_match : forall Γ scrut arity yes_body no_body T,
-  eval_ctx Γ ->
-  value scrut ->
-  Γ ⊢ₜ term_match scrut any_tag arity yes_body no_body : T ->
-  exists t', term_match scrut any_tag arity yes_body no_body ==> t'.
 
 (* Helper: from Forall (value-or-step) deduce all-values or a step-in-list. *)
 Lemma split_values_or_step : forall vs,
@@ -311,22 +301,20 @@ Proof.
     + right. subst. eexists. apply S_Ctor; eauto.
   - (* T_Match *)
     destruct IHHty1 as [Hv | [scrut' Hs]]; auto.
-    + destruct (Nat.eq_dec K any_tag) as [HKany | HKne].
-      * right. subst K. eapply progress_any_match; eauto.
-      * destruct (canonical_ctor _ _ _ _ _ Hec Hty1 Hv HKne)
-          as [K' [l' [Ts' [vs [Heq Hvvs]]]]]; subst.
-        right.
-        destruct (Nat.eq_dec K' K) as [HKeq | HKdiff].
-        -- subst K'.
-           destruct (ctor_value_arity _ _ _ _ _ _ _ _ Hec Hty1 HKne)
-             as [n_lt' [n_ty' [sig' [res' [Hlook Hlen]]]]].
-           rewrite H in Hlook. injection Hlook as Heq1 Heq2 Heq3 Heq4.
-           subst n_lt' n_ty' sig' res'.
-           eexists.
-           replace (@length type (map (inst_ctor_type n_lt n_ty (lt_var_list n_lt) Ts) sigma_fields))
-             with (@length term vs) by (rewrite List.length_map; auto).
-           apply S_MatchYes. auto.
-        -- eexists. eapply S_MatchNo; eauto.
+    + destruct (canonical_ctor _ _ _ _ _ Hec Hty1 Hv H)
+        as [K' [l' [lts' [Ts' [vs [Heq Hvvs]]]]]]; subst.
+      right.
+      destruct (Nat.eq_dec K' K) as [HKeq | HKdiff].
+      * subst K'.
+        destruct (ctor_value_arity _ _ _ _ _ _ _ _ _ Hec Hty1 H)
+          as [n_lt' [n_ty' [sig' [res' [Hlook Hlen]]]]].
+        rewrite H0 in Hlook. injection Hlook as Heq1 Heq2 Heq3 Heq4.
+        subst n_lt' n_ty' sig' res'.
+        eexists.
+        replace (@length type (map (inst_ctor_type n_lt n_ty (lt_var_list n_lt) Ts) sigma_fields))
+          with (@length term vs) by (rewrite List.length_map; auto).
+        apply S_MatchYes. auto.
+      * eexists. eapply S_MatchNo; eauto.
     + right. eexists. eapply S_Match; eauto.
 Qed.
 
@@ -451,18 +439,342 @@ Axiom sub_subst_lt : forall Γ Δ U0 U Δ',
   Γ ⊢ subst_lt_in_ty 0 Δ' U0 <:: subst_lt_in_ty 0 Δ' U.
 
 (* Preservation for constructor argument congruence (S_Ctor step).   *)
-Axiom ctor_step_preservation : forall Γ K l Ts vs t t' ts T,
-  Γ ⊢ₜ term_ctor K l Ts (vs ++ t :: ts) : T ->
+Axiom ctor_step_preservation : forall Γ K l lts Ts vs t t' ts T,
+  Γ ⊢ₜ term_ctor K l lts Ts (vs ++ t :: ts) : T ->
   t ==> t' ->
-  Γ ⊢ₜ term_ctor K l Ts (vs ++ t' :: ts) : T.
+  Γ ⊢ₜ term_ctor K l lts Ts (vs ++ t' :: ts) : T.
+
+(* ================================================================== *)
+(* Variance soundness for `elim_ty` / `elim_lt`                       *)
+(*                                                                    *)
+(* This is the central meta-theoretic lemma that justifies eliminating *)
+(* fresh lifetime variables from a match-branch result type:           *)
+(*                                                                    *)
+(*   Provided eta has no invariant occurrence of the eliminated var,   *)
+(*   substituting any concrete witness l_0 (with l_0 <: Δ) yields a    *)
+(*   subtype of `elim_ty 0 Δ var_pos eta`.                              *)
+(*                                                                    *)
+(* The proof goes by mutual structural induction on the eliminated     *)
+(* type/lifetime, simultaneously varying the variance position.        *)
+(* Auxiliary mechanical de Bruijn lemmas are axiomatized: subtyping    *)
+(* monotonicity under shift / single-var lt-substitution.             *)
+(* ================================================================== *)
+
+(* --- Axiomatized mechanical helpers (de Bruijn plumbing) --- *)
+
+(* Shifting preserves lifetime subtyping. *)
+Axiom lt_sub_shift_lt : forall Γ Δ l1 l2 cutoff,
+  Γ ⊢ₗ l1 <: l2 ->
+  (bind_lt Δ :: Γ) ⊢ₗ shift_lt 1 cutoff l1 <: shift_lt 1 cutoff l2.
+
+(* Subtyping is monotone in single-var lt-substitution at any depth. *)
+Axiom lt_sub_subst_lt : forall Γ x l_0 l1 l2,
+  Γ ⊢ₗ l1 <: l2 ->
+  Γ ⊢ₗ subst_lt x l_0 l1 <: subst_lt x l_0 l2.
+
+(* Type subtyping monotone in single-var lt-substitution. *)
+Axiom sub_subst_lt_at : forall Γ x l_0 T1 T2,
+  Γ ⊢ T1 <:: T2 ->
+  Γ ⊢ subst_lt_in_ty x l_0 T1 <:: subst_lt_in_ty x l_0 T2.
+
+(* shift / subst_lt commute (de Bruijn). *)
+Axiom shift_subst_lt_comm : forall l x,
+  shift_lt 1 0 (subst_lt x lt_free l) =
+  subst_lt (S x) lt_free (shift_lt 1 0 l).
+Axiom shift_subst_lt_in_ty_comm : forall T x,
+  shift_lt_in_ty 1 0 (subst_lt_in_ty x lt_free T) =
+  subst_lt_in_ty (S x) lt_free (shift_lt_in_ty 1 0 T).
+
+(* Trivial lemma: if l doesn't contain lt_var x, subst_lt x lt_free l
+   is exactly the "decrement higher vars" operation, identical to its
+   action on an l with no lt_var x.                                   *)
+
+(* --- Helper: `subst_lt x lt_free` distributes over `lt_min`.  Trivial. --- *)
+
+(* --- subst_lt_in_ty's internal list fix coincides with map. --- *)
+Lemma subst_lt_in_ty_ctor_eq : forall var replacement K l Ts,
+  subst_lt_in_ty var replacement (type_ctor K l Ts)
+    = type_ctor K (subst_lt var replacement l)
+                  (List.map (subst_lt_in_ty var replacement) Ts).
+Proof.
+  intros var replacement K l Ts.
+  induction Ts as [|A rest IH].
+  - reflexivity.
+  - simpl. simpl in IH. inversion IH. reflexivity.
+Qed.
+
+(* --- Type-context weakening for subtyping --- *)
+(* Standard structural weakening; axiomatized.  Adding a fresh ty-bind *)
+(* preserves derivability of subtyping judgments, since the new var is *)
+(* fresh w.r.t. an existing derivation.                                *)
+Axiom sub_weaken_ty : forall Γ B T1 T2,
+  Γ ⊢ T1 <:: T2 ->
+  (bind_ty B :: Γ) ⊢ T1 <:: T2.
+
+(* --- Single-step elim soundness for lifetimes --- *)
+(* Frame: lvar is the var being eliminated.  Result lives "after the   *)
+(* binder is closed", which we model by composing with `subst_lt lvar  *)
+(* lt_free` on the elim output (this decrements vars ≥ S lvar to       *)
+(* match what `subst_lt lvar l_0` does on the original).               *)
+
+Lemma elim_lt_step_sound : forall l lvar bound p l',
+  elim_lt lvar bound p l = Some l' ->
+  forall Γ l_0,
+    Γ ⊢ₗ l_0 <: subst_lt lvar lt_free bound ->
+    match p with
+    | var_pos => Γ ⊢ₗ subst_lt lvar l_0 l <: subst_lt lvar lt_free l'
+    | var_neg => Γ ⊢ₗ subst_lt lvar lt_free l' <: subst_lt lvar l_0 l
+    | var_inv => subst_lt lvar lt_free l' = subst_lt lvar l_0 l
+    end.
+Proof.
+  induction l as [n | | | l1 IHl1 l2 IHl2]; intros lvar bound p l' Helim Γ l_0 Hsub; simpl in Helim.
+  - (* lt_var n *)
+    destruct (Nat.eqb n lvar) eqn:Heq.
+    + apply Nat.eqb_eq in Heq; subst n.
+      destruct p; try discriminate Helim.
+      * injection Helim; intros; subst l'.
+        simpl. rewrite Nat.eqb_refl. assumption.
+      * injection Helim; intros; subst l'.
+        simpl. rewrite Nat.eqb_refl. apply LS_Free.
+    + injection Helim; intros; subst l'.
+      destruct p; simpl; rewrite Heq; try apply LS_Refl;
+      destruct (Nat.ltb lvar n); reflexivity.
+  - (* lt_free *)
+    injection Helim; intros; subst l'.
+    destruct p; simpl; try apply LS_Refl. reflexivity.
+  - (* lt_local *)
+    injection Helim; intros; subst l'.
+    destruct p; simpl; try apply LS_Refl. reflexivity.
+  - (* lt_min *)
+    destruct (elim_lt lvar bound p l1) as [l1'|] eqn:E1; try discriminate.
+    destruct (elim_lt lvar bound p l2) as [l2'|] eqn:E2; try discriminate.
+    injection Helim; intros; subst l'.
+    specialize (IHl1 _ _ _ _ E1 _ _ Hsub).
+    specialize (IHl2 _ _ _ _ E2 _ _ Hsub).
+    destruct p; simpl.
+    + apply LS_MinL; [apply LS_MinR1 | apply LS_MinR2]; assumption.
+    + apply LS_MinL; [apply LS_MinR1 | apply LS_MinR2]; assumption.
+    + f_equal; assumption.
+Qed.
+
+(* --- Custom type induction principle providing per-element IH      *)
+(*     for the list-of-types in `type_ctor`.                          *)
+Section TypeInd.
+  Variable P : type -> Prop.
+  Hypotheses
+    (Hvar  : forall n, P (type_var n))
+    (Hfun  : forall A l B, P A -> P B -> P (type_fun A l B))
+    (Hctor : forall K l Ts, Forall P Ts -> P (type_ctor K l Ts))
+    (Hltall: forall A, P A -> P (type_lt_all A))
+    (Htyall: forall B A, P B -> P A -> P (type_ty_all B A)).
+
+  Fixpoint type_ind' (T : type) : P T :=
+    match T with
+    | type_var n        => Hvar n
+    | type_fun A l B    => Hfun A l B (type_ind' A) (type_ind' B)
+    | type_ctor K l Ts  =>
+        Hctor K l Ts
+          ((fix go (Ts : list type) : Forall P Ts :=
+            match Ts return Forall P Ts with
+            | []     => Forall_nil _
+            | A :: r => Forall_cons _ (type_ind' A) (go r)
+            end) Ts)
+    | type_lt_all A     => Hltall A (type_ind' A)
+    | type_ty_all B A   => Htyall B A (type_ind' B) (type_ind' A)
+    end.
+End TypeInd.
+
+(* --- Single-step elim soundness for types --- *)
+Lemma elim_ty_step_sound : forall T lvar bound p T',
+  elim_ty lvar bound p T = Some T' ->
+  forall Γ l_0,
+    Γ ⊢ₗ l_0 <: subst_lt lvar lt_free bound ->
+    match p with
+    | var_pos => Γ ⊢ subst_lt_in_ty lvar l_0 T <:: subst_lt_in_ty lvar lt_free T'
+    | var_neg => Γ ⊢ subst_lt_in_ty lvar lt_free T' <:: subst_lt_in_ty lvar l_0 T
+    | var_inv => subst_lt_in_ty lvar lt_free T' = subst_lt_in_ty lvar l_0 T
+    end.
+Proof.
+  induction T as [n | A l B IHA IHB | K l Ts HForall | A IHA | B A IHB IHA]
+    using type_ind';
+    intros lvar bound p T' Helim Γ l_0 Hsub; simpl in Helim.
+  - (* type_var n *)
+    injection Helim; intros; subst T'.
+    destruct p; simpl; try apply SA_Refl. reflexivity.
+  - (* type_fun A l B *)
+    destruct (elim_ty lvar bound (flip_var p) A) as [A'|] eqn:EA; try discriminate.
+    destruct (elim_lt lvar bound p l) as [l'|] eqn:EL; try discriminate.
+    destruct (elim_ty lvar bound p B) as [B'|] eqn:EB; try discriminate.
+    injection Helim; intros; subst T'.
+    pose proof (elim_lt_step_sound _ _ _ _ _ EL _ _ Hsub) as HL.
+    specialize (IHA _ _ _ _ EA Γ l_0 Hsub).
+    specialize (IHB _ _ _ _ EB Γ l_0 Hsub).
+    destruct p; simpl in *.
+    + apply SA_Fun; assumption.
+    + apply SA_Fun; assumption.
+    + f_equal; assumption.
+  - (* type_ctor K l Ts *)
+    destruct (elim_lt lvar bound p l) as [l'|] eqn:EL; try discriminate.
+    pose proof (elim_lt_step_sound _ _ _ _ _ EL _ _ Hsub) as HL.
+    assert (Hlist :
+      forall (Ts0 : list type),
+      Forall (fun A : type =>
+        forall lvar0 bound0 p0 A',
+          elim_ty lvar0 bound0 p0 A = Some A' ->
+          forall Γ' l_0',
+            Γ' ⊢ₗ l_0' <: subst_lt lvar0 lt_free bound0 ->
+            match p0 with
+            | var_pos => Γ' ⊢ subst_lt_in_ty lvar0 l_0' A <:: subst_lt_in_ty lvar0 lt_free A'
+            | var_neg => Γ' ⊢ subst_lt_in_ty lvar0 lt_free A' <:: subst_lt_in_ty lvar0 l_0' A
+            | var_inv => subst_lt_in_ty lvar0 lt_free A' = subst_lt_in_ty lvar0 l_0' A
+            end) Ts0 ->
+      forall Ts0',
+      (fix go_list (p' : variance) (Ts1 : list type) : option (list type) :=
+         match Ts1 with
+         | [] => Some []
+         | A0 :: rest =>
+             match elim_ty lvar bound p' A0, go_list p' rest with
+             | Some A', Some rest' => Some (A' :: rest')
+             | _, _ => None
+             end
+         end) var_inv Ts0 = Some Ts0' ->
+      List.map (subst_lt_in_ty lvar lt_free) Ts0'
+        = List.map (subst_lt_in_ty lvar l_0) Ts0).
+    { clear l' EL HL HForall Helim T' l Ts.
+      induction 1 as [| A0 rest HA Hrest IHrest]; intros Ts0' Hgo.
+      - simpl in Hgo. injection Hgo; intros; subst Ts0'. reflexivity.
+      - simpl in Hgo.
+        destruct (elim_ty lvar bound var_inv A0) as [A'|] eqn:EAi; try discriminate.
+        remember ((fix go_list (p' : variance) (Ts1 : list type) : option (list type) :=
+            match Ts1 with
+            | [] => Some []
+            | A1 :: rest0 =>
+                match elim_ty lvar bound p' A1, go_list p' rest0 with
+                | Some A'0, Some rest' => Some (A'0 :: rest')
+                | _, _ => None
+                end
+            end) var_inv rest) as gor eqn:Egor.
+        destruct gor as [rest'|]; try discriminate.
+        injection Hgo; intros; subst Ts0'.
+        pose proof (HA _ _ _ _ EAi _ _ Hsub) as HAEq. simpl in HAEq.
+        simpl. f_equal; auto. }
+    revert Helim.
+    match goal with
+    | [ |- (match ?go var_inv Ts with _ => _ end) = _ -> _ ] =>
+        destruct (go var_inv Ts) as [Ts'|] eqn:Egos; try discriminate
+    end.
+    intros Helim. injection Helim; intros; subst T'.
+    specialize (Hlist _ HForall _ Egos).
+    destruct p; rewrite !subst_lt_in_ty_ctor_eq.
+    + rewrite Hlist. apply SA_Data. assumption.
+    + rewrite Hlist. apply SA_Data. assumption.
+    + simpl in HL. rewrite HL. f_equal; auto.
+  - (* type_lt_all A *)
+    destruct (elim_ty (S lvar) (shift_lt 1 0 bound) p A) as [A'|] eqn:EA; try discriminate.
+    injection Helim; intros; subst T'.
+    assert (Hsub' : (bind_lt lt_local :: Γ) ⊢ₗ shift_lt 1 0 l_0
+                    <: subst_lt (S lvar) lt_free (shift_lt 1 0 bound)).
+    { rewrite <- shift_subst_lt_comm.
+      apply lt_sub_shift_lt. assumption. }
+    specialize (IHA _ _ _ _ EA _ _ Hsub').
+    destruct p; simpl.
+    + apply SA_LtAll. assumption.
+    + apply SA_LtAll. assumption.
+    + f_equal; assumption.
+  - (* type_ty_all B A *)
+    destruct (elim_ty lvar bound (flip_var p) B) as [B'|] eqn:EB; try discriminate.
+    destruct (elim_ty lvar bound p A) as [A'|] eqn:EA; try discriminate.
+    injection Helim; intros; subst T'.
+    specialize (IHB _ _ _ _ EB Γ l_0 Hsub).
+    specialize (IHA _ _ _ _ EA Γ l_0 Hsub).
+    destruct p; simpl in IHB; simpl.
+    + (* var_pos: SA_TyAll needs                                       *)
+      (*   subst_lt_in_ty lvar lt_free B' <:: subst_lt_in_ty lvar l_0 B *)
+      (* and (bind_ty B' :: Γ) ⊢ ...A... <:: ...A'...                  *)
+      apply SA_TyAll; [assumption|].
+      apply sub_weaken_ty. assumption.
+    + apply SA_TyAll; [assumption|].
+      apply sub_weaken_ty. assumption.
+    + f_equal; assumption.
+Qed.
+
+(* --- Iterated elim soundness --- *)
+
+(* `iter_subst_lt_in_ty ws T` substitutes the witnesses ws sequentially  *)
+(* at de Bruijn position 0, decrementing the remaining lt-vars after    *)
+(* each step.  This matches `elim_ty_n`'s iteration where each step     *)
+(* closes a binder via `subst_lt 0 lt_free`.                             *)
+Fixpoint iter_subst_lt_in_ty (ws : list lifetime) (T : type) : type :=
+  match ws with
+  | []        => T
+  | w :: rest => iter_subst_lt_in_ty rest (subst_lt_in_ty 0 w T)
+  end.
+
+(* Witnesses are valid w.r.t. a chain of progressively-closed bounds.   *)
+Fixpoint chain_bounded (Γ : ctx) (ws : list lifetime) (bound : lifetime) : Prop :=
+  match ws with
+  | []        => True
+  | w :: rest =>
+      (Γ ⊢ₗ w <: subst_lt 0 lt_free bound) /\
+      chain_bounded Γ rest (subst_lt 0 lt_free bound)
+  end.
+
+(* Subtyping is preserved through `iter_subst_lt_in_ty`.                *)
+Lemma iter_subst_lt_in_ty_mono : forall ws Γ T1 T2,
+  Γ ⊢ T1 <:: T2 ->
+  Γ ⊢ iter_subst_lt_in_ty ws T1 <:: iter_subst_lt_in_ty ws T2.
+Proof.
+  induction ws as [|w rest IH]; intros Γ T1 T2 Hsub; simpl.
+  - assumption.
+  - apply IH. apply sub_subst_lt_at. assumption.
+Qed.
+
+(* Iterated elim soundness.  Proven by induction on the witness list.   *)
+Lemma elim_ty_n_sound : forall ws n bound p T T' Γ,
+  elim_ty_n n bound p T = Some T' ->
+  List.length ws = n ->
+  chain_bounded Γ ws bound ->
+  match p with
+  | var_pos => Γ ⊢ iter_subst_lt_in_ty ws T <:: T'
+  | var_neg => Γ ⊢ T' <:: iter_subst_lt_in_ty ws T
+  | var_inv => T' = iter_subst_lt_in_ty ws T
+  end.
+Proof.
+  induction ws as [|w rest IH]; intros n bound p T T' Γ Helim Hlen Hchain.
+  - (* ws = [], so n = 0, elim_ty_n 0 ... = Some T *)
+    destruct n; simpl in Hlen; try discriminate.
+    simpl in Helim. injection Helim; intros; subst T'.
+    simpl. destruct p; try apply SA_Refl. reflexivity.
+  - (* ws = w :: rest, n = S n' *)
+    destruct n as [|n']; simpl in Hlen; try discriminate.
+    injection Hlen; intros Hlen'.
+    simpl in Hchain. destruct Hchain as [Hwb Hchain'].
+    simpl in Helim.
+    destruct (elim_ty 0 bound p T) as [T1|] eqn:Eet; try discriminate.
+    pose proof (elim_ty_step_sound _ _ _ _ _ Eet Γ _ Hwb) as Hstep.
+    simpl in Hstep.
+    specialize (IH n' (subst_lt 0 lt_free bound) p
+                    (subst_lt_in_ty 0 lt_free T1) T' Γ Helim Hlen' Hchain').
+    simpl. destruct p.
+    + (* var_pos *)
+      eapply SA_Trans.
+      * apply iter_subst_lt_in_ty_mono. exact Hstep.
+      * exact IH.
+    + (* var_neg *)
+      eapply SA_Trans.
+      * exact IH.
+      * apply iter_subst_lt_in_ty_mono. exact Hstep.
+    + (* var_inv *)
+      rewrite IH. rewrite Hstep. reflexivity.
+Qed.
 
 (* Preservation for S_MatchYes.  Full statement bundles the arity    *)
-(* unification and the result-type match; standard.                   *)
-Axiom match_yes_preservation : forall Γ K Delta Ts vs arity yes_body no_body T,
-  Γ ⊢ₜ term_match (term_ctor K Delta Ts vs) K arity yes_body no_body : T ->
+(* unification and the result-type match; standard.                  *)
+Axiom match_yes_preservation : forall Γ K Delta lts Ts vs arity yes_body no_body T,
+  Γ ⊢ₜ term_match (term_ctor K Delta lts Ts vs) K arity yes_body no_body : T ->
   Forall value vs ->
   arity = List.length vs ->
-  Γ ⊢ₜ subst_list_tm vs yes_body : T.
+  Γ ⊢ₜ subst_list_tm vs (subst_list_lt_in_tm lts yes_body) : T.
 
 
 Theorem preservation : forall Γ t t' T,
