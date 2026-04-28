@@ -51,9 +51,45 @@ Lemma load_ok : forall t, state_ok (load t).
 Proof. intros. unfold load, kont_ok. simpl. constructor. Qed.
 
 (* Preservation of the structural invariant by ck_step.                *)
-(* Routine case-analysis; axiomatized for brevity.                    *)
-Axiom ck_step_preserves_ok : forall s s',
+Lemma ck_step_preserves_ok : forall s s',
   state_ok s -> s -c-> s' -> state_ok s'.
+Proof.
+  intros s s' Hok Hstep.
+  induction Hstep; simpl in *; unfold kont_ok in *.
+  - (* CK_App_push *) constructor; [constructor | exact Hok].
+  - (* CK_TyApp_push *) constructor; [constructor | exact Hok].
+  - (* CK_LtApp_push *) constructor; [constructor | exact Hok].
+  - (* CK_Match_push *) constructor; [constructor | exact Hok].
+  - (* CK_Ctor_nil *) split; [constructor; constructor | exact Hok].
+  - (* CK_Ctor_push *) constructor; [constructor; constructor | exact Hok].
+  - (* CK_Val_Lam *) split; [constructor | exact Hok].
+  - (* CK_Val_TyLam *) split; [constructor | exact Hok].
+  - (* CK_Val_LtLam *) split; [constructor | exact Hok].
+  - (* CK_Ret_App1 *)
+    destruct Hok as [Hval Hk].
+    inversion Hk as [|? ? Hf Hkr]; subst.
+    constructor; [constructor; auto | exact Hkr].
+  - (* CK_Ret_Beta *)
+    destruct Hok as [_ Hk]. inversion Hk; subst. exact H3.
+  - (* CK_Ret_TyBeta *)
+    destruct Hok as [_ Hk]. inversion Hk; subst. exact H2.
+  - (* CK_Ret_LtBeta *)
+    destruct Hok as [_ Hk]. inversion Hk; subst. exact H2.
+  - (* CK_Ret_Ctor_next *)
+    destruct Hok as [Hval Hk].
+    inversion Hk as [|? ? Hf Hkr]; subst.
+    inversion Hf; subst.
+    constructor; [constructor; apply Forall_app; split; auto | exact Hkr].
+  - (* CK_Ret_Ctor_done *)
+    destruct Hok as [Hval Hk].
+    inversion Hk as [|? ? Hf Hkr]; subst.
+    inversion Hf; subst.
+    split; [constructor; apply Forall_app; split; auto | exact Hkr].
+  - (* CK_Ret_MatchYes *)
+    destruct Hok as [_ Hk]. inversion Hk; subst. exact H3.
+  - (* CK_Ret_MatchNo *)
+    destruct Hok as [_ Hk]. inversion Hk; subst. exact H4.
+Qed.
 
 (* ------------------------------------------------------------------ *)
 (* Simulation lemma                                                   *)
