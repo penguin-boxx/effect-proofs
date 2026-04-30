@@ -19,6 +19,31 @@ Definition ctor_tag := nat.
 (* type τ to be upcast to Any@Δ provided lt_Γ(τ) <: Δ.                 *)
 Definition any_tag : ctor_tag := 0.
 
+(* ================================================================== *)
+(* Effect handlers (paper one-plus-one §3)                            *)
+(*                                                                    *)
+(* Capabilities reuse the existing data-constructor machinery: a      *)
+(* capability for effect E with type-args T̄ has type                  *)
+(*    type_ctor E_tag local T̄                                         *)
+(* The effect declaration                                             *)
+(*    effect E<ᾱ> { op_i : ∀β̄ᵢ. σ̄ᵢ → σ'ᵢ }                            *)
+(* registers a capability constructor                                 *)
+(*    K_cap_E : ∀ᾱ. sig_E → E local ᾱ                                 *)
+(* (encoded in Γ as a `bind_eff` entry; see Typing.v).                *)
+(*                                                                    *)
+(* eff_tag is a ctor_tag used by capability type_ctor's; we keep the  *)
+(* alias for documentation. The disjointness of effect-tags from      *)
+(* data-constructor-tags is enforced at typing time by side conditions*)
+(* on T_Ctor / T_Match (`ctx_lookup_eff Γ K = None`).                 *)
+(*                                                                    *)
+(* SIMPLIFICATION: each effect declares exactly one operation.        *)
+(* Hence there is no `op_tag`, `term_handle` carries a single         *)
+(* op-body, and `term_perform` takes no op-tag.                       *)
+(* ================================================================== *)
+
+Definition eff_tag := nat.
+Definition marker  := nat.
+
 Inductive type : Type :=
   | type_var : nat -> type
   | type_fun : type -> lifetime -> type -> type
@@ -40,6 +65,24 @@ Inductive term : Type :=
   (* constructor argument (variables 0..arity-1, outermost-first);      *)
   (* no_body is the else branch (no new binders).                       *)
   | term_match : term -> ctor_tag -> nat -> term -> term -> term
+  (* ----- effect handlers (paper Fig. core-syntax, single-op) ----- *)
+  (* handle x : E Ts { op_body } in body                               *)
+  (* The body has 1 extra term-binder for the cap value (variable 0).  *)
+  (* op_body has 2 extra term-binders:                                 *)
+  (*   index 0 = the (single) op argument                              *)
+  (*   index 1 = the resumption k                                      *)
+  (* `sig` is the (instantiated) operation argument type, stored as a  *)
+  (* runtime annotation so that the resumption λ produced by H_Perform *)
+  (* can be type-annotated.                                            *)
+  | term_handle : eff_tag -> list type -> type -> term -> term -> term
+  (* perform x arg — single-op effect with a single argument           *)
+  | term_perform : term -> term -> term
+  (* runtime-only: capability value (paper's K_cap τ̄ m h).              *)
+  (* Carries effect tag, marker, type-args, the (instantiated) op-arg  *)
+  (* type sig, and op_body (2 binders).                                *)
+  | term_cap : eff_tag -> marker -> list type -> type -> term -> term
+  (* runtime-only: continuation delimiter (paper's handler_m t).        *)
+  | term_handler_m : marker -> term -> term
   .
 
 (* ================================================================== *)
@@ -54,7 +97,10 @@ Inductive value : term -> Prop :=
   | value_lt_lam : forall body,       value (term_lt_lam body)
   | value_ctor   : forall K l lts Ts vs,
       Forall value vs ->
-      value (term_ctor K l lts Ts vs).
+      value (term_ctor K l lts Ts vs)
+  | value_cap    : forall E m Ts sig op_body,
+      value (term_cap E m Ts sig op_body)
+  .
 
 Hint Constructors value : core.
 
@@ -74,9 +120,10 @@ Fixpoint is_value (t : term) : bool :=
     end
   in
   match t with
-  | term_lam _ _        => true
-  | term_ty_lam _ _     => true
-  | term_lt_lam _       => true
+  | term_lam _ _          => true
+  | term_ty_lam _ _       => true
+  | term_lt_lam _         => true
   | term_ctor _ _ _ _ vs  => go vs
-  | _                   => false
+  | term_cap _ _ _ _ _    => true
+  | _                     => false
   end.

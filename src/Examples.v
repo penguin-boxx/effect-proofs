@@ -154,6 +154,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - reflexivity.
+  - reflexivity.
   - unfold pair_lt_free. reflexivity.
   - reflexivity.
   - repeat constructor; apply T_Var; reflexivity.
@@ -181,6 +182,7 @@ Proof.
     (n_lt := 0) (n_ty := 0) (lts := [])
     (sigma_fields := [ty_A_local; ty_B])
     (rho_fields := [ty_A_local; ty_B]).
+  - reflexivity.
   - reflexivity.
   - reflexivity.
   - reflexivity.
@@ -222,6 +224,7 @@ Proof.
     (eta := ty_A) (elim_result := ty_A).
   - discriminate.               (* K = 1 <> any_tag = 0 *)
   - apply T_Var. reflexivity.   (* scrut : type_ctor 1 pair_lt_free [] *)
+  - reflexivity.
   - reflexivity.
   - reflexivity.
   - reflexivity.
@@ -567,3 +570,45 @@ Proof.
   (* match whose else-branch type-checks only after a subsumption-    *)
   (* heavy elimination derivation.  We expose the statement only.     *)
 Admitted.
+
+(* ================================================================== *)
+(* Effect declarations (paper §3 examples).                            *)
+(*                                                                    *)
+(*   effect Reader<a> { ask : () -> a }                                *)
+(*   effect Exception<a> { raise : a -> Bottom }                       *)
+(*                                                                    *)
+(* In v1 the per-op type-parameter count `n_β` is fixed to 0; effect   *)
+(* type parameters are encoded with `n_α` (here 1) and the ops refer  *)
+(* to the effect parameter as `type_var 0`.                            *)
+(* ================================================================== *)
+
+Definition Reader_tag    : eff_tag := 100.
+Definition Exception_tag : eff_tag := 101.
+
+(* `ask : Unit -> a` — Unit argument, returns the effect param a.    *)
+Definition reader_sig : binding :=
+  bind_eff Reader_tag 1 T_UnitT (type_var 0).
+
+(* `raise : a -> Unit` — one arg of type a, return type unreachable.  *)
+(* Using Unit as a placeholder for Bottom: the dispatch never returns *)
+(* via the resumption (deep handlers) so the op return type is moot. *)
+Definition exception_sig : binding :=
+  bind_eff Exception_tag 1 (type_var 0) T_UnitT.
+
+Definition effect_ctx : ctx := [ reader_sig ; exception_sig ].
+
+(* ------------------------------------------------------------------ *)
+(* Negative result: a capability cannot escape its handle scope.       *)
+(*                                                                    *)
+(* A capability has type `type_ctor E_tag lt_local Ts`.  The `T_Lam`  *)
+(* rule requires `no_local_ty B = true` on the body's return type B,  *)
+(* but `no_local_ty (type_ctor _ lt_local _) = false`.  Hence no      *)
+(* lambda can return a (local) capability — caps stay confined.       *)
+(* ------------------------------------------------------------------ *)
+
+Lemma cap_escape_blocked :
+  forall (E : eff_tag) (Ts : list type),
+    no_local_ty (type_ctor E lt_local Ts) = false.
+Proof.
+  intros E Ts. cbn. reflexivity.
+Qed.

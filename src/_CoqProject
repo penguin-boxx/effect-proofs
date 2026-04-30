@@ -5,5 +5,4 @@ Semantics.v
 Typing.v
 Examples.v
 Safety.v
-CK.v
-CKSafety.v
+Sugar.v
