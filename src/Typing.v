@@ -19,12 +19,18 @@ Inductive binding : Type :=
   | bind_tm  : type     -> binding  (* x : T         *)
   | bind_ty  : type     -> binding  (* α <: B        *)
   | bind_lt  : lifetime -> binding  (* l <: Δ        *)
-  (* K : ∀ l̄(n_lt vars) ᾱ(n_ty vars). τ̄ → T@(+lt_∅(τ̄))@ᾱ           *)
+  (* K : ∀ l̄(n_lt vars) ᾱ(n_ty vars). τ̄ → T@(+lt_∅(τ̄))@ᾱ               *)
   (* n_lt    : number of existential lifetime binders                  *)
   (* n_ty    : number of type binders                                  *)
   (* fields  : argument types under those binders (de Bruijn)          *)
   (* result  : result type under those binders (de Bruijn)             *)
   | bind_ctor : ctor_tag -> nat -> nat -> list type -> type -> binding
+  (* Effect declaration (single-op, single-argument):                  *)
+  (*   effect E<n_α type-params> { op : ∀n_β betas. sig → ret }        *)
+  (* sig is the (single) parameter type, ret is the return type;       *)
+  (* both live under (n_α + n_β) type-binders, with the n_β β-binders  *)
+  (* INNERMOST (i.e. β-vars are de Bruijn 0..n_β-1, α-vars are above). *)
+  | bind_eff : eff_tag -> nat -> nat -> type -> type -> binding
   .
 
 Definition ctx := list binding.
@@ -62,8 +68,8 @@ Fixpoint ctx_lookup_lt (Γ : ctx) (l : nat) : option lifetime :=
   | _ :: rest         => ctx_lookup_lt rest l
   end.
 
-(* Look up a constructor signature by tag.  Returns                    *)
-(*   Some (n_lt, n_ty, fields, result)                                 *)
+(* Look up a constructor signature by tag.  Returns                   *)
+(*   Some (n_lt, n_ty, fields, result)                                *)
 (* where n_lt / n_ty are the numbers of lifetime / type binders, and  *)
 (* fields / result use de Bruijn indices under those binders.         *)
 Fixpoint ctx_lookup_ctor (Γ : ctx) (K : ctor_tag)
@@ -74,6 +80,18 @@ Fixpoint ctx_lookup_ctor (Γ : ctx) (K : ctor_tag)
       if Nat.eqb K K' then Some (n_lt, n_ty, fields, result)
       else ctx_lookup_ctor rest K
   | _ :: rest => ctx_lookup_ctor rest K
+  end.
+
+(* Look up an effect declaration by tag. Returns                      *)
+(*   Some (n_α, n_β, sig, ret).                                       *)
+Fixpoint ctx_lookup_eff (Γ : ctx) (E : eff_tag)
+    : option (nat * nat * type * type) :=
+  match Γ with
+  | [] => None
+  | bind_eff E' n_α n_β sig ret :: rest =>
+      if Nat.eqb E E' then Some (n_α, n_β, sig, ret)
+      else ctx_lookup_eff rest E
+  | _ :: rest => ctx_lookup_eff rest E
   end.
 
 (* ================================================================== *)
@@ -211,7 +229,7 @@ Definition lt_of_ty_G (Γ : ctx) (T : type) : lifetime :=
   lt_of_ty_ctx (List.length Γ) Γ T.
 
 (* ================================================================== *)
-(* "no local in σ" — syntactic check for T_Lam return-type side cond.  *)
+(* "no local in σ" — syntactic check for T_Lam return-type side cond. *)
 (* ================================================================== *)
 
 Fixpoint no_local_lt (l : lifetime) : bool :=
@@ -268,6 +286,14 @@ Fixpoint free_tm_vars (cutoff : nat) (t : term) : list nat :=
       free_tm_vars cutoff scrut
         ++ free_tm_vars (cutoff + arity) y
         ++ free_tm_vars cutoff n
+  | term_handle _ _ op_body body =>
+      free_tm_vars (cutoff + 2) op_body
+        ++ free_tm_vars (S cutoff) body
+  | term_perform t _ arg =>
+      free_tm_vars cutoff t ++ free_tm_vars cutoff arg
+  | term_cap _ _ _ op_body => free_tm_vars (cutoff + 2) op_body
+  | term_handler_m _ t => free_tm_vars cutoff t
+  | term_resume _ b => free_tm_vars (S cutoff) b
   end.
 
 Definition capture_lt (Γ : ctx) (body : term) : lifetime :=
@@ -547,6 +573,26 @@ Fixpoint push_lt_vars (n : nat) (bound : lifetime) (Γ : ctx) : ctx :=
   | S n' => push_lt_vars n' bound (bind_lt bound :: Γ)
   end.
 
+(* Push n fresh bind_ty entries (all bounded by `bound`) onto Γ.      *)
+Fixpoint push_ty_vars (n : nat) (bound : type) (Γ : ctx) : ctx :=
+  match n with
+  | O    => Γ
+  | S n' => push_ty_vars n' bound (bind_ty bound :: Γ)
+  end.
+
+(* The β-bound used for polymorphic operations: `Any@free`.            *)
+(* We pick `lt_free` so that β-types may not contain `local`-tagged    *)
+(* values, ensuring escape-analysis safety.                            *)
+Definition any_at_free : type := type_ctor any_tag lt_free [].
+
+(* Instantiate an op schema: substitute α-vars first, then β-vars.    *)
+(* Convention: in the schema, α-vars are innermost (indices 0..n_α-1) *)
+(* and β-vars are outermost (indices n_α..n_α+n_β-1).                  *)
+Definition inst_op_arg (n_α : nat) (Ts : list type)
+                       (n_β : nat) (Ss : list type)
+                       (T : type) : type :=
+  inst_ty_vars n_β Ss (inst_ty_vars n_α Ts T).
+
 (* [lt_var 0; lt_var 1; ...; lt_var (n-1)] — de Bruijn indices of the *)
 (* n freshly pushed lt-vars in the order matching `inst_lt_vars`:      *)
 (* schema-var-k is replaced by lt_var k (lt_var 0 is innermost).       *)
@@ -643,6 +689,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
   | T_Ctor  : forall Γ K n_lt n_ty sigma_fields result_ty_schema
                      lts Ts rho_fields l vs,
       ctx_lookup_ctor Γ K = Some (n_lt, n_ty, sigma_fields, result_ty_schema) ->
+      ctx_lookup_eff Γ K = None ->   (* effect-tag / data-ctor disjointness *)
       List.length lts = n_lt ->
       rho_fields = List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields ->
       List.length Ts = n_ty ->
@@ -663,6 +710,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       K <> any_tag ->
       Γ ⊢ₜ scrut : type_ctor K Delta Ts ->
       ctx_lookup_ctor Γ K = Some (n_lt, n_ty, sigma_fields, result_ty_schema) ->
+      ctx_lookup_eff Γ K = None ->   (* effect-tag / data-ctor disjointness *)
       lts = lt_var_list n_lt ->
       rho_fields = List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields ->
       arity = List.length rho_fields ->
@@ -674,6 +722,81 @@ Inductive typing : ctx -> term -> type -> Prop :=
       elim_ty_n n_lt (shift_lt n_lt 0 Delta) var_pos eta = Some elim_result ->
       Γ ⊢ₜ no_body : elim_result ->
       Γ ⊢ₜ term_match scrut K arity yes_body no_body : elim_result
+
+  (* ================================================================ *)
+  (* Effect-handler typing (paper one-plus-one §3)                    *)
+  (* ================================================================ *)
+
+  (* (Cap): a runtime capability value has type `E local Ts`.          *)
+  (* The op_body lives under n_β type-binders (for β-poly) and 2       *)
+  (* term-binders (the operation argument and the resumption).         *)
+  (* Convention in op-schema: α-vars are innermost (0..n_α-1) and      *)
+  (* β-vars are outermost (n_α..n_α+n_β-1). After instantiating α      *)
+  (* with Ts at handle-time, the schema's β-vars become 0..n_β-1,      *)
+  (* matching the n_β type-binders of op_body.                         *)
+  | T_Cap : forall Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β,
+      ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
+      List.length Ts = n_α ->
+      sig_β = inst_ty_vars n_α Ts sig ->
+      ret_β = inst_ty_vars n_α Ts ret ->
+      (bind_tm sig_β
+        :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
+        :: push_ty_vars n_β any_at_free Γ)
+        ⊢ₜ op_body : shift_ty n_β 0 T_R ->
+      Γ ⊢ₜ term_cap E_tag m Ts op_body : type_ctor E_tag lt_local Ts
+
+  (* NOTE on op-body variable convention (matching H_Perform):         *)
+  (* subst_list_tm [v; resume] op_body substitutes:                    *)
+  (*   $$ 0 → v      (operation argument,  type sig_β)                 *)
+  (*   $$ 1 → resume (resumption k, type ret_β -local-> T_R)           *)
+  (* Both T_Cap and T_Handle use the context                            *)
+  (*   bind_tm sig_β               ← $$ 0 = arg  (innermost)           *)
+  (*   :: bind_tm (ret_β -local->) ← $$ 1 = k                          *)
+  (*   :: push_ty_vars n_β ...      ← β type-vars above                 *)
+
+  (* (Handle): allocate a capability and run the body.                 *)
+  | T_Handle : forall Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β,
+      ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
+      List.length Ts = n_α ->
+      sig_β = inst_ty_vars n_α Ts sig ->
+      ret_β = inst_ty_vars n_α Ts ret ->
+      (bind_tm sig_β
+        :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
+        :: push_ty_vars n_β any_at_free Γ)
+        ⊢ₜ op_body : shift_ty n_β 0 T_R ->
+      (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) ⊢ₜ body : T_R ->
+      Γ ⊢ₜ term_handle E_tag Ts op_body body : T_R
+
+  (* (Perform): invoke the (single) operation on a capability value.   *)
+  (* Caller supplies the β-type-arguments Ss at the perform site.      *)
+  | T_Perform : forall Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret
+                       sig_inst ret_inst,
+      Γ ⊢ₜ recv : type_ctor E_tag Δ Ts ->
+      ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
+      List.length Ts = n_α ->
+      List.length Ss = n_β ->
+      sig_inst = inst_op_arg n_α Ts n_β Ss sig ->
+      ret_inst = inst_op_arg n_α Ts n_β Ss ret ->
+      Γ ⊢ₜ arg : sig_inst ->
+      Γ ⊢ₜ term_perform recv Ss arg : ret_inst
+
+  (* (HandlerM, runtime): a delimiter is transparent to typing.        *)
+  | T_HandlerM : forall Γ m t T,
+      Γ ⊢ₜ t : T ->
+      Γ ⊢ₜ term_handler_m m t : T
+
+  (* (Resume, runtime): a reified resumption is a function value.     *)
+  (* Applying it (later) re-installs a delimiter around its body.     *)
+  | T_Resume : forall Γ m b A T_R,
+      (bind_tm A :: Γ) ⊢ₜ b : T_R ->
+      Γ ⊢ₜ term_resume m b : type_fun A lt_local T_R
+
+with args_typed : ctx -> list term -> list type -> Prop :=
+  | AT_nil  : forall Γ, args_typed Γ [] []
+  | AT_cons : forall Γ a sg args sgs,
+      Γ ⊢ₜ a : sg ->
+      args_typed Γ args sgs ->
+      args_typed Γ (a :: args) (sg :: sgs)
 
 where "G '⊢ₜ' t ':' T" := (typing G t T).
 

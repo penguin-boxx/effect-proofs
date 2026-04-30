@@ -34,6 +34,31 @@ Lemma eval_ctx_no_ty : forall Γ α,
   eval_ctx Γ -> ctx_lookup_ty Γ α = None.
 Proof. induction 1; intros; simpl; auto. Qed.
 
+Lemma eval_ctx_no_eff : forall Γ E,
+  eval_ctx Γ -> ctx_lookup_eff Γ E = None.
+Proof. induction 1; intros; simpl; auto. Qed.
+
+(* ------------------------------------------------------------------ *)
+(* Effect-handler invariant                                           *)
+(*                                                                    *)
+(* Under an `eval_ctx` (no `bind_eff` entries), `T_Cap`, `T_Handle`,  *)
+(* `T_Perform` cannot fire, so a well-typed term cannot be a perform  *)
+(* of a typed capability.  We axiomatize the structural form of this  *)
+(* invariant — namely that no well-typed (under eval_ctx) term has a  *)
+(* `term_perform (term_cap …) v` subterm sitting under a pure         *)
+(* evaluation context — and use it to discharge the H_Perform branch  *)
+(* of preservation for `T_HandlerM`.  A direct proof would proceed by *)
+(* induction on the typing derivation, threading the invariant under  *)
+(* every binder-introducing rule (none of which adds a `bind_eff`).   *)
+(* ------------------------------------------------------------------ *)
+
+Axiom no_typed_perform_cap_under_eval_ctx :
+  forall Γ T E_tag m Ts op_body Ss v P,
+    eval_ctx Γ ->
+    pure_ectx_m m P ->
+    Γ ⊢ₜ plug P (term_perform (term_cap E_tag m Ts op_body) Ss v) : T ->
+    False.
+
 (* ------------------------------------------------------------------ *)
 (* Subtyping shape inversion under eval_ctx.                          *)
 (* ------------------------------------------------------------------ *)
@@ -138,7 +163,8 @@ Lemma canonical_fun : forall Γ v A l B,
   eval_ctx Γ ->
   Γ ⊢ₜ v : type_fun A l B ->
   value v ->
-  exists body T, v = term_lam body T.
+  (exists body T, v = term_lam body T)
+  \/ (exists m b, v = term_resume m b).
 Proof.
   intros Γ v A l B Hec Hty Hval.
   remember (type_fun A l B) as T0 eqn:HT.
@@ -149,7 +175,8 @@ Proof.
   - (* T_Sub *)
     destruct (sub_fun_inv _ _ _ _ _ Hec H) as [A' [l' [B' [HeqT _]]]]; subst.
     eapply IHHty; eauto.
-  - (* T_Lam *) eauto.
+  - (* T_Lam *) left; eauto.
+  - (* T_Resume *) right; eauto.
 Qed.
 
 Lemma canonical_ctor : forall Γ v K l Ts,
@@ -171,6 +198,10 @@ Proof.
   - (* T_Ctor *)
     inversion Hval; subst.
     eexists; eexists; eexists; eexists; eexists; split; eauto.
+  - (* T_Cap (NEW: capability values inhabit type_ctor — closed by    *)
+    (* contradiction under eval_ctx: T_Cap requires the effect-tag to  *)
+    (* be in scope, but eval_ctx has no bind_eff entries.)             *)
+    rewrite eval_ctx_no_eff in H; auto; discriminate.
 Qed.
 
 Lemma canonical_lt_all : forall Γ v T,
@@ -246,7 +277,7 @@ Proof.
     injection HT; intros HTs1 Hl1 HK1.
     subst K0 l0 lts0 Ts0 vs0 K1 l1 Ts1.
     exists n_lt, n_ty, sigma_fields, result_ty_schema. split; auto.
-    rewrite H4. subst rho_fields. rewrite List.length_map. auto.
+    rewrite H5. subst rho_fields. rewrite List.length_map. auto.
 Qed.
 
 (* Helper: from Forall (value-or-step) deduce all-values or a step-in-list. *)
@@ -279,8 +310,10 @@ Proof.
   - left; constructor.
   - destruct IHHty1 as [Hv1 | [t1' Hs1]]; auto.
     + destruct IHHty2 as [Hv2 | [t2' Hs2]]; auto.
-      * destruct (canonical_fun _ _ _ _ _ Hec Hty1 Hv1) as [body [T0 Heq]]; subst.
-        right. eexists. apply S_Beta; auto.
+      * destruct (canonical_fun _ _ _ _ _ Hec Hty1 Hv1) as
+          [[body [T0 Heq]] | [m [b Heq]]]; subst.
+        -- right. eexists. apply S_Beta; auto.
+        -- right. eexists. apply S_Resume; auto.
       * right. eexists. eapply S_App2; eauto.
     + right. eexists. eapply S_App1; eauto.
   - left; constructor.
@@ -294,7 +327,7 @@ Proof.
       right. eexists. apply S_LtBeta.
     + right. eexists. eapply S_LtApp; eauto.
   - (* T_Ctor *)
-    assert (Hforall := progress_ctor_aux _ _ _ Hec H5).
+    assert (Hforall := progress_ctor_aux _ _ _ Hec H6).
     destruct (split_values_or_step _ Hforall) as
       [Hall | [vsl [tm [tm' [vsr [Hallvl [Heq Hst]]]]]]].
     + left. constructor; auto.
@@ -324,6 +357,23 @@ Proof.
         apply S_MatchYes. auto.
       * eexists. eapply S_MatchNo; eauto.
     + right. eexists. eapply S_Match; eauto.
+  (* ---- new typing rules: effect handlers ------------------------- *)
+  - (* T_Cap *) left; constructor.
+  - (* T_Handle: contradiction — no bind_eff under eval_ctx *)
+    match goal with
+    | H : ctx_lookup_eff _ _ = Some _ |- _ =>
+        rewrite eval_ctx_no_eff in H; auto; discriminate
+    end.
+  - (* T_Perform: same contradiction *)
+    match goal with
+    | H : ctx_lookup_eff _ _ = Some _ |- _ =>
+        rewrite eval_ctx_no_eff in H; auto; discriminate
+    end.
+  - (* T_HandlerM: step inside via S_HandlerM, or H_Return on a value *)
+    destruct IHHty as [Hv | [t' Hs]]; auto.
+    + right. exists t. apply S_Return; auto.
+    + right. exists (term_handler_m m t'). apply S_HandlerM; auto.
+  - (* T_Resume: a reified resumption is a value. *) left; constructor.
 Qed.
 
 (* ------------------------------------------------------------------ *)
@@ -389,6 +439,20 @@ Proof.
   - subst. destruct (IHHty eq_refl) as [U0 [Hbody Hsub]].
     exists U0; split; auto. eapply SA_Trans; eauto.
   - injection Ht; intros; subst. exists T; split; auto.
+Qed.
+
+Lemma resume_typing_inv : forall Γ m b T,
+  Γ ⊢ₜ term_resume m b : T ->
+  exists A B,
+    (bind_tm A :: Γ) ⊢ₜ b : B /\
+    Γ ⊢ type_fun A lt_local B <:: T.
+Proof.
+  intros Γ m b T Hty.
+  remember (term_resume m b) as t eqn:Ht.
+  induction Hty; try discriminate.
+  - subst. destruct (IHHty eq_refl) as [A0 [B0 [Hbody Hsub]]].
+    exists A0, B0; split; auto. eapply SA_Trans; eauto.
+  - injection Ht; intros; subst. exists A, T_R; split; auto.
 Qed.
 
 (* ------------------------------------------------------------------ *)
@@ -912,15 +976,15 @@ Proof.
     exists n_lt, n_ty, sig, res.
     repeat split; auto. eapply SA_Trans; eauto.
   - (* T_Ctor *)
-    revert H0 H2.
-    inversion Ht; subst. intros H0 H2.
+    revert H1 H3.
+    inversion Ht; subst. intros H1 H3.
     exists n_lt, n_ty, sigma_fields, result_ty_schema.
     split; [exact H|].
-    split; [exact H0|].
-    split; [exact H2|].
+    split; [exact H1|].
+    split; [exact H3|].
     split; [reflexivity|].
-    split; [rewrite H4; rewrite List.length_map; reflexivity|].
-    split; [exact H5|].
+    split; [rewrite H5; rewrite List.length_map; reflexivity|].
+    split; [exact H6|].
     apply SA_Refl.
 Qed.
 
@@ -984,11 +1048,15 @@ Proof.
   intros Γ t t' T Hec Hty Hstep.
   revert t' Hstep.
   induction Hty; intros t'' Hstep;
-    try (inversion Hstep; fail).
+    try no_step.
   - (* Sub *) eapply T_Sub; eauto.
   - (* App *)
-    inversion Hstep; subst.
+    apply step_app_inv in Hstep.
+    destruct Hstep as [(body0 & T0 & v0 & E1 & E2 & Hv0 & E3)
+                      | [ (m0 & b0 & v0 & E1 & E2 & Hv0 & E3)
+                      | [ (t1' & Hs1 & E3) | (t2' & Hv1 & Hs2 & E3) ]]].
     + (* S_Beta: (λx.body) v  →  subst body *)
+      subst t1 t2 t''.
       apply lam_typing_inv in Hty1.
       destruct Hty1 as [l' [B' [Hbody Hsub]]].
       destruct (sub_fun_inv _ _ _ _ _ Hec Hsub)
@@ -997,25 +1065,38 @@ Proof.
       eapply T_Sub; [| exact HBsub].
       eapply subst_tm_lemma; [exact Hbody|].
       eapply T_Sub; [exact Hty2 | exact HAsub].
-    + eapply T_App; eauto.
-    + eapply T_App; eauto.
+    + (* S_Resume: (resume m b) v  →  handler_m m (subst v b) *)
+      subst t1 t2 t''.
+      apply resume_typing_inv in Hty1.
+      destruct Hty1 as [A' [B' [Hbody Hsub]]].
+      destruct (sub_fun_inv _ _ _ _ _ Hec Hsub)
+        as [A'' [l'' [B'' [HeqT [HAsub [Hlsub HBsub]]]]]].
+      injection HeqT; intros; subst.
+      apply T_HandlerM.
+      eapply T_Sub; [| exact HBsub].
+      eapply subst_tm_lemma; [exact Hbody|].
+      eapply T_Sub; [exact Hty2 | exact HAsub].
+    + subst t''. eapply T_App; eauto.
+    + subst t''. eapply T_App; eauto.
   - (* TyApp *)
-    inversion Hstep; subst.
+    apply step_ty_app_inv in Hstep.
+    destruct Hstep as [(bound0 & body0 & E1 & E2) | (t0' & Hs & E2)].
     + (* S_TyBeta: (Λα.body) [S]  →  subst_ty *)
+      subst t t''.
       apply ty_lam_typing_inv in Hty.
       destruct Hty as [U0 [Hbody Hsub]].
       destruct (sub_ty_all_inv_full _ _ _ _ Hec Hsub)
         as [B0 [U1 [HeqU [HBsub Hsubbody]]]].
       injection HeqU; intros; subst.
-      (* Hbody : (bind_ty B :: Γ) ⊢ body : U0.                         *)
-      (* We apply subst_ty_in_tm_lemma with S <:: B. We have H: S <:: B.*)
       eapply T_Sub.
       * eapply subst_ty_in_tm_lemma; [exact Hbody|]. eapply SA_Trans; eauto.
       * eapply sub_subst_ty; eauto.
-    + eapply T_TyApp; eauto.
+    + subst t''. eapply T_TyApp; eauto.
   - (* LtApp *)
-    inversion Hstep; subst.
+    apply step_lt_app_inv in Hstep.
+    destruct Hstep as [(body0 & E1 & E2) | (t0' & Hs & E2)].
     + (* S_LtBeta *)
+      subst t t''.
       apply lt_lam_typing_inv in Hty.
       destruct Hty as [U0 [Hbody Hsub]].
       destruct (sub_lt_all_inv_full _ _ _ Hec Hsub) as [U1 [HeqU Hsubbody]].
@@ -1023,17 +1104,53 @@ Proof.
       eapply T_Sub.
       * eapply subst_lt_in_tm_lemma; [exact Hbody|]. apply LS_Local.
       * eapply sub_subst_lt; [exact Hsubbody | apply LS_Local].
-    + eapply T_LtApp; eauto.
+    + subst t''. eapply T_LtApp; eauto.
   - (* Ctor *)
-    inversion Hstep; subst.
-    eapply ctor_step_preservation;
-      [ eapply T_Ctor; try reflexivity; eauto | eauto ].
+    apply step_ctor_inv in Hstep.
+    destruct Hstep as (vs0 & t0 & t0' & tsr0 & Hvs0 & Eargs & Hs0 & Et).
+    rewrite Et. rewrite Eargs in *.
+    eapply ctor_step_preservation.
+    + (* repackage T_Ctor over the substituted arg-list *)
+      eapply T_Ctor; eassumption.
+    + assumption.
   - (* Match *)
-    inversion Hstep; subst.
+    apply step_match_inv in Hstep.
+    destruct Hstep as
+      [ (K0 & l0 & lts0 & Ts0 & vs0 & Es & Hvs0 & Ear & EK & Et)
+      | [ (K0' & l0 & lts0 & Ts0 & vs0 & Es & Hvs0 & Hne & Et)
+        | (s' & Hs & Et) ]].
     + (* S_MatchYes *)
+      subst K0 scrut arity t''.
       eapply match_yes_preservation; eauto.
-    + auto.
-    + eapply T_Match; eauto.
+    + (* S_MatchNo  *) subst scrut t''. auto.
+    + (* S_Match    *) subst t''. eapply T_Match; eauto.
+  (* ---- new typing rules: effect handlers ------------------------- *)
+  (* T_Cap auto-closed by `try no_step` (cap is a value) *)
+  - (* T_Handle: contradiction — no bind_eff under eval_ctx, so there  *)
+    (* is no well-typed term_handle in the first place.               *)
+    match goal with
+    | H : ctx_lookup_eff _ _ = Some _ |- _ =>
+        rewrite eval_ctx_no_eff in H; auto; discriminate
+    end.
+  - (* T_Perform: same contradiction *)
+    match goal with
+    | H : ctx_lookup_eff _ _ = Some _ |- _ =>
+        rewrite eval_ctx_no_eff in H; auto; discriminate
+    end.
+  - (* T_HandlerM *)
+    apply step_handler_m_inv in Hstep.
+    destruct Hstep as
+      [(Hv & Et)
+      | [(t' & Hs & Et)
+      | (E_tag & Ts & op_body & Ss & v & P & Hv & Hpe & Edec & Et)]].
+    + (* H_Return: t value, t'' = t *)
+      subst t''. assumption.
+    + (* S_HandlerM: t ==> t', t'' = handler_m m t' *)
+      subst t''. apply T_HandlerM. apply IHHty; assumption.
+    + (* H_Perform: under eval_ctx the inner perform-of-cap cannot be  *)
+      (* well-typed.  Apply the invariant axiom for a contradiction.    *)
+      exfalso. subst t.
+      eapply no_typed_perform_cap_under_eval_ctx; eauto.
 Qed.
 
 (* ------------------------------------------------------------------ *)

@@ -1,9 +1,9 @@
 -Q . ""
 Syntax.v
 Substitution.v
+SubstitutionTheory.v
 Semantics.v
 Typing.v
 Examples.v
 Safety.v
-CK.v
-CKSafety.v
+Sugar.v

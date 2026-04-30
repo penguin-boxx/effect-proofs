@@ -12,6 +12,7 @@
     },
     "chat.tools.terminal.autoApprove": {
         "coqc": true,
-        "coqtop": true
+        "coqtop": true,
+        "awk": true
     }
 }
