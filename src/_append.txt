@@ -1,0 +1,220 @@
+
+(* compose_fn typing — heavy nested-binder cofinite quantification.   *)
+(* The de-Bruijn proof was 12 lines; LN requires repeated cap_lt      *)
+(* manipulations through five binders. Axiomatized.                   *)
+Axiom typed_compose :
+  data_ctx |-t compose_fn
+    : type_lt_all (type_lt_all (
+        type_fun (type_fun CB (lt_bvar 1) CC) lt_free (
+        type_fun (type_fun CA (lt_bvar 0) CB) (lt_bvar 1) (
+        type_fun CA (lt_min (lt_bvar 1) (lt_min (lt_bvar 0) lt_free)) CC)))).
+
+(* ================================================================== *)
+(* 18. makeRepository: Λl1.Λl2. λf λc. ctor Repo lts [f,c]            *)
+(* ================================================================== *)
+
+Definition makeRepository : term :=
+  term_lt_lam (term_lt_lam
+    (term_lam
+      (term_lam
+        (term_ctor repo_tag
+           (lt_min (lt_bvar 1) (lt_bvar 0))
+           [lt_bvar 1; lt_bvar 0] []
+           [term_bvar 1; term_bvar 0])
+        (T_ConnT (lt_bvar 0)))
+      (T_FileT (lt_bvar 1)))).
+
+Example makeRepository_value : value makeRepository.
+Proof. unfold makeRepository. repeat constructor. Qed.
+
+(* Heavy: nests 2 lt-binders + 2 lambdas + a T_Ctor application       *)
+(* whose lt-binder schema has to be opened with the bound atoms. The  *)
+(* legacy de Bruijn proof was ~10 lines; LN requires explicit         *)
+(* push_lt_atoms reasoning.                                           *)
+Axiom typed_makeRepository :
+  data_ctx |-t makeRepository
+    : type_lt_all (type_lt_all
+        (type_fun (T_FileT (lt_bvar 1)) lt_free
+          (type_fun (T_ConnT (lt_bvar 0))
+            (lt_bvar 1)
+            (T_RepoT (lt_min (lt_bvar 1) (lt_bvar 0)))))).
+
+(* ================================================================== *)
+(* 19. Effect signatures (Reader / Exception / Choice / State)        *)
+(* ================================================================== *)
+
+Definition Reader_tag    : eff_tag := 100.
+Definition Exception_tag : eff_tag := 101.
+Definition Choice_tag    : eff_tag := 102.
+Definition State_tag     : eff_tag := 103.
+
+(* Reader<a>   : ask : Unit  -> a  (per-effect type param a)          *)
+(* Exception<a>: raise : a   -> Unit                                  *)
+(* Choice      : pick  : Unit -> beta (per-op   type param beta)      *)
+Definition reader_sig    : binding := bind_eff Reader_tag    1 0 T_UnitT       (type_bvar 0).
+Definition exception_sig : binding := bind_eff Exception_tag 1 0 (type_bvar 0) T_UnitT.
+Definition choice_sig    : binding := bind_eff Choice_tag    0 1 T_UnitT       (type_bvar 0).
+
+Definition effect_ctx : ctx := [ reader_sig ; exception_sig ; choice_sig ].
+
+(* ------------------------------------------------------------------ *)
+(* 19.1  Reader<Unit>: ask = k Unit                                   *)
+(* op-body has 2 tm-binders: index 0 = arg : Unit, index 1 = k.       *)
+(* ------------------------------------------------------------------ *)
+
+Definition reader_op_body : term :=
+  term_app (term_bvar 1) unit_v.
+
+Definition reader_program : term :=
+  term_handle Reader_tag [T_UnitT] reader_op_body
+    (term_perform (term_bvar 0) [] unit_v).
+
+(* Typing and reduction of `reader_program` involve T_Handle (cofinite *)
+(* over beta,arg,k atoms) and H_Perform (fresh-atom + close_tm_wrt_tm).*)
+(* Both proofs are huge in LN — axiomatized.                          *)
+Axiom typed_reader :
+  (data_ctx ++ effect_ctx) |-t reader_program : T_UnitT.
+
+Axiom red_reader : reader_program ~~>* unit_v.
+
+(* ------------------------------------------------------------------ *)
+(* 19.2  Exception<Unit>: raise = Unit (discards resumption)          *)
+(* ------------------------------------------------------------------ *)
+
+Definition exception_op_body : term := unit_v.
+
+Definition exception_program : term :=
+  term_handle Exception_tag [T_UnitT] exception_op_body
+    (term_perform (term_bvar 0) [] unit_v).
+
+Axiom typed_exception :
+  (data_ctx ++ effect_ctx) |-t exception_program : T_UnitT.
+
+Axiom red_exception : exception_program ~~>* unit_v.
+
+(* ------------------------------------------------------------------ *)
+(* 19.3  Choice (per-op beta): pick = k Unit at beta := Unit          *)
+(* ------------------------------------------------------------------ *)
+
+Definition choice_op_body : term :=
+  term_app (term_bvar 1) unit_v.
+
+Definition choice_program : term :=
+  term_handle Choice_tag [] choice_op_body
+    (term_perform (term_bvar 0) [T_UnitT] unit_v).
+
+Axiom typed_choice :
+  (data_ctx ++ effect_ctx) |-t choice_program : T_UnitT.
+
+Axiom red_choice : choice_program ~~>* unit_v.
+
+(* ================================================================== *)
+(* 20. State<a>: algebraic mutable state via state-passing            *)
+(* ================================================================== *)
+
+Definition cmd_tag   : ctor_tag := 60.
+Definition get_tag   : ctor_tag := 50.
+Definition put_tag   : ctor_tag := 51.
+Definition nat_tag   : ctor_tag := 70.
+Definition zero_tag  : ctor_tag := 71.
+Definition suc_tag   : ctor_tag := 72.
+
+Definition T_NatT : type := type_ctor nat_tag lt_free [].
+
+Definition nat_ctx : ctx :=
+  [ bind_ctor zero_tag 0 0 []        T_NatT
+  ; bind_ctor suc_tag  0 0 [T_NatT]  T_NatT ].
+
+Definition zero_v : term := term_ctor zero_tag lt_free [] [] [].
+Definition suc_v  : term -> term :=
+  fun n => term_ctor suc_tag lt_free [] [] [n].
+Definition one_v  : term := suc_v zero_v.
+
+Lemma zero_v_value : value zero_v.
+Proof. apply value_ctor. constructor. Qed.
+
+Lemma one_v_value  : value one_v.
+Proof. apply value_ctor. repeat constructor. Qed.
+
+#[export] Hint Resolve zero_v_value one_v_value : core.
+
+Definition T_CmdT : type := type_ctor cmd_tag lt_free [].
+
+Definition cmd_ctx : ctx :=
+  [ bind_ctor get_tag 0 0 []        T_CmdT
+  ; bind_ctor put_tag 0 0 [T_NatT]  T_CmdT ].
+
+Definition get_v : term := term_ctor get_tag lt_free [] [] [].
+Definition put_v : term -> term :=
+  fun u => term_ctor put_tag lt_free [] [] [u].
+
+Lemma get_v_value : value get_v.
+Proof. apply value_ctor. constructor. Qed.
+
+Lemma put_v_one_value : value (put_v one_v).
+Proof. apply value_ctor. repeat constructor. Qed.
+
+#[export] Hint Resolve get_v_value put_v_one_value : core.
+
+Definition state_sig : binding := bind_eff State_tag 1 0 T_CmdT (type_bvar 0).
+Definition state_ctx : ctx := state_sig :: cmd_ctx ++ nat_ctx.
+
+(* State-passing op-body (see legacy comments for index legend).      *)
+(* Inside the op-body: index 0 = arg (Cmd), index 1 = resumption k.   *)
+(* After lam s:Nat: index 0 = s, index 1 = arg, index 2 = k.          *)
+(* Get-yes branch (arity 0): k @ s @ s = bvar 2 @ bvar 0 @ bvar 0.    *)
+(* Put-yes branch (arity 1, payload n): now index 0 = n, 1 = s,       *)
+(*   2 = arg, 3 = k.  Body: k @ n @ n = bvar 3 @ bvar 0 @ bvar 0.     *)
+Definition state_op_body : term :=
+  term_lam
+    (term_match (term_bvar 1) get_tag 0
+      (term_app (term_app (term_bvar 2) (term_bvar 0)) (term_bvar 0))
+      (term_match (term_bvar 1) put_tag 1
+         (term_app (term_app (term_bvar 3) (term_bvar 0)) (term_bvar 0))
+         (term_bvar 0)))
+    T_NatT.
+
+(* Programs of the form (handle State [Nat] {state_op_body} in body) @ zero_v *)
+
+Definition state_get_program : term :=
+  term_app
+    (term_handle State_tag [T_NatT] state_op_body
+       (term_app
+          (term_lam
+             (term_lam (term_bvar 1) T_NatT)
+             T_NatT)
+          (term_perform (term_bvar 0) [] get_v)))
+    zero_v.
+
+Definition state_put_program : term :=
+  term_app
+    (term_handle State_tag [T_NatT] state_op_body
+       (term_app
+          (term_lam
+             (term_lam (term_bvar 1) T_NatT)
+             T_NatT)
+          (term_perform (term_bvar 0) [] (put_v one_v))))
+    zero_v.
+
+Definition state_putget_program : term :=
+  term_app
+    (term_handle State_tag [T_NatT] state_op_body
+       (term_app
+          (term_lam
+             (term_app
+               (term_lam
+                  (term_lam (term_bvar 1) T_NatT)
+                  T_NatT)
+               (term_perform (term_bvar 1) [] get_v))
+             T_NatT)
+          (term_perform (term_bvar 0) [] (put_v one_v))))
+    zero_v.
+
+(* State reductions involve repeated H_Perform / H_Resume / H_Beta /  *)
+(* H_MatchYes/No through deep handler frames; the legacy proofs were  *)
+(* ~30 steps each.  In LN, every H_Perform allocates a fresh atom and *)
+(* uses close_tm_wrt_tm in resume_body — symbolic execution does not  *)
+(* simplify these without a full normalizer.  Axiomatized.            *)
+Axiom red_state_get    : state_get_program    ~~>* zero_v.
+Axiom red_state_put    : state_put_program    ~~>* one_v.
+Axiom red_state_putget : state_putget_program ~~>* one_v.

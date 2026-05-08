@@ -1,9 +1,12 @@
 -Q . ""
+-Q ../vendor/Metalib Metalib
+
 Syntax.v
 Substitution.v
 SubstitutionTheory.v
-Semantics.v
 Typing.v
+SubtypingInv.v
+CEK.v
+CEKTyping.v
+CEKSafety.v
 Examples.v
-Safety.v
-Sugar.v

@@ -1,498 +1,921 @@
-Require Import Stdlib.Lists.List.
-Require Import Stdlib.Arith.PeanoNat.
+(* ================================================================== *)
+(* Substitution.v — locally nameless operations                       *)
+(*                                                                    *)
+(* For each binder/sort pair we provide:                              *)
+(*   open_X_wrt_Y_rec  : nat -> Y -> X -> X    (raw, with depth)      *)
+(*   open_X_wrt_Y      : Y -> X -> X           (depth 0)              *)
+(*   close_X_wrt_Y_rec : nat -> atom -> X -> X                        *)
+(*   close_X_wrt_Y     : atom -> X -> X                               *)
+(*   subst_X_in_Y      : Y -> atom -> X -> X   (free-atom subst)      *)
+(*   fv_X_in_Y         : Y -> atoms                                   *)
+(*                                                                    *)
+(* Sort pairs needed:                                                 *)
+(*   lt-in-lt, ty-in-lt, ty-in-ty,                                    *)
+(*   tm-in-tm, ty-in-tm, lt-in-tm                                     *)
+(*                                                                    *)
+(* Plus the locally-closed predicates lc_lifetime / lc_type / lc_term *)
+(* using cofinite quantification at binders.                          *)
+(* ================================================================== *)
+
+From Stdlib Require Import List.
+From Stdlib Require Import PeanoNat.
 Import ListNotations.
-Require Import Syntax.
+
+From Metalib Require Export Metatheory.
+Require Export Syntax.
 
 (* ================================================================== *)
-(* Shifting and substitution of de Bruijn indices.                    *)
+(* SECTION 1 — fv (free atoms)                                        *)
 (* ================================================================== *)
 
-(* ================================================================== *)
-(* Lifting (shifting) of de Bruijn indices                            *)
-(*                                                                    *)
-(* shift_X d c t  increments every free X-variable with index ≥ c     *)
-(* in t by d.  The cutoff c grows by 1 each time we pass under a      *)
-(* binder of kind X.                                                  *)
-(* ================================================================== *)
-
-(* --- Lifetimes --- *)
-
-Fixpoint shift_lt (amount cutoff : nat) (l : lifetime) : lifetime :=
+(* Free lt-atoms in a lifetime *)
+Fixpoint fv_lt_in_lt (l : lifetime) : atoms :=
   match l with
-  | lt_var x     => lt_var (if Nat.leb cutoff x then x + amount else x)
+  | lt_bvar _    => empty
+  | lt_fvar a    => singleton a
+  | lt_free      => empty
+  | lt_local     => empty
+  | lt_min l1 l2 => union (fv_lt_in_lt l1) (fv_lt_in_lt l2)
+  end.
+
+(* Free lt-atoms in a type *)
+Fixpoint fv_lt_in_ty (T : type) : atoms :=
+  let fix go (Ts : list type) : atoms :=
+    match Ts with
+    | []        => empty
+    | A :: rest => union (fv_lt_in_ty A) (go rest)
+    end
+  in
+  match T with
+  | type_bvar _      => empty
+  | type_fvar _      => empty
+  | type_fun A l B   => union (fv_lt_in_ty A) (union (fv_lt_in_lt l) (fv_lt_in_ty B))
+  | type_ctor _ l Ts => union (fv_lt_in_lt l) (go Ts)
+  | type_lt_all A    => fv_lt_in_ty A
+  | type_ty_all B A  => union (fv_lt_in_ty B) (fv_lt_in_ty A)
+  end.
+
+(* Free ty-atoms in a type *)
+Fixpoint fv_ty_in_ty (T : type) : atoms :=
+  let fix go (Ts : list type) : atoms :=
+    match Ts with
+    | []        => empty
+    | A :: rest => union (fv_ty_in_ty A) (go rest)
+    end
+  in
+  match T with
+  | type_bvar _      => empty
+  | type_fvar a      => singleton a
+  | type_fun A _ B   => union (fv_ty_in_ty A) (fv_ty_in_ty B)
+  | type_ctor _ _ Ts => go Ts
+  | type_lt_all A    => fv_ty_in_ty A
+  | type_ty_all B A  => union (fv_ty_in_ty B) (fv_ty_in_ty A)
+  end.
+
+(* Free tm-atoms in a term *)
+Fixpoint fv_tm_in_tm (t : term) : atoms :=
+  let fix go (ts : list term) : atoms :=
+    match ts with
+    | []        => empty
+    | u :: rest => union (fv_tm_in_tm u) (go rest)
+    end
+  in
+  match t with
+  | term_bvar _              => empty
+  | term_fvar a              => singleton a
+  | term_app t1 t2           => union (fv_tm_in_tm t1) (fv_tm_in_tm t2)
+  | term_lam body _          => fv_tm_in_tm body
+  | term_ty_app t _          => fv_tm_in_tm t
+  | term_ty_lam _ body       => fv_tm_in_tm body
+  | term_lt_app t _          => fv_tm_in_tm t
+  | term_lt_lam body         => fv_tm_in_tm body
+  | term_ctor _ _ _ _ ts     => go ts
+  | term_match s _ _ y n     =>
+      union (fv_tm_in_tm s) (union (fv_tm_in_tm y) (fv_tm_in_tm n))
+  | term_handle _ _ ob body  => union (fv_tm_in_tm ob) (fv_tm_in_tm body)
+  | term_perform t _ a       => union (fv_tm_in_tm t) (fv_tm_in_tm a)
+  | term_cap _ _ _ ob        => fv_tm_in_tm ob
+  | term_handler_m _ t       => fv_tm_in_tm t
+  | term_resume _ b          => fv_tm_in_tm b
+  end.
+
+(* Free ty-atoms in a term *)
+Fixpoint fv_ty_in_tm (t : term) : atoms :=
+  let fix go_tm (ts : list term) : atoms :=
+    match ts with
+    | []        => empty
+    | u :: rest => union (fv_ty_in_tm u) (go_tm rest)
+    end
+  in
+  let fix go_ty (Ts : list type) : atoms :=
+    match Ts with
+    | []        => empty
+    | A :: rest => union (fv_ty_in_ty A) (go_ty rest)
+    end
+  in
+  match t with
+  | term_bvar _              => empty
+  | term_fvar _              => empty
+  | term_app t1 t2           => union (fv_ty_in_tm t1) (fv_ty_in_tm t2)
+  | term_lam body T          => union (fv_ty_in_tm body) (fv_ty_in_ty T)
+  | term_ty_app t T          => union (fv_ty_in_tm t) (fv_ty_in_ty T)
+  | term_ty_lam bd body      => union (fv_ty_in_ty bd) (fv_ty_in_tm body)
+  | term_lt_app t _          => fv_ty_in_tm t
+  | term_lt_lam body         => fv_ty_in_tm body
+  | term_ctor _ _ _ Ts ts    => union (go_ty Ts) (go_tm ts)
+  | term_match s _ _ y n     =>
+      union (fv_ty_in_tm s) (union (fv_ty_in_tm y) (fv_ty_in_tm n))
+  | term_handle _ Ts ob body =>
+      union (go_ty Ts) (union (fv_ty_in_tm ob) (fv_ty_in_tm body))
+  | term_perform t Ss a      =>
+      union (fv_ty_in_tm t) (union (go_ty Ss) (fv_ty_in_tm a))
+  | term_cap _ _ Ts ob       => union (go_ty Ts) (fv_ty_in_tm ob)
+  | term_handler_m _ t       => fv_ty_in_tm t
+  | term_resume _ b          => fv_ty_in_tm b
+  end.
+
+(* Free lt-atoms in a term *)
+Fixpoint fv_lt_in_tm (t : term) : atoms :=
+  let fix go_tm (ts : list term) : atoms :=
+    match ts with
+    | []        => empty
+    | u :: rest => union (fv_lt_in_tm u) (go_tm rest)
+    end
+  in
+  let fix go_ty (Ts : list type) : atoms :=
+    match Ts with
+    | []        => empty
+    | A :: rest => union (fv_lt_in_ty A) (go_ty rest)
+    end
+  in
+  let fix go_lt (ls : list lifetime) : atoms :=
+    match ls with
+    | []        => empty
+    | l :: rest => union (fv_lt_in_lt l) (go_lt rest)
+    end
+  in
+  match t with
+  | term_bvar _              => empty
+  | term_fvar _              => empty
+  | term_app t1 t2           => union (fv_lt_in_tm t1) (fv_lt_in_tm t2)
+  | term_lam body T          => union (fv_lt_in_tm body) (fv_lt_in_ty T)
+  | term_ty_app t T          => union (fv_lt_in_tm t) (fv_lt_in_ty T)
+  | term_ty_lam bd body      => union (fv_lt_in_ty bd) (fv_lt_in_tm body)
+  | term_lt_app t l          => union (fv_lt_in_tm t) (fv_lt_in_lt l)
+  | term_lt_lam body         => fv_lt_in_tm body
+  | term_ctor _ l ls Ts ts   =>
+      union (fv_lt_in_lt l)
+            (union (go_lt ls) (union (go_ty Ts) (go_tm ts)))
+  | term_match s _ _ y n     =>
+      union (fv_lt_in_tm s) (union (fv_lt_in_tm y) (fv_lt_in_tm n))
+  | term_handle _ Ts ob body =>
+      union (go_ty Ts) (union (fv_lt_in_tm ob) (fv_lt_in_tm body))
+  | term_perform t Ss a      =>
+      union (fv_lt_in_tm t) (union (go_ty Ss) (fv_lt_in_tm a))
+  | term_cap _ _ Ts ob       => union (go_ty Ts) (fv_lt_in_tm ob)
+  | term_handler_m _ t       => fv_lt_in_tm t
+  | term_resume _ b          => fv_lt_in_tm b
+  end.
+
+(* ================================================================== *)
+(* SECTION 2 — open (replace bvar k with replacement)                 *)
+(* ================================================================== *)
+
+(* --- open lifetime with lifetime --- *)
+Fixpoint open_lt_wrt_lt_rec (k : nat) (u : lifetime) (l : lifetime) : lifetime :=
+  match l with
+  | lt_bvar n =>
+      match Nat.compare n k with
+      | Lt => lt_bvar n
+      | Eq => u
+      | Gt => lt_bvar (pred n)
+      end
+  | lt_fvar _    => l
+  | lt_free      => l
+  | lt_local     => l
+  | lt_min l1 l2 => lt_min (open_lt_wrt_lt_rec k u l1) (open_lt_wrt_lt_rec k u l2)
+  end.
+
+Definition open_lt_wrt_lt (u : lifetime) (l : lifetime) : lifetime :=
+  open_lt_wrt_lt_rec 0 u l.
+
+(* --- open type with lifetime --- *)
+Fixpoint open_ty_wrt_lt_rec (k : nat) (u : lifetime) (T : type) : type :=
+  let fix go (Ts : list type) : list type :=
+    match Ts with
+    | []        => []
+    | A :: rest => open_ty_wrt_lt_rec k u A :: go rest
+    end
+  in
+  match T with
+  | type_bvar _      => T
+  | type_fvar _      => T
+  | type_fun A l B   =>
+      type_fun (open_ty_wrt_lt_rec k u A)
+               (open_lt_wrt_lt_rec k u l)
+               (open_ty_wrt_lt_rec k u B)
+  | type_ctor K l Ts =>
+      type_ctor K (open_lt_wrt_lt_rec k u l) (go Ts)
+  | type_lt_all A    =>
+      (* binds 1 lt: increase index *)
+      type_lt_all (open_ty_wrt_lt_rec (S k) u A)
+  | type_ty_all B A  =>
+      type_ty_all (open_ty_wrt_lt_rec k u B) (open_ty_wrt_lt_rec k u A)
+  end.
+
+Definition open_ty_wrt_lt (u : lifetime) (T : type) : type :=
+  open_ty_wrt_lt_rec 0 u T.
+
+(* --- open type with type --- *)
+Fixpoint open_ty_wrt_ty_rec (k : nat) (U : type) (T : type) : type :=
+  let fix go (Ts : list type) : list type :=
+    match Ts with
+    | []        => []
+    | A :: rest => open_ty_wrt_ty_rec k U A :: go rest
+    end
+  in
+  match T with
+  | type_bvar n =>
+      match Nat.compare n k with
+      | Lt => type_bvar n
+      | Eq => U
+      | Gt => type_bvar (pred n)
+      end
+  | type_fvar _      => T
+  | type_fun A l B   =>
+      type_fun (open_ty_wrt_ty_rec k U A) l (open_ty_wrt_ty_rec k U B)
+  | type_ctor K l Ts => type_ctor K l (go Ts)
+  | type_lt_all A    => type_lt_all (open_ty_wrt_ty_rec k U A)
+  | type_ty_all B A  =>
+      type_ty_all (open_ty_wrt_ty_rec k U B)
+                  (open_ty_wrt_ty_rec (S k) U A)
+  end.
+
+Definition open_ty_wrt_ty (U : type) (T : type) : type :=
+  open_ty_wrt_ty_rec 0 U T.
+
+(* --- open term with term --- *)
+Fixpoint open_tm_wrt_tm_rec (k : nat) (u : term) (t : term) : term :=
+  let fix go (ts : list term) : list term :=
+    match ts with
+    | []        => []
+    | x :: rest => open_tm_wrt_tm_rec k u x :: go rest
+    end
+  in
+  match t with
+  | term_bvar n =>
+      match Nat.compare n k with
+      | Lt => term_bvar n
+      | Eq => u
+      | Gt => term_bvar (pred n)
+      end
+  | term_fvar _              => t
+  | term_app t1 t2           =>
+      term_app (open_tm_wrt_tm_rec k u t1) (open_tm_wrt_tm_rec k u t2)
+  | term_lam body T          =>
+      term_lam (open_tm_wrt_tm_rec (S k) u body) T
+  | term_ty_app t1 T         => term_ty_app (open_tm_wrt_tm_rec k u t1) T
+  | term_ty_lam bd body      => term_ty_lam bd (open_tm_wrt_tm_rec k u body)
+  | term_lt_app t1 l         => term_lt_app (open_tm_wrt_tm_rec k u t1) l
+  | term_lt_lam body         => term_lt_lam (open_tm_wrt_tm_rec k u body)
+  | term_ctor K l ls Ts ts   => term_ctor K l ls Ts (go ts)
+  | term_match s K ar y n    =>
+      (* yes_body binds `ar` term vars; bump index by ar *)
+      term_match (open_tm_wrt_tm_rec k u s) K ar
+                 (open_tm_wrt_tm_rec (k + ar) u y)
+                 (open_tm_wrt_tm_rec k u n)
+  | term_handle E Ts ob body =>
+      (* op_body has 2 tm binders (ty binders unchanged); body has 1 tm binder *)
+      term_handle E Ts (open_tm_wrt_tm_rec (k + 2) u ob)
+                       (open_tm_wrt_tm_rec (S k) u body)
+  | term_perform t1 Ss a     =>
+      term_perform (open_tm_wrt_tm_rec k u t1) Ss (open_tm_wrt_tm_rec k u a)
+  | term_cap E m Ts ob       =>
+      term_cap E m Ts (open_tm_wrt_tm_rec (k + 2) u ob)
+  | term_handler_m m t1      => term_handler_m m (open_tm_wrt_tm_rec k u t1)
+  | term_resume m b          => term_resume m (open_tm_wrt_tm_rec (S k) u b)
+  end.
+
+Definition open_tm_wrt_tm (u : term) (t : term) : term :=
+  open_tm_wrt_tm_rec 0 u t.
+
+(* --- open term with type --- *)
+Fixpoint open_tm_wrt_ty_rec (k : nat) (U : type) (t : term) : term :=
+  let fix go_tm (ts : list term) : list term :=
+    match ts with
+    | []        => []
+    | x :: rest => open_tm_wrt_ty_rec k U x :: go_tm rest
+    end
+  in
+  let fix go_ty (Ts : list type) : list type :=
+    match Ts with
+    | []        => []
+    | A :: rest => open_ty_wrt_ty_rec k U A :: go_ty rest
+    end
+  in
+  match t with
+  | term_bvar _              => t
+  | term_fvar _              => t
+  | term_app t1 t2           =>
+      term_app (open_tm_wrt_ty_rec k U t1) (open_tm_wrt_ty_rec k U t2)
+  | term_lam body T          =>
+      term_lam (open_tm_wrt_ty_rec k U body) (open_ty_wrt_ty_rec k U T)
+  | term_ty_app t1 T         =>
+      term_ty_app (open_tm_wrt_ty_rec k U t1) (open_ty_wrt_ty_rec k U T)
+  | term_ty_lam bd body      =>
+      term_ty_lam (open_ty_wrt_ty_rec k U bd) (open_tm_wrt_ty_rec (S k) U body)
+  | term_lt_app t1 l         => term_lt_app (open_tm_wrt_ty_rec k U t1) l
+  | term_lt_lam body         => term_lt_lam (open_tm_wrt_ty_rec k U body)
+  | term_ctor K l ls Ts ts   => term_ctor K l ls (go_ty Ts) (go_tm ts)
+  | term_match s K ar y n    =>
+      term_match (open_tm_wrt_ty_rec k U s) K ar
+                 (open_tm_wrt_ty_rec k U y)
+                 (open_tm_wrt_ty_rec k U n)
+  | term_handle E Ts ob body =>
+      (* op_body has n_β ty binders — but n_β is implicit in op_body's bvars. *)
+      (* Convention: ty-args are opened OUTERMOST; here we open the slots not   *)
+      (* yet bound by op_body's own ty-lams.  See SECTION on multi-binders.    *)
+      term_handle E (go_ty Ts) (open_tm_wrt_ty_rec k U ob)
+                               (open_tm_wrt_ty_rec k U body)
+  | term_perform t1 Ss a     =>
+      term_perform (open_tm_wrt_ty_rec k U t1) (go_ty Ss)
+                   (open_tm_wrt_ty_rec k U a)
+  | term_cap E m Ts ob       =>
+      term_cap E m (go_ty Ts) (open_tm_wrt_ty_rec k U ob)
+  | term_handler_m m t1      => term_handler_m m (open_tm_wrt_ty_rec k U t1)
+  | term_resume m b          => term_resume m (open_tm_wrt_ty_rec k U b)
+  end.
+
+Definition open_tm_wrt_ty (U : type) (t : term) : term :=
+  open_tm_wrt_ty_rec 0 U t.
+
+(* --- open term with lifetime --- *)
+Fixpoint open_tm_wrt_lt_rec (k : nat) (u : lifetime) (t : term) : term :=
+  let fix go_tm (ts : list term) : list term :=
+    match ts with
+    | []        => []
+    | x :: rest => open_tm_wrt_lt_rec k u x :: go_tm rest
+    end
+  in
+  let fix go_ty (Ts : list type) : list type :=
+    match Ts with
+    | []        => []
+    | A :: rest => open_ty_wrt_lt_rec k u A :: go_ty rest
+    end
+  in
+  let fix go_lt (ls : list lifetime) : list lifetime :=
+    match ls with
+    | []        => []
+    | l :: rest => open_lt_wrt_lt_rec k u l :: go_lt rest
+    end
+  in
+  match t with
+  | term_bvar _              => t
+  | term_fvar _              => t
+  | term_app t1 t2           =>
+      term_app (open_tm_wrt_lt_rec k u t1) (open_tm_wrt_lt_rec k u t2)
+  | term_lam body T          =>
+      term_lam (open_tm_wrt_lt_rec k u body) (open_ty_wrt_lt_rec k u T)
+  | term_ty_app t1 T         =>
+      term_ty_app (open_tm_wrt_lt_rec k u t1) (open_ty_wrt_lt_rec k u T)
+  | term_ty_lam bd body      =>
+      term_ty_lam (open_ty_wrt_lt_rec k u bd) (open_tm_wrt_lt_rec k u body)
+  | term_lt_app t1 l         =>
+      term_lt_app (open_tm_wrt_lt_rec k u t1) (open_lt_wrt_lt_rec k u l)
+  | term_lt_lam body         =>
+      term_lt_lam (open_tm_wrt_lt_rec (S k) u body)
+  | term_ctor K l ls Ts ts   =>
+      term_ctor K (open_lt_wrt_lt_rec k u l) (go_lt ls) (go_ty Ts) (go_tm ts)
+  | term_match s K ar y n    =>
+      term_match (open_tm_wrt_lt_rec k u s) K ar
+                 (open_tm_wrt_lt_rec k u y)
+                 (open_tm_wrt_lt_rec k u n)
+  | term_handle E Ts ob body =>
+      term_handle E (go_ty Ts) (open_tm_wrt_lt_rec k u ob)
+                               (open_tm_wrt_lt_rec k u body)
+  | term_perform t1 Ss a     =>
+      term_perform (open_tm_wrt_lt_rec k u t1) (go_ty Ss)
+                   (open_tm_wrt_lt_rec k u a)
+  | term_cap E m Ts ob       =>
+      term_cap E m (go_ty Ts) (open_tm_wrt_lt_rec k u ob)
+  | term_handler_m m t1      => term_handler_m m (open_tm_wrt_lt_rec k u t1)
+  | term_resume m b          => term_resume m (open_tm_wrt_lt_rec k u b)
+  end.
+
+Definition open_tm_wrt_lt (u : lifetime) (t : term) : term :=
+  open_tm_wrt_lt_rec 0 u t.
+
+(* ================================================================== *)
+(* SECTION 3 — close (replace fvar a with bvar k)                     *)
+(* ================================================================== *)
+
+Fixpoint close_lt_wrt_lt_rec (k : nat) (a : atom) (l : lifetime) : lifetime :=
+  match l with
+  | lt_bvar n    => if Nat.leb k n then lt_bvar (S n) else lt_bvar n
+  | lt_fvar b    => if a == b then lt_bvar k else lt_fvar b
   | lt_free      => lt_free
   | lt_local     => lt_local
-  | lt_min l1 l2 => lt_min (shift_lt amount cutoff l1) (shift_lt amount cutoff l2)
+  | lt_min l1 l2 => lt_min (close_lt_wrt_lt_rec k a l1) (close_lt_wrt_lt_rec k a l2)
   end.
 
-(* --- Types: shift lifetime variables --- *)
+Definition close_lt_wrt_lt (a : atom) (l : lifetime) : lifetime :=
+  close_lt_wrt_lt_rec 0 a l.
 
-Fixpoint shift_lt_in_ty (amount cutoff : nat) (T : type) : type :=
-  let fix go Ts :=
+Fixpoint close_ty_wrt_lt_rec (k : nat) (a : atom) (T : type) : type :=
+  let fix go (Ts : list type) : list type :=
     match Ts with
     | []        => []
-    | A :: rest => shift_lt_in_ty amount cutoff A :: go rest
+    | A :: rest => close_ty_wrt_lt_rec k a A :: go rest
     end
   in
   match T with
-  | type_var n        => type_var n
-  | type_fun A l B    => type_fun (shift_lt_in_ty amount cutoff A)
-                                  (shift_lt amount cutoff l)
-                                  (shift_lt_in_ty amount cutoff B)
-  | type_ctor K l Ts  => type_ctor K (shift_lt amount cutoff l) (go Ts)
-  | type_lt_all A     => type_lt_all (shift_lt_in_ty amount (S cutoff) A)
-  | type_ty_all B A   => type_ty_all (shift_lt_in_ty amount cutoff B)
-                                     (shift_lt_in_ty amount cutoff A)
+  | type_bvar _      => T
+  | type_fvar _      => T
+  | type_fun A l B   =>
+      type_fun (close_ty_wrt_lt_rec k a A)
+               (close_lt_wrt_lt_rec k a l)
+               (close_ty_wrt_lt_rec k a B)
+  | type_ctor K l Ts => type_ctor K (close_lt_wrt_lt_rec k a l) (go Ts)
+  | type_lt_all A    => type_lt_all (close_ty_wrt_lt_rec (S k) a A)
+  | type_ty_all B A  =>
+      type_ty_all (close_ty_wrt_lt_rec k a B) (close_ty_wrt_lt_rec k a A)
   end.
 
-Definition shift_lt_in_ty_list (amount cutoff : nat) (Ts : list type) : list type :=
-  List.map (shift_lt_in_ty amount cutoff) Ts.
+Definition close_ty_wrt_lt (a : atom) (T : type) : type :=
+  close_ty_wrt_lt_rec 0 a T.
 
-(* --- Types: shift type variables --- *)
-
-Fixpoint shift_ty (amount cutoff : nat) (T : type) : type :=
-  let fix go Ts :=
+Fixpoint close_ty_wrt_ty_rec (k : nat) (a : atom) (T : type) : type :=
+  let fix go (Ts : list type) : list type :=
     match Ts with
     | []        => []
-    | A :: rest => shift_ty amount cutoff A :: go rest
+    | A :: rest => close_ty_wrt_ty_rec k a A :: go rest
     end
   in
   match T with
-  | type_var n        => type_var (if Nat.leb cutoff n then n + amount else n)
-  | type_fun A l B    => type_fun (shift_ty amount cutoff A) l (shift_ty amount cutoff B)
-  | type_ctor K l Ts  => type_ctor K l (go Ts)
-  | type_lt_all A     => type_lt_all (shift_ty amount cutoff A)
-  | type_ty_all B A   => type_ty_all (shift_ty amount cutoff B)
-                                     (shift_ty amount (S cutoff) A)
+  | type_bvar n      => if Nat.leb k n then type_bvar (S n) else type_bvar n
+  | type_fvar b      => if a == b then type_bvar k else type_fvar b
+  | type_fun A l B   =>
+      type_fun (close_ty_wrt_ty_rec k a A) l (close_ty_wrt_ty_rec k a B)
+  | type_ctor K l Ts => type_ctor K l (go Ts)
+  | type_lt_all A    => type_lt_all (close_ty_wrt_ty_rec k a A)
+  | type_ty_all B A  =>
+      type_ty_all (close_ty_wrt_ty_rec k a B) (close_ty_wrt_ty_rec (S k) a A)
   end.
 
-Definition shift_ty_list (amount cutoff : nat) (Ts : list type) : list type :=
-  List.map (shift_ty amount cutoff) Ts.
+Definition close_ty_wrt_ty (a : atom) (T : type) : type :=
+  close_ty_wrt_ty_rec 0 a T.
 
-(* --- Terms: shift term variables --- *)
-
-Fixpoint shift_tm (amount cutoff : nat) (t : term) : term :=
-  let fix go ts :=
+Fixpoint close_tm_wrt_tm_rec (k : nat) (a : atom) (t : term) : term :=
+  let fix go (ts : list term) : list term :=
     match ts with
     | []        => []
-    | u :: rest => shift_tm amount cutoff u :: go rest
+    | x :: rest => close_tm_wrt_tm_rec k a x :: go rest
     end
   in
   match t with
-  | term_var x           => term_var (if Nat.leb cutoff x then x + amount else x)
-  | term_app t1 t2       => term_app (shift_tm amount cutoff t1) (shift_tm amount cutoff t2)
-  (* term_lam: body is under a term binder, cutoff grows *)
-  | term_lam body T      => term_lam (shift_tm amount (S cutoff) body) T
-  | term_ty_app t T      => term_ty_app (shift_tm amount cutoff t) T
-  (* type/lt binders do not bind term variables *)
-  | term_ty_lam bound body => term_ty_lam bound (shift_tm amount cutoff body)
-  | term_lt_app t l        => term_lt_app (shift_tm amount cutoff t) l
-  | term_lt_lam body     => term_lt_lam (shift_tm amount cutoff body)
-  | term_ctor K l lts Ts ts  => term_ctor K l lts Ts (go ts)
-  (* yes_body is under arity extra term binders; no_body is not *)
-  | term_match scrut tag arity yes_body no_body =>
-      term_match (shift_tm amount cutoff scrut) tag arity
-                 (shift_tm amount (cutoff + arity) yes_body)
-                 (shift_tm amount cutoff no_body)
-  (* handle: body under +1 term binder; op_body under +2 (arg + k);   *)
-  (* the n_β outer type-binders of op_body don't bind term vars.       *)
-  | term_handle E Ts op_body body =>
-      term_handle E Ts
-                  (shift_tm amount (cutoff + 2) op_body)
-                  (shift_tm amount (S cutoff) body)
-  | term_perform t Ss arg =>
-      term_perform (shift_tm amount cutoff t) Ss (shift_tm amount cutoff arg)
-  | term_cap E m Ts op_body =>
-      term_cap E m Ts (shift_tm amount (cutoff + 2) op_body)
-  | term_handler_m m t => term_handler_m m (shift_tm amount cutoff t)
-  | term_resume m b => term_resume m (shift_tm amount (S cutoff) b)
+  | term_bvar n              => if Nat.leb k n then term_bvar (S n) else term_bvar n
+  | term_fvar b              => if a == b then term_bvar k else term_fvar b
+  | term_app t1 t2           =>
+      term_app (close_tm_wrt_tm_rec k a t1) (close_tm_wrt_tm_rec k a t2)
+  | term_lam body T          => term_lam (close_tm_wrt_tm_rec (S k) a body) T
+  | term_ty_app t1 T         => term_ty_app (close_tm_wrt_tm_rec k a t1) T
+  | term_ty_lam bd body      => term_ty_lam bd (close_tm_wrt_tm_rec k a body)
+  | term_lt_app t1 l         => term_lt_app (close_tm_wrt_tm_rec k a t1) l
+  | term_lt_lam body         => term_lt_lam (close_tm_wrt_tm_rec k a body)
+  | term_ctor K l ls Ts ts   => term_ctor K l ls Ts (go ts)
+  | term_match s K ar y n    =>
+      term_match (close_tm_wrt_tm_rec k a s) K ar
+                 (close_tm_wrt_tm_rec (k + ar) a y)
+                 (close_tm_wrt_tm_rec k a n)
+  | term_handle E Ts ob body =>
+      term_handle E Ts (close_tm_wrt_tm_rec (k + 2) a ob)
+                       (close_tm_wrt_tm_rec (S k) a body)
+  | term_perform t1 Ss a'    =>
+      term_perform (close_tm_wrt_tm_rec k a t1) Ss (close_tm_wrt_tm_rec k a a')
+  | term_cap E m Ts ob       =>
+      term_cap E m Ts (close_tm_wrt_tm_rec (k + 2) a ob)
+  | term_handler_m m t1      => term_handler_m m (close_tm_wrt_tm_rec k a t1)
+  | term_resume m b          => term_resume m (close_tm_wrt_tm_rec (S k) a b)
   end.
 
-(* --- Terms: shift type variables --- *)
+Definition close_tm_wrt_tm (a : atom) (t : term) : term :=
+  close_tm_wrt_tm_rec 0 a t.
 
-Fixpoint shift_ty_in_tm (amount cutoff : nat) (t : term) : term :=
-  let fix go ts :=
+Fixpoint close_tm_wrt_ty_rec (k : nat) (a : atom) (t : term) : term :=
+  let fix go_tm (ts : list term) : list term :=
     match ts with
     | []        => []
-    | u :: rest => shift_ty_in_tm amount cutoff u :: go rest
+    | x :: rest => close_tm_wrt_ty_rec k a x :: go_tm rest
+    end
+  in
+  let fix go_ty (Ts : list type) : list type :=
+    match Ts with
+    | []        => []
+    | A :: rest => close_ty_wrt_ty_rec k a A :: go_ty rest
     end
   in
   match t with
-  | term_var x           => term_var x
-  | term_app t1 t2       => term_app (shift_ty_in_tm amount cutoff t1)
-                                     (shift_ty_in_tm amount cutoff t2)
-  | term_lam body T      => term_lam (shift_ty_in_tm amount cutoff body)
-                                     (shift_ty amount cutoff T)
-  | term_ty_app t T      => term_ty_app (shift_ty_in_tm amount cutoff t)
-                                        (shift_ty amount cutoff T)
-  (* term_ty_lam binds a type variable: cutoff for type vars grows *)
-  (* bound is NOT under the type binder: shift at current cutoff *)
-  | term_ty_lam bound body => term_ty_lam (shift_ty amount cutoff bound)
-                                          (shift_ty_in_tm amount (S cutoff) body)
-  | term_lt_app t l        => term_lt_app (shift_ty_in_tm amount cutoff t) l
-  (* lt binder does not bind type vars *)
-  | term_lt_lam body     => term_lt_lam (shift_ty_in_tm amount cutoff body)
-  | term_ctor K l lts Ts ts  => term_ctor K l lts (shift_ty_list amount cutoff Ts) (go ts)
-  (* match introduces no type binder; arity term binders do not affect type indices *)
-  | term_match scrut tag arity yes_body no_body =>
-      term_match (shift_ty_in_tm amount cutoff scrut) tag arity
-                 (shift_ty_in_tm amount cutoff yes_body)
-                 (shift_ty_in_tm amount cutoff no_body)
-  (* handle/perform/cap: shift Ts and recurse; no type binder        *)
-  (* (the n_β type-binders of op_body shift the cutoff inside).       *)
-  | term_handle E Ts op_body body =>
-      term_handle E (shift_ty_list amount cutoff Ts)
-                  (shift_ty_in_tm amount cutoff op_body)
-                  (shift_ty_in_tm amount cutoff body)
-  | term_perform t Ss arg =>
-      term_perform (shift_ty_in_tm amount cutoff t)
-                   (shift_ty_list amount cutoff Ss)
-                   (shift_ty_in_tm amount cutoff arg)
-  | term_cap E m Ts op_body =>
-      term_cap E m (shift_ty_list amount cutoff Ts)
-               (shift_ty_in_tm amount cutoff op_body)
-  | term_handler_m m t => term_handler_m m (shift_ty_in_tm amount cutoff t)
-  | term_resume m b => term_resume m (shift_ty_in_tm amount cutoff b)
+  | term_bvar _              => t
+  | term_fvar _              => t
+  | term_app t1 t2           =>
+      term_app (close_tm_wrt_ty_rec k a t1) (close_tm_wrt_ty_rec k a t2)
+  | term_lam body T          =>
+      term_lam (close_tm_wrt_ty_rec k a body) (close_ty_wrt_ty_rec k a T)
+  | term_ty_app t1 T         =>
+      term_ty_app (close_tm_wrt_ty_rec k a t1) (close_ty_wrt_ty_rec k a T)
+  | term_ty_lam bd body      =>
+      term_ty_lam (close_ty_wrt_ty_rec k a bd) (close_tm_wrt_ty_rec (S k) a body)
+  | term_lt_app t1 l         => term_lt_app (close_tm_wrt_ty_rec k a t1) l
+  | term_lt_lam body         => term_lt_lam (close_tm_wrt_ty_rec k a body)
+  | term_ctor K l ls Ts ts   => term_ctor K l ls (go_ty Ts) (go_tm ts)
+  | term_match s K ar y n    =>
+      term_match (close_tm_wrt_ty_rec k a s) K ar
+                 (close_tm_wrt_ty_rec k a y)
+                 (close_tm_wrt_ty_rec k a n)
+  | term_handle E Ts ob body =>
+      term_handle E (go_ty Ts) (close_tm_wrt_ty_rec k a ob)
+                               (close_tm_wrt_ty_rec k a body)
+  | term_perform t1 Ss a'    =>
+      term_perform (close_tm_wrt_ty_rec k a t1) (go_ty Ss)
+                   (close_tm_wrt_ty_rec k a a')
+  | term_cap E m Ts ob       =>
+      term_cap E m (go_ty Ts) (close_tm_wrt_ty_rec k a ob)
+  | term_handler_m m t1      => term_handler_m m (close_tm_wrt_ty_rec k a t1)
+  | term_resume m b          => term_resume m (close_tm_wrt_ty_rec k a b)
   end.
 
-(* --- Terms: shift lifetime variables --- *)
+Definition close_tm_wrt_ty (a : atom) (t : term) : term :=
+  close_tm_wrt_ty_rec 0 a t.
 
-Fixpoint shift_lt_in_tm (amount cutoff : nat) (t : term) : term :=
-  let fix go ts :=
+Fixpoint close_tm_wrt_lt_rec (k : nat) (a : atom) (t : term) : term :=
+  let fix go_tm (ts : list term) : list term :=
     match ts with
     | []        => []
-    | u :: rest => shift_lt_in_tm amount cutoff u :: go rest
+    | x :: rest => close_tm_wrt_lt_rec k a x :: go_tm rest
+    end
+  in
+  let fix go_ty (Ts : list type) : list type :=
+    match Ts with
+    | []        => []
+    | A :: rest => close_ty_wrt_lt_rec k a A :: go_ty rest
+    end
+  in
+  let fix go_lt (ls : list lifetime) : list lifetime :=
+    match ls with
+    | []        => []
+    | l :: rest => close_lt_wrt_lt_rec k a l :: go_lt rest
     end
   in
   match t with
-  | term_var x           => term_var x
-  | term_app t1 t2       => term_app (shift_lt_in_tm amount cutoff t1)
-                                     (shift_lt_in_tm amount cutoff t2)
-  | term_lam body T      => term_lam (shift_lt_in_tm amount cutoff body)
-                                     (shift_lt_in_ty amount cutoff T)
-  | term_ty_app t T      => term_ty_app (shift_lt_in_tm amount cutoff t)
-                                        (shift_lt_in_ty amount cutoff T)
-  (* ty binder does not bind lifetime vars *)
-  | term_ty_lam bound body => term_ty_lam (shift_lt_in_ty amount cutoff bound)
-                                          (shift_lt_in_tm amount cutoff body)
-  | term_lt_app t l        => term_lt_app (shift_lt_in_tm amount cutoff t)
-                                        (shift_lt amount cutoff l)
-  (* term_lt_lam binds a lifetime variable: cutoff for lt vars grows *)
-  | term_lt_lam body     => term_lt_lam (shift_lt_in_tm amount (S cutoff) body)
-  | term_ctor K l lts Ts ts  => term_ctor K (shift_lt amount cutoff l)
-                                        (List.map (shift_lt amount cutoff) lts)
-                                        (shift_lt_in_ty_list amount cutoff Ts)
-                                        (go ts)
-  (* match introduces no lifetime binder; arity term binders do not affect lifetime indices *)
-  | term_match scrut tag arity yes_body no_body =>
-      term_match (shift_lt_in_tm amount cutoff scrut) tag arity
-                 (shift_lt_in_tm amount cutoff yes_body)
-                 (shift_lt_in_tm amount cutoff no_body)
-  | term_handle E Ts op_body body =>
-      term_handle E (shift_lt_in_ty_list amount cutoff Ts)
-                  (shift_lt_in_tm amount cutoff op_body)
-                  (shift_lt_in_tm amount cutoff body)
-  | term_perform t Ss arg =>
-      term_perform (shift_lt_in_tm amount cutoff t)
-                   (shift_lt_in_ty_list amount cutoff Ss)
-                   (shift_lt_in_tm amount cutoff arg)
-  | term_cap E m Ts op_body =>
-      term_cap E m (shift_lt_in_ty_list amount cutoff Ts)
-               (shift_lt_in_tm amount cutoff op_body)
-  | term_handler_m m t => term_handler_m m (shift_lt_in_tm amount cutoff t)
-  | term_resume m b => term_resume m (shift_lt_in_tm amount cutoff b)
+  | term_bvar _              => t
+  | term_fvar _              => t
+  | term_app t1 t2           =>
+      term_app (close_tm_wrt_lt_rec k a t1) (close_tm_wrt_lt_rec k a t2)
+  | term_lam body T          =>
+      term_lam (close_tm_wrt_lt_rec k a body) (close_ty_wrt_lt_rec k a T)
+  | term_ty_app t1 T         =>
+      term_ty_app (close_tm_wrt_lt_rec k a t1) (close_ty_wrt_lt_rec k a T)
+  | term_ty_lam bd body      =>
+      term_ty_lam (close_ty_wrt_lt_rec k a bd) (close_tm_wrt_lt_rec k a body)
+  | term_lt_app t1 l         =>
+      term_lt_app (close_tm_wrt_lt_rec k a t1) (close_lt_wrt_lt_rec k a l)
+  | term_lt_lam body         =>
+      term_lt_lam (close_tm_wrt_lt_rec (S k) a body)
+  | term_ctor K l ls Ts ts   =>
+      term_ctor K (close_lt_wrt_lt_rec k a l) (go_lt ls) (go_ty Ts) (go_tm ts)
+  | term_match s K ar y n    =>
+      term_match (close_tm_wrt_lt_rec k a s) K ar
+                 (close_tm_wrt_lt_rec k a y)
+                 (close_tm_wrt_lt_rec k a n)
+  | term_handle E Ts ob body =>
+      term_handle E (go_ty Ts) (close_tm_wrt_lt_rec k a ob)
+                               (close_tm_wrt_lt_rec k a body)
+  | term_perform t1 Ss a'    =>
+      term_perform (close_tm_wrt_lt_rec k a t1) (go_ty Ss)
+                   (close_tm_wrt_lt_rec k a a')
+  | term_cap E m Ts ob       =>
+      term_cap E m (go_ty Ts) (close_tm_wrt_lt_rec k a ob)
+  | term_handler_m m t1      => term_handler_m m (close_tm_wrt_lt_rec k a t1)
+  | term_resume m b          => term_resume m (close_tm_wrt_lt_rec k a b)
   end.
+
+Definition close_tm_wrt_lt (a : atom) (t : term) : term :=
+  close_tm_wrt_lt_rec 0 a t.
 
 (* ================================================================== *)
-(* Substitution                                                        *)
-(*                                                                    *)
-(* subst_X x s t  replaces free occurrences of X-variable x in t     *)
-(* with s, decrementing higher indices to close the gap.              *)
+(* SECTION 4 — subst (replace fvar a with replacement)                *)
 (* ================================================================== *)
 
-(* --- Lifetime variable substitution in lifetimes --- *)
-
-Fixpoint subst_lt (var : nat) (replacement l : lifetime) : lifetime :=
+Fixpoint subst_lt_in_lt (u : lifetime) (a : atom) (l : lifetime) : lifetime :=
   match l with
-  | lt_var y =>
-      if Nat.eqb y var then replacement
-      else if Nat.ltb var y then lt_var (pred y)
-      else lt_var y
+  | lt_bvar _    => l
+  | lt_fvar b    => if a == b then u else lt_fvar b
   | lt_free      => lt_free
   | lt_local     => lt_local
-  | lt_min l1 l2 => lt_min (subst_lt var replacement l1) (subst_lt var replacement l2)
+  | lt_min l1 l2 => lt_min (subst_lt_in_lt u a l1) (subst_lt_in_lt u a l2)
   end.
 
-(* --- Lifetime variable substitution in types --- *)
-
-Fixpoint subst_lt_in_ty (var : nat) (replacement : lifetime) (T : type) : type :=
-  let fix go Ts :=
+Fixpoint subst_lt_in_ty (u : lifetime) (a : atom) (T : type) : type :=
+  let fix go (Ts : list type) : list type :=
     match Ts with
     | []        => []
-    | A :: rest => subst_lt_in_ty var replacement A :: go rest
+    | A :: rest => subst_lt_in_ty u a A :: go rest
     end
   in
   match T with
-  | type_var n        => type_var n
-  | type_fun A lt B   => type_fun (subst_lt_in_ty var replacement A)
-                                  (subst_lt var replacement lt)
-                                  (subst_lt_in_ty var replacement B)
-  | type_ctor K lt Ts => type_ctor K (subst_lt var replacement lt) (go Ts)
-  (* under lt_all: var shifts up, free lt vars in replacement shift up *)
-  | type_lt_all A     => type_lt_all
-                           (subst_lt_in_ty (S var) (shift_lt 1 0 replacement) A)
-  | type_ty_all B A   => type_ty_all (subst_lt_in_ty var replacement B)
-                                     (subst_lt_in_ty var replacement A)
+  | type_bvar _      => T
+  | type_fvar _      => T
+  | type_fun A l B   =>
+      type_fun (subst_lt_in_ty u a A) (subst_lt_in_lt u a l) (subst_lt_in_ty u a B)
+  | type_ctor K l Ts => type_ctor K (subst_lt_in_lt u a l) (go Ts)
+  | type_lt_all A    => type_lt_all (subst_lt_in_ty u a A)
+  | type_ty_all B A  => type_ty_all (subst_lt_in_ty u a B) (subst_lt_in_ty u a A)
   end.
 
-Definition subst_lt_in_ty_list (var : nat) (replacement : lifetime) (Ts : list type)
-    : list type :=
-  List.map (subst_lt_in_ty var replacement) Ts.
-
-(* --- Type variable substitution in types --- *)
-
-Fixpoint subst_ty (var : nat) (replacement T : type) : type :=
-  let fix go Ts :=
+Fixpoint subst_ty_in_ty (U : type) (a : atom) (T : type) : type :=
+  let fix go (Ts : list type) : list type :=
     match Ts with
     | []        => []
-    | A :: rest => subst_ty var replacement A :: go rest
+    | A :: rest => subst_ty_in_ty U a A :: go rest
     end
   in
   match T with
-  | type_var n =>
-      if Nat.eqb n var then replacement
-      else if Nat.ltb var n then type_var (pred n)
-      else type_var n
-  | type_fun A l B    => type_fun (subst_ty var replacement A) l (subst_ty var replacement B)
-  | type_ctor K l Ts  => type_ctor K l (go Ts)
-  | type_lt_all A     => type_lt_all (subst_ty var replacement A)
-  (* under ty_all: var shifts up, free ty vars in replacement shift up *)
-  (* bound is NOT under the binder: substitute with current var *)
-  | type_ty_all B A   => type_ty_all (subst_ty var replacement B)
-                                     (subst_ty (S var) (shift_ty 1 0 replacement) A)
+  | type_bvar _      => T
+  | type_fvar b      => if a == b then U else type_fvar b
+  | type_fun A l B   => type_fun (subst_ty_in_ty U a A) l (subst_ty_in_ty U a B)
+  | type_ctor K l Ts => type_ctor K l (go Ts)
+  | type_lt_all A    => type_lt_all (subst_ty_in_ty U a A)
+  | type_ty_all B A  => type_ty_all (subst_ty_in_ty U a B) (subst_ty_in_ty U a A)
   end.
 
-Definition subst_ty_list (var : nat) (replacement : type) (Ts : list type) : list type :=
-  List.map (subst_ty var replacement) Ts.
-
-(* --- Term variable substitution in terms ---                            *)
-(*                                                                        *)
-(* When passing under a binder of kind X, the index var is unchanged      *)
-(* (X ≠ term) or incremented (X = term), and free X-vars in               *)
-(* replacement are shifted up by 1 to avoid capture.                      *)
-
-Fixpoint subst_tm (var : nat) (replacement t : term) : term :=
-  let fix go ts :=
+Fixpoint subst_tm_in_tm (u : term) (a : atom) (t : term) : term :=
+  let fix go (ts : list term) : list term :=
     match ts with
     | []        => []
-    | u :: rest => subst_tm var replacement u :: go rest
+    | x :: rest => subst_tm_in_tm u a x :: go rest
     end
   in
   match t with
-  | term_var y =>
-      if Nat.eqb y var then replacement
-      else if Nat.ltb var y then term_var (pred y)
-      else term_var y
-  (* term binder: var↑1, term vars in replacement↑1 *)
-  | term_lam body T     => term_lam (subst_tm (S var) (shift_tm 1 0 replacement) body) T
-  | term_app t1 t2      => term_app (subst_tm var replacement t1) (subst_tm var replacement t2)
-  | term_ty_app t T     => term_ty_app (subst_tm var replacement t) T
-  (* type binder: var unchanged, type vars in replacement↑1 *)
-  | term_ty_lam bound body => term_ty_lam bound
-                               (subst_tm var (shift_ty_in_tm 1 0 replacement) body)
-  | term_lt_app t l        => term_lt_app (subst_tm var replacement t) l
-  (* lt binder: var unchanged, lt vars in replacement↑1 *)
-  | term_lt_lam body    => term_lt_lam (subst_tm var (shift_lt_in_tm 1 0 replacement) body)
-  | term_ctor K l lts Ts ts => term_ctor K l lts Ts (go ts)
-  (* yes_body is under arity term binders: var shifts up by arity,       *)
-  (* and term vars in replacement shift up by arity to avoid capture     *)
-  | term_match scrut tag arity yes_body no_body =>
-      term_match (subst_tm var replacement scrut) tag arity
-                 (subst_tm (var + arity) (shift_tm arity 0 replacement) yes_body)
-                 (subst_tm var replacement no_body)
-  | term_handle E Ts op_body body =>
-      term_handle E Ts
-                  (subst_tm (var + 2) (shift_tm 2 0 replacement) op_body)
-                  (subst_tm (S var) (shift_tm 1 0 replacement) body)
-  | term_perform t Ss arg =>
-      term_perform (subst_tm var replacement t) Ss
-                   (subst_tm var replacement arg)
-  | term_cap E m Ts op_body =>
-      term_cap E m Ts
-               (subst_tm (var + 2) (shift_tm 2 0 replacement) op_body)
-  | term_handler_m m t => term_handler_m m (subst_tm var replacement t)
-  | term_resume m b =>
-      term_resume m (subst_tm (S var) (shift_tm 1 0 replacement) b)
+  | term_bvar _              => t
+  | term_fvar b              => if a == b then u else term_fvar b
+  | term_app t1 t2           => term_app (subst_tm_in_tm u a t1) (subst_tm_in_tm u a t2)
+  | term_lam body T          => term_lam (subst_tm_in_tm u a body) T
+  | term_ty_app t1 T         => term_ty_app (subst_tm_in_tm u a t1) T
+  | term_ty_lam bd body      => term_ty_lam bd (subst_tm_in_tm u a body)
+  | term_lt_app t1 l         => term_lt_app (subst_tm_in_tm u a t1) l
+  | term_lt_lam body         => term_lt_lam (subst_tm_in_tm u a body)
+  | term_ctor K l ls Ts ts   => term_ctor K l ls Ts (go ts)
+  | term_match s K ar y n    =>
+      term_match (subst_tm_in_tm u a s) K ar
+                 (subst_tm_in_tm u a y) (subst_tm_in_tm u a n)
+  | term_handle E Ts ob body =>
+      term_handle E Ts (subst_tm_in_tm u a ob) (subst_tm_in_tm u a body)
+  | term_perform t1 Ss a'    =>
+      term_perform (subst_tm_in_tm u a t1) Ss (subst_tm_in_tm u a a')
+  | term_cap E m Ts ob       => term_cap E m Ts (subst_tm_in_tm u a ob)
+  | term_handler_m m t1      => term_handler_m m (subst_tm_in_tm u a t1)
+  | term_resume m b          => term_resume m (subst_tm_in_tm u a b)
   end.
 
-(* --- Type variable substitution in terms --- *)
-
-Fixpoint subst_ty_in_tm (var : nat) (replacement : type) (t : term) : term :=
-  let fix go ts :=
+Fixpoint subst_ty_in_tm (U : type) (a : atom) (t : term) : term :=
+  let fix go_tm (ts : list term) : list term :=
     match ts with
     | []        => []
-    | u :: rest => subst_ty_in_tm var replacement u :: go rest
+    | x :: rest => subst_ty_in_tm U a x :: go_tm rest
+    end
+  in
+  let fix go_ty (Ts : list type) : list type :=
+    match Ts with
+    | []        => []
+    | A :: rest => subst_ty_in_ty U a A :: go_ty rest
     end
   in
   match t with
-  | term_var y          => term_var y
-  | term_app t1 t2      => term_app (subst_ty_in_tm var replacement t1)
-                                    (subst_ty_in_tm var replacement t2)
-  (* term binder: types have no term vars, so replacement unchanged *)
-  | term_lam body T     => term_lam (subst_ty_in_tm var replacement body)
-                                    (subst_ty var replacement T)
-  | term_ty_app t T     => term_ty_app (subst_ty_in_tm var replacement t)
-                                       (subst_ty var replacement T)
-  (* type binder: var↑1, type vars in replacement↑1 *)
-  (* bound is NOT under the binder: substitute with current var *)
-  | term_ty_lam bound body => term_ty_lam (subst_ty var replacement bound)
-                               (subst_ty_in_tm (S var) (shift_ty 1 0 replacement) body)
-  | term_lt_app t l        => term_lt_app (subst_ty_in_tm var replacement t) l
-  (* lt binder: var unchanged, lt vars in replacement↑1 *)
-  | term_lt_lam body    => term_lt_lam
-                             (subst_ty_in_tm var (shift_lt_in_ty 1 0 replacement) body)
-  | term_ctor K l lts Ts ts => term_ctor K l lts (subst_ty_list var replacement Ts) (go ts)
-  (* match introduces no type binder; arity term binders do not affect type var index *)
-  | term_match scrut tag arity yes_body no_body =>
-      term_match (subst_ty_in_tm var replacement scrut) tag arity
-                 (subst_ty_in_tm var replacement yes_body)
-                 (subst_ty_in_tm var replacement no_body)
-  | term_handle E Ts op_body body =>
-      term_handle E (subst_ty_list var replacement Ts)
-                  (subst_ty_in_tm var replacement op_body)
-                  (subst_ty_in_tm var replacement body)
-  | term_perform t Ss arg =>
-      term_perform (subst_ty_in_tm var replacement t)
-                   (subst_ty_list var replacement Ss)
-                   (subst_ty_in_tm var replacement arg)
-  | term_cap E m Ts op_body =>
-      term_cap E m (subst_ty_list var replacement Ts)
-               (subst_ty_in_tm var replacement op_body)
-  | term_handler_m m t => term_handler_m m (subst_ty_in_tm var replacement t)
-  | term_resume m b => term_resume m (subst_ty_in_tm var replacement b)
+  | term_bvar _              => t
+  | term_fvar _              => t
+  | term_app t1 t2           => term_app (subst_ty_in_tm U a t1) (subst_ty_in_tm U a t2)
+  | term_lam body T          => term_lam (subst_ty_in_tm U a body) (subst_ty_in_ty U a T)
+  | term_ty_app t1 T         => term_ty_app (subst_ty_in_tm U a t1) (subst_ty_in_ty U a T)
+  | term_ty_lam bd body      => term_ty_lam (subst_ty_in_ty U a bd) (subst_ty_in_tm U a body)
+  | term_lt_app t1 l         => term_lt_app (subst_ty_in_tm U a t1) l
+  | term_lt_lam body         => term_lt_lam (subst_ty_in_tm U a body)
+  | term_ctor K l ls Ts ts   => term_ctor K l ls (go_ty Ts) (go_tm ts)
+  | term_match s K ar y n    =>
+      term_match (subst_ty_in_tm U a s) K ar
+                 (subst_ty_in_tm U a y) (subst_ty_in_tm U a n)
+  | term_handle E Ts ob body =>
+      term_handle E (go_ty Ts) (subst_ty_in_tm U a ob) (subst_ty_in_tm U a body)
+  | term_perform t1 Ss a'    =>
+      term_perform (subst_ty_in_tm U a t1) (go_ty Ss) (subst_ty_in_tm U a a')
+  | term_cap E m Ts ob       => term_cap E m (go_ty Ts) (subst_ty_in_tm U a ob)
+  | term_handler_m m t1      => term_handler_m m (subst_ty_in_tm U a t1)
+  | term_resume m b          => term_resume m (subst_ty_in_tm U a b)
   end.
 
-(* --- Lifetime variable substitution in terms --- *)
-
-Fixpoint subst_lt_in_tm (var : nat) (replacement : lifetime) (t : term) : term :=
-  let fix go ts :=
+Fixpoint subst_lt_in_tm (u : lifetime) (a : atom) (t : term) : term :=
+  let fix go_tm (ts : list term) : list term :=
     match ts with
     | []        => []
-    | u :: rest => subst_lt_in_tm var replacement u :: go rest
+    | x :: rest => subst_lt_in_tm u a x :: go_tm rest
+    end
+  in
+  let fix go_ty (Ts : list type) : list type :=
+    match Ts with
+    | []        => []
+    | A :: rest => subst_lt_in_ty u a A :: go_ty rest
+    end
+  in
+  let fix go_lt (ls : list lifetime) : list lifetime :=
+    match ls with
+    | []        => []
+    | l :: rest => subst_lt_in_lt u a l :: go_lt rest
     end
   in
   match t with
-  | term_var y          => term_var y
-  | term_app t1 t2      => term_app (subst_lt_in_tm var replacement t1)
-                                    (subst_lt_in_tm var replacement t2)
-  (* term/type binders do not bind lt vars; replacement needs no adjustment *)
-  | term_lam body T     => term_lam (subst_lt_in_tm var replacement body)
-                                    (subst_lt_in_ty var replacement T)
-  | term_ty_app t T     => term_ty_app (subst_lt_in_tm var replacement t)
-                                       (subst_lt_in_ty var replacement T)
-  | term_ty_lam bound body => term_ty_lam (subst_lt_in_ty var replacement bound)
-                               (subst_lt_in_tm var replacement body)
-  | term_lt_app t l        => term_lt_app (subst_lt_in_tm var replacement t)
-                                       (subst_lt var replacement l)
-  (* lt binder: var↑1, lt vars in replacement↑1 *)
-  | term_lt_lam body    => term_lt_lam
-                             (subst_lt_in_tm (S var) (shift_lt 1 0 replacement) body)
-  | term_ctor K l lts Ts ts => term_ctor K (subst_lt var replacement l)
-                                       (List.map (subst_lt var replacement) lts)
-                                       (subst_lt_in_ty_list var replacement Ts)
-                                       (go ts)
-  (* match introduces no lifetime binder; arity term binders do not affect lifetime var index *)
-  | term_match scrut tag arity yes_body no_body =>
-      term_match (subst_lt_in_tm var replacement scrut) tag arity
-                 (subst_lt_in_tm var replacement yes_body)
-                 (subst_lt_in_tm var replacement no_body)
-  | term_handle E Ts op_body body =>
-      term_handle E (subst_lt_in_ty_list var replacement Ts)
-                  (subst_lt_in_tm var replacement op_body)
-                  (subst_lt_in_tm var replacement body)
-  | term_perform t Ss arg =>
-      term_perform (subst_lt_in_tm var replacement t)
-                   (subst_lt_in_ty_list var replacement Ss)
-                   (subst_lt_in_tm var replacement arg)
-  | term_cap E m Ts op_body =>
-      term_cap E m (subst_lt_in_ty_list var replacement Ts)
-               (subst_lt_in_tm var replacement op_body)
-  | term_handler_m m t => term_handler_m m (subst_lt_in_tm var replacement t)
-  | term_resume m b => term_resume m (subst_lt_in_tm var replacement b)
+  | term_bvar _              => t
+  | term_fvar _              => t
+  | term_app t1 t2           => term_app (subst_lt_in_tm u a t1) (subst_lt_in_tm u a t2)
+  | term_lam body T          => term_lam (subst_lt_in_tm u a body) (subst_lt_in_ty u a T)
+  | term_ty_app t1 T         => term_ty_app (subst_lt_in_tm u a t1) (subst_lt_in_ty u a T)
+  | term_ty_lam bd body      => term_ty_lam (subst_lt_in_ty u a bd) (subst_lt_in_tm u a body)
+  | term_lt_app t1 l         => term_lt_app (subst_lt_in_tm u a t1) (subst_lt_in_lt u a l)
+  | term_lt_lam body         => term_lt_lam (subst_lt_in_tm u a body)
+  | term_ctor K l ls Ts ts   =>
+      term_ctor K (subst_lt_in_lt u a l) (go_lt ls) (go_ty Ts) (go_tm ts)
+  | term_match s K ar y n    =>
+      term_match (subst_lt_in_tm u a s) K ar
+                 (subst_lt_in_tm u a y) (subst_lt_in_tm u a n)
+  | term_handle E Ts ob body =>
+      term_handle E (go_ty Ts) (subst_lt_in_tm u a ob) (subst_lt_in_tm u a body)
+  | term_perform t1 Ss a'    =>
+      term_perform (subst_lt_in_tm u a t1) (go_ty Ss) (subst_lt_in_tm u a a')
+  | term_cap E m Ts ob       => term_cap E m (go_ty Ts) (subst_lt_in_tm u a ob)
+  | term_handler_m m t1      => term_handler_m m (subst_lt_in_tm u a t1)
+  | term_resume m b          => term_resume m (subst_lt_in_tm u a b)
   end.
 
 (* ================================================================== *)
-(* Simultaneous substitution of constructor arguments                 *)
+(* SECTION 5 — iterated open with a list of atoms (multi-binders)     *)
 (*                                                                    *)
-(* subst_list_tm vs t  substitutes vs[0] for variable 0, vs[1] for    *)
-(* variable 1, ..., vs[n-1] for variable n-1 in t, which is assumed   *)
-(* to be under exactly n = length vs term binders.  Variables 0..n-1  *)
-(* correspond to constructor arguments outermost-first.               *)
+(* For term_match yes_body (binds `arity` tm vars) and term_handle/   *)
+(* term_cap op_body (binds 2 tm + n_β ty vars).                       *)
 (*                                                                    *)
-(* Implementation: substitute each argument from outermost (index 0)  *)
-(* to innermost.  When substituting vs[i] (the head of the remaining  *)
-(* list) for variable 0, we first shift vs[i] by (length rest) to     *)
-(* compensate for the remaining open binders; each substitution closes*)
-(* one binder and decrements the remaining variable indices by one.   *)
+(* Convention: the FIRST atom in the list opens the OUTERMOST binder  *)
+(* (highest bvar index after all others have been opened).            *)
+(* We implement this as fold from RIGHT: opening the last atom first  *)
+(* at index 0, then each subsequent open uses index 0 again because   *)
+(* every previous open shifts the indices down by one.                *)
 (* ================================================================== *)
 
-Fixpoint subst_list_tm (vs : list term) (t : term) : term :=
-  match vs with
-  | []         => t
-  | v :: rest  =>
-      subst_list_tm rest
-        (subst_tm 0 (shift_tm (List.length rest) 0 v) t)
+Fixpoint open_tm_wrt_tms (xs : list atom) (t : term) : term :=
+  match xs with
+  | []      => t
+  | x :: rest => open_tm_wrt_tm (term_fvar x) (open_tm_wrt_tms rest t)
+  end.
+
+Fixpoint open_tm_wrt_tys (xs : list atom) (t : term) : term :=
+  match xs with
+  | []      => t
+  | x :: rest => open_tm_wrt_ty (type_fvar x) (open_tm_wrt_tys rest t)
+  end.
+
+(* Iterated open with a list of TERMS (not atoms).  Used by reduction *)
+(* to plug real runtime values into the body of a multi-arg binder    *)
+(* (term_match yes-branch, term_handle/term_cap op-body).             *)
+Fixpoint open_tm_wrt_tm_list (us : list term) (t : term) : term :=
+  match us with
+  | []        => t
+  | u :: rest => open_tm_wrt_tm u (open_tm_wrt_tm_list rest t)
+  end.
+
+(* Iterated open with a list of TYPES.  Used to instantiate β-type    *)
+(* binders of an op-body at perform-time.                             *)
+Fixpoint open_tm_wrt_ty_list (Us : list type) (t : term) : term :=
+  match Us with
+  | []        => t
+  | U :: rest => open_tm_wrt_ty U (open_tm_wrt_ty_list rest t)
+  end.
+
+(* Iterated open of a TYPE with a list of TYPES.  Used to instantiate *)
+(* the n_ty type-binders of a constructor schema.                     *)
+Fixpoint open_ty_wrt_ty_list (Us : list type) (T : type) : type :=
+  match Us with
+  | []        => T
+  | U :: rest => open_ty_wrt_ty U (open_ty_wrt_ty_list rest T)
+  end.
+
+(* Iterated open of a TYPE with a list of LIFETIMES.                  *)
+Fixpoint open_ty_wrt_lt_list (us : list lifetime) (T : type) : type :=
+  match us with
+  | []        => T
+  | u :: rest => open_ty_wrt_lt u (open_ty_wrt_lt_list rest T)
+  end.
+
+(* Iterated open of a TERM with a list of LIFETIMES.                  *)
+Fixpoint open_tm_wrt_lt_list (us : list lifetime) (t : term) : term :=
+  match us with
+  | []        => t
+  | u :: rest => open_tm_wrt_lt u (open_tm_wrt_lt_list rest t)
   end.
 
 (* ================================================================== *)
-(* Simultaneous substitution of n_lt lifetime witnesses               *)
+(* SECTION 6 — locally closed predicates                              *)
 (*                                                                    *)
-(* subst_list_lt_in_tm lts t  substitutes lts[0] for lt-var 0,        *)
-(* lts[1] for lt-var 1, ..., lts[n-1] for lt-var (n-1) in t,          *)
-(* assumed to live under exactly n = length lts lt-binders.           *)
+(* Cofinite quantification at every binder.                           *)
+(* ================================================================== *)
+
+Inductive lc_lifetime : lifetime -> Prop :=
+  | lc_lt_fvar  : forall a, lc_lifetime (lt_fvar a)
+  | lc_lt_free  : lc_lifetime lt_free
+  | lc_lt_local : lc_lifetime lt_local
+  | lc_lt_min   : forall l1 l2,
+      lc_lifetime l1 -> lc_lifetime l2 -> lc_lifetime (lt_min l1 l2)
+  .
+
+Inductive lc_type : type -> Prop :=
+  | lc_type_fvar : forall a, lc_type (type_fvar a)
+  | lc_type_fun  : forall A l B,
+      lc_type A -> lc_lifetime l -> lc_type B -> lc_type (type_fun A l B)
+  | lc_type_ctor : forall K l Ts,
+      lc_lifetime l -> Forall lc_type Ts -> lc_type (type_ctor K l Ts)
+  | lc_type_lt_all : forall (L : atoms) A,
+      (forall a, a `notin` L -> lc_type (open_ty_wrt_lt (lt_fvar a) A)) ->
+      lc_type (type_lt_all A)
+  | lc_type_ty_all : forall (L : atoms) B A,
+      lc_type B ->
+      (forall a, a `notin` L -> lc_type (open_ty_wrt_ty (type_fvar a) A)) ->
+      lc_type (type_ty_all B A)
+  .
+
+Inductive lc_term : term -> Prop :=
+  | lc_term_fvar      : forall a, lc_term (term_fvar a)
+  | lc_term_app       : forall t1 t2,
+      lc_term t1 -> lc_term t2 -> lc_term (term_app t1 t2)
+  | lc_term_lam       : forall (L : atoms) body T,
+      lc_type T ->
+      (forall x, x `notin` L -> lc_term (open_tm_wrt_tm (term_fvar x) body)) ->
+      lc_term (term_lam body T)
+  | lc_term_ty_app    : forall t T, lc_term t -> lc_type T -> lc_term (term_ty_app t T)
+  | lc_term_ty_lam    : forall (L : atoms) bd body,
+      lc_type bd ->
+      (forall a, a `notin` L -> lc_term (open_tm_wrt_ty (type_fvar a) body)) ->
+      lc_term (term_ty_lam bd body)
+  | lc_term_lt_app    : forall t l,
+      lc_term t -> lc_lifetime l -> lc_term (term_lt_app t l)
+  | lc_term_lt_lam    : forall (L : atoms) body,
+      (forall a, a `notin` L -> lc_term (open_tm_wrt_lt (lt_fvar a) body)) ->
+      lc_term (term_lt_lam body)
+  | lc_term_ctor      : forall K l ls Ts ts,
+      lc_lifetime l ->
+      Forall lc_lifetime ls ->
+      Forall lc_type Ts ->
+      Forall lc_term ts ->
+      lc_term (term_ctor K l ls Ts ts)
+  | lc_term_match     : forall (L : atoms) s K ar y n,
+      lc_term s ->
+      (forall xs, length xs = ar -> NoDup xs ->
+         (forall x, In x xs -> x `notin` L) ->
+         lc_term (open_tm_wrt_tms xs y)) ->
+      lc_term n ->
+      lc_term (term_match s K ar y n)
+  | lc_term_handle    : forall (L : atoms) E Ts ob body,
+      Forall lc_type Ts ->
+      (* op_body binds 2 tm; the n_β ty binders are part of ob's bvars *)
+      (forall x k, x `notin` L -> k `notin` L -> x <> k ->
+         lc_term (open_tm_wrt_tm (term_fvar x)
+                   (open_tm_wrt_tm (term_fvar k) ob))) ->
+      (forall x, x `notin` L -> lc_term (open_tm_wrt_tm (term_fvar x) body)) ->
+      lc_term (term_handle E Ts ob body)
+  | lc_term_perform   : forall t Ss a,
+      lc_term t -> Forall lc_type Ss -> lc_term a -> lc_term (term_perform t Ss a)
+  | lc_term_cap       : forall (L : atoms) E m Ts ob,
+      Forall lc_type Ts ->
+      (forall x k, x `notin` L -> k `notin` L -> x <> k ->
+         lc_term (open_tm_wrt_tm (term_fvar x)
+                   (open_tm_wrt_tm (term_fvar k) ob))) ->
+      lc_term (term_cap E m Ts ob)
+  | lc_term_handler_m : forall m t, lc_term t -> lc_term (term_handler_m m t)
+  | lc_term_resume    : forall (L : atoms) m b,
+      (forall x, x `notin` L -> lc_term (open_tm_wrt_tm (term_fvar x) b)) ->
+      lc_term (term_resume m b)
+  .
+
+#[export] Hint Constructors lc_lifetime lc_type lc_term : core.
+
+(* ================================================================== *)
+(* SECTION 7 — gather_atoms tactic                                    *)
 (*                                                                    *)
-(* Same telescoping discipline as subst_list_tm: shift each entry by  *)
-(* the number of remaining open lt-binders before substituting at 0.  *)
+(* Used with Metalib's `pick fresh x` to obtain an atom not in any of *)
+(* the free-variable sets currently in scope.                         *)
 (* ================================================================== *)
 
-Fixpoint subst_list_lt_in_tm (lts : list lifetime) (t : term) : term :=
-  match lts with
-  | []          => t
-  | l :: rest   =>
-      subst_list_lt_in_tm rest
-        (subst_lt_in_tm 0 (shift_lt (List.length rest) 0 l) t)
-  end.
-
-Fixpoint subst_list_lt_in_ty (lts : list lifetime) (T : type) : type :=
-  match lts with
-  | []          => T
-  | l :: rest   =>
-      subst_list_lt_in_ty rest
-        (subst_lt_in_ty 0 (shift_lt (List.length rest) 0 l) T)
-  end.
-
-(* ================================================================== *)
-(* Simultaneous substitution of n type witnesses in a term            *)
-(*                                                                    *)
-(* subst_list_ty_in_tm Ss t  substitutes Ss[0] for ty-var 0,          *)
-(* Ss[1] for ty-var 1, ..., Ss[n-1] for ty-var (n-1) in t, assumed    *)
-(* to live under exactly n = length Ss type-binders.  Same telescoping*)
-(* discipline as subst_list_tm: shift each entry by the number of     *)
-(* remaining open ty-binders before substituting at 0.                *)
-(* ================================================================== *)
-
-Fixpoint subst_list_ty_in_tm (Ss : list type) (t : term) : term :=
-  match Ss with
-  | []         => t
-  | S0 :: rest =>
-      subst_list_ty_in_tm rest
-        (subst_ty_in_tm 0 (shift_ty (List.length rest) 0 S0) t)
-  end.
-
-Fixpoint subst_list_ty (Ss : list type) (T : type) : type :=
-  match Ss with
-  | []         => T
-  | S0 :: rest =>
-      subst_list_ty rest
-        (subst_ty 0 (shift_ty (List.length rest) 0 S0) T)
-  end.
+Ltac gather_atoms ::=
+  let A := gather_atoms_with (fun x : atoms => x) in
+  let B := gather_atoms_with (fun x : atom => singleton x) in
+  let C1 := gather_atoms_with (fun x : lifetime => fv_lt_in_lt x) in
+  let C2 := gather_atoms_with (fun x : type => fv_lt_in_ty x) in
+  let C3 := gather_atoms_with (fun x : type => fv_ty_in_ty x) in
+  let C4 := gather_atoms_with (fun x : term => fv_tm_in_tm x) in
+  let C5 := gather_atoms_with (fun x : term => fv_ty_in_tm x) in
+  let C6 := gather_atoms_with (fun x : term => fv_lt_in_tm x) in
+  constr:(A \u B \u C1 \u C2 \u C3 \u C4 \u C5 \u C6).
