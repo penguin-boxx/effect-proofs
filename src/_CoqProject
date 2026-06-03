@@ -1,6 +1,7 @@
 -Q . ""
 Syntax.v
 Substitution.v
+SubstitutionTheory.v
 Semantics.v
 Typing.v
 Examples.v

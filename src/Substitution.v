@@ -94,16 +94,18 @@ Fixpoint shift_tm (amount cutoff : nat) (t : term) : term :=
       term_match (shift_tm amount cutoff scrut) tag arity
                  (shift_tm amount (cutoff + arity) yes_body)
                  (shift_tm amount cutoff no_body)
-  (* handle: body under +1 term binder; op_body under +2 (arg + k) *)
-  | term_handle E Ts sig op_body body =>
-      term_handle E Ts sig
+  (* handle: body under +1 term binder; op_body under +2 (arg + k);   *)
+  (* the n_β outer type-binders of op_body don't bind term vars.       *)
+  | term_handle E Ts op_body body =>
+      term_handle E Ts
                   (shift_tm amount (cutoff + 2) op_body)
                   (shift_tm amount (S cutoff) body)
-  | term_perform t arg =>
-      term_perform (shift_tm amount cutoff t) (shift_tm amount cutoff arg)
-  | term_cap E m Ts sig op_body =>
-      term_cap E m Ts sig (shift_tm amount (cutoff + 2) op_body)
+  | term_perform t Ss arg =>
+      term_perform (shift_tm amount cutoff t) Ss (shift_tm amount cutoff arg)
+  | term_cap E m Ts op_body =>
+      term_cap E m Ts (shift_tm amount (cutoff + 2) op_body)
   | term_handler_m m t => term_handler_m m (shift_tm amount cutoff t)
+  | term_resume m b => term_resume m (shift_tm amount (S cutoff) b)
   end.
 
 (* --- Terms: shift type variables --- *)
@@ -136,20 +138,21 @@ Fixpoint shift_ty_in_tm (amount cutoff : nat) (t : term) : term :=
       term_match (shift_ty_in_tm amount cutoff scrut) tag arity
                  (shift_ty_in_tm amount cutoff yes_body)
                  (shift_ty_in_tm amount cutoff no_body)
-  (* handle/perform/cap: shift Ts and recurse; no type binder *)
-  | term_handle E Ts sig op_body body =>
+  (* handle/perform/cap: shift Ts and recurse; no type binder        *)
+  (* (the n_β type-binders of op_body shift the cutoff inside).       *)
+  | term_handle E Ts op_body body =>
       term_handle E (shift_ty_list amount cutoff Ts)
-                  (shift_ty amount cutoff sig)
                   (shift_ty_in_tm amount cutoff op_body)
                   (shift_ty_in_tm amount cutoff body)
-  | term_perform t arg =>
+  | term_perform t Ss arg =>
       term_perform (shift_ty_in_tm amount cutoff t)
+                   (shift_ty_list amount cutoff Ss)
                    (shift_ty_in_tm amount cutoff arg)
-  | term_cap E m Ts sig op_body =>
+  | term_cap E m Ts op_body =>
       term_cap E m (shift_ty_list amount cutoff Ts)
-               (shift_ty amount cutoff sig)
                (shift_ty_in_tm amount cutoff op_body)
   | term_handler_m m t => term_handler_m m (shift_ty_in_tm amount cutoff t)
+  | term_resume m b => term_resume m (shift_ty_in_tm amount cutoff b)
   end.
 
 (* --- Terms: shift lifetime variables --- *)
@@ -185,19 +188,19 @@ Fixpoint shift_lt_in_tm (amount cutoff : nat) (t : term) : term :=
       term_match (shift_lt_in_tm amount cutoff scrut) tag arity
                  (shift_lt_in_tm amount cutoff yes_body)
                  (shift_lt_in_tm amount cutoff no_body)
-  | term_handle E Ts sig op_body body =>
+  | term_handle E Ts op_body body =>
       term_handle E (shift_lt_in_ty_list amount cutoff Ts)
-                  (shift_lt_in_ty amount cutoff sig)
                   (shift_lt_in_tm amount cutoff op_body)
                   (shift_lt_in_tm amount cutoff body)
-  | term_perform t arg =>
+  | term_perform t Ss arg =>
       term_perform (shift_lt_in_tm amount cutoff t)
+                   (shift_lt_in_ty_list amount cutoff Ss)
                    (shift_lt_in_tm amount cutoff arg)
-  | term_cap E m Ts sig op_body =>
+  | term_cap E m Ts op_body =>
       term_cap E m (shift_lt_in_ty_list amount cutoff Ts)
-               (shift_lt_in_ty amount cutoff sig)
                (shift_lt_in_tm amount cutoff op_body)
   | term_handler_m m t => term_handler_m m (shift_lt_in_tm amount cutoff t)
+  | term_resume m b => term_resume m (shift_lt_in_tm amount cutoff b)
   end.
 
 (* ================================================================== *)
@@ -307,16 +310,19 @@ Fixpoint subst_tm (var : nat) (replacement t : term) : term :=
       term_match (subst_tm var replacement scrut) tag arity
                  (subst_tm (var + arity) (shift_tm arity 0 replacement) yes_body)
                  (subst_tm var replacement no_body)
-  | term_handle E Ts sig op_body body =>
-      term_handle E Ts sig
+  | term_handle E Ts op_body body =>
+      term_handle E Ts
                   (subst_tm (var + 2) (shift_tm 2 0 replacement) op_body)
                   (subst_tm (S var) (shift_tm 1 0 replacement) body)
-  | term_perform t arg =>
-      term_perform (subst_tm var replacement t) (subst_tm var replacement arg)
-  | term_cap E m Ts sig op_body =>
-      term_cap E m Ts sig
+  | term_perform t Ss arg =>
+      term_perform (subst_tm var replacement t) Ss
+                   (subst_tm var replacement arg)
+  | term_cap E m Ts op_body =>
+      term_cap E m Ts
                (subst_tm (var + 2) (shift_tm 2 0 replacement) op_body)
   | term_handler_m m t => term_handler_m m (subst_tm var replacement t)
+  | term_resume m b =>
+      term_resume m (subst_tm (S var) (shift_tm 1 0 replacement) b)
   end.
 
 (* --- Type variable substitution in terms --- *)
@@ -351,19 +357,19 @@ Fixpoint subst_ty_in_tm (var : nat) (replacement : type) (t : term) : term :=
       term_match (subst_ty_in_tm var replacement scrut) tag arity
                  (subst_ty_in_tm var replacement yes_body)
                  (subst_ty_in_tm var replacement no_body)
-  | term_handle E Ts sig op_body body =>
+  | term_handle E Ts op_body body =>
       term_handle E (subst_ty_list var replacement Ts)
-                  (subst_ty var replacement sig)
                   (subst_ty_in_tm var replacement op_body)
                   (subst_ty_in_tm var replacement body)
-  | term_perform t arg =>
+  | term_perform t Ss arg =>
       term_perform (subst_ty_in_tm var replacement t)
+                   (subst_ty_list var replacement Ss)
                    (subst_ty_in_tm var replacement arg)
-  | term_cap E m Ts sig op_body =>
+  | term_cap E m Ts op_body =>
       term_cap E m (subst_ty_list var replacement Ts)
-               (subst_ty var replacement sig)
                (subst_ty_in_tm var replacement op_body)
   | term_handler_m m t => term_handler_m m (subst_ty_in_tm var replacement t)
+  | term_resume m b => term_resume m (subst_ty_in_tm var replacement b)
   end.
 
 (* --- Lifetime variable substitution in terms --- *)
@@ -400,19 +406,19 @@ Fixpoint subst_lt_in_tm (var : nat) (replacement : lifetime) (t : term) : term :
       term_match (subst_lt_in_tm var replacement scrut) tag arity
                  (subst_lt_in_tm var replacement yes_body)
                  (subst_lt_in_tm var replacement no_body)
-  | term_handle E Ts sig op_body body =>
+  | term_handle E Ts op_body body =>
       term_handle E (subst_lt_in_ty_list var replacement Ts)
-                  (subst_lt_in_ty var replacement sig)
                   (subst_lt_in_tm var replacement op_body)
                   (subst_lt_in_tm var replacement body)
-  | term_perform t arg =>
+  | term_perform t Ss arg =>
       term_perform (subst_lt_in_tm var replacement t)
+                   (subst_lt_in_ty_list var replacement Ss)
                    (subst_lt_in_tm var replacement arg)
-  | term_cap E m Ts sig op_body =>
+  | term_cap E m Ts op_body =>
       term_cap E m (subst_lt_in_ty_list var replacement Ts)
-               (subst_lt_in_ty var replacement sig)
                (subst_lt_in_tm var replacement op_body)
   | term_handler_m m t => term_handler_m m (subst_lt_in_tm var replacement t)
+  | term_resume m b => term_resume m (subst_lt_in_tm var replacement b)
   end.
 
 (* ================================================================== *)
@@ -463,4 +469,30 @@ Fixpoint subst_list_lt_in_ty (lts : list lifetime) (T : type) : type :=
   | l :: rest   =>
       subst_list_lt_in_ty rest
         (subst_lt_in_ty 0 (shift_lt (List.length rest) 0 l) T)
+  end.
+
+(* ================================================================== *)
+(* Simultaneous substitution of n type witnesses in a term            *)
+(*                                                                    *)
+(* subst_list_ty_in_tm Ss t  substitutes Ss[0] for ty-var 0,          *)
+(* Ss[1] for ty-var 1, ..., Ss[n-1] for ty-var (n-1) in t, assumed    *)
+(* to live under exactly n = length Ss type-binders.  Same telescoping*)
+(* discipline as subst_list_tm: shift each entry by the number of     *)
+(* remaining open ty-binders before substituting at 0.                *)
+(* ================================================================== *)
+
+Fixpoint subst_list_ty_in_tm (Ss : list type) (t : term) : term :=
+  match Ss with
+  | []         => t
+  | S0 :: rest =>
+      subst_list_ty_in_tm rest
+        (subst_ty_in_tm 0 (shift_ty (List.length rest) 0 S0) t)
+  end.
+
+Fixpoint subst_list_ty (Ss : list type) (T : type) : type :=
+  match Ss with
+  | []         => T
+  | S0 :: rest =>
+      subst_list_ty rest
+        (subst_ty 0 (shift_ty (List.length rest) 0 S0) T)
   end.

@@ -3,8 +3,8 @@ Require Import Stdlib.Arith.PeanoNat.
 Import ListNotations.
 
 (* Lifetimes: Δ ::= free | local | Δ₁ + Δ₂                            *)
-(* In the paper, + denotes the minimum (= least upper bound in the    *)
-(* lattice where free <: local). lt_min D1 D2 corresponds to D1 + D2. *)
+(* + denotes the minimum (= least upper bound in the lattice where    *)
+(* free <: local). lt_min D1 D2 corresponds to D1 + D2.               *)
 Inductive lifetime : Type :=
   | lt_var   : nat -> lifetime  (* lifetime variable *)
   | lt_free  : lifetime  (* free — bottom of lattice *)
@@ -14,13 +14,13 @@ Inductive lifetime : Type :=
 
 Definition ctor_tag := nat.
 
-(* Reserved constructor tag for the Any type.  An "Any@Δ" type is      *)
+(* Reserved constructor tag for the Any type.  An "Any'Δ" type is      *)
 (* encoded as (type_ctor any_tag Δ []).  The SubAny rule allows any    *)
 (* type τ to be upcast to Any@Δ provided lt_Γ(τ) <: Δ.                 *)
 Definition any_tag : ctor_tag := 0.
 
 (* ================================================================== *)
-(* Effect handlers (paper one-plus-one §3)                            *)
+(* Effect handlers                                                    *)
 (*                                                                    *)
 (* Capabilities reuse the existing data-constructor machinery: a      *)
 (* capability for effect E with type-args T̄ has type                  *)
@@ -48,7 +48,7 @@ Inductive type : Type :=
   | type_var : nat -> type
   | type_fun : type -> lifetime -> type -> type
   | type_ctor : ctor_tag -> lifetime -> list type -> type
-  | type_lt_all : type -> type
+  | type_lt_all : type -> type  (* bound *)
   | type_ty_all : type -> type -> type  (* bound, body *)
   .
 
@@ -61,28 +61,29 @@ Inductive term : Type :=
   | term_lt_app : term -> lifetime -> term
   | term_lt_lam : term -> term
   | term_ctor : ctor_tag -> lifetime -> list lifetime -> list type -> list term -> term
-  (* match scrutinee against one constructor; yes_body binds each       *)
-  (* constructor argument (variables 0..arity-1, outermost-first);      *)
-  (* no_body is the else branch (no new binders).                       *)
+  (* match scrutinee against one constructor; yes_body binds each      *)
+  (* constructor argument (variables 0..arity-1, outermost-first);     *)
+  (* no_body is the else branch (no new binders).                      *)
   | term_match : term -> ctor_tag -> nat -> term -> term -> term
-  (* ----- effect handlers (paper Fig. core-syntax, single-op) ----- *)
-  (* handle x : E Ts { op_body } in body                               *)
+  (* ----- effect handlers -----                                       *)
+  (* handle cap : E Ts { op_body } in body                             *)
   (* The body has 1 extra term-binder for the cap value (variable 0).  *)
-  (* op_body has 2 extra term-binders:                                 *)
+  (* op_body has n_β type-binders (outermost) followed by 2 term-      *)
+  (* binders:                                                          *)
   (*   index 0 = the (single) op argument                              *)
   (*   index 1 = the resumption k                                      *)
-  (* `sig` is the (instantiated) operation argument type, stored as a  *)
-  (* runtime annotation so that the resumption λ produced by H_Perform *)
-  (* can be type-annotated.                                            *)
-  | term_handle : eff_tag -> list type -> type -> term -> term -> term
-  (* perform x arg — single-op effect with a single argument           *)
-  | term_perform : term -> term -> term
-  (* runtime-only: capability value (paper's K_cap τ̄ m h).              *)
-  (* Carries effect tag, marker, type-args, the (instantiated) op-arg  *)
-  (* type sig, and op_body (2 binders).                                *)
-  | term_cap : eff_tag -> marker -> list type -> type -> term -> term
-  (* runtime-only: continuation delimiter (paper's handler_m t).        *)
+  | term_handle : eff_tag -> list type -> term -> term -> term
+  (* perform x Ss arg — Ss instantiates the operation's β-args.        *)
+  | term_perform : term -> list type -> term -> term
+  (* runtime-only: capability value (paper's K_cap τ̄ m h).             *)
+  (* Carries effect tag, marker, α-type-args, and op_body.             *)
+  | term_cap : eff_tag -> marker -> list type -> term -> term
+  (* runtime-only: continuation delimiter (paper's handler_m t).       *)
   | term_handler_m : marker -> term -> term
+  (* runtime-only: reified resumption value. `term_resume m b` is the  *)
+  (* one-argument resumption produced by H_Perform; `b` has +1 term    *)
+  (* binder (the slot for the resumed value).                          *)
+  | term_resume : marker -> term -> term
   .
 
 (* ================================================================== *)
@@ -98,8 +99,10 @@ Inductive value : term -> Prop :=
   | value_ctor   : forall K l lts Ts vs,
       Forall value vs ->
       value (term_ctor K l lts Ts vs)
-  | value_cap    : forall E m Ts sig op_body,
-      value (term_cap E m Ts sig op_body)
+  | value_cap    : forall E m Ts op_body,
+      value (term_cap E m Ts op_body)
+  | value_resume : forall m b,
+      value (term_resume m b)
   .
 
 Hint Constructors value : core.
@@ -108,8 +111,7 @@ Hint Constructors value : core.
 (* Decidable value predicate                                          *)
 (*                                                                    *)
 (* is_value t = true  iff  value t holds.                             *)
-(* The nested go helper handles the list of constructor arguments     *)
-(* (same guard-checker pattern used throughout this file).            *)
+(* The nested go helper handles the list of constructor arguments.    *)
 (* ================================================================== *)
 
 Fixpoint is_value (t : term) : bool :=
@@ -124,6 +126,7 @@ Fixpoint is_value (t : term) : bool :=
   | term_ty_lam _ _       => true
   | term_lt_lam _         => true
   | term_ctor _ _ _ _ vs  => go vs
-  | term_cap _ _ _ _ _    => true
+  | term_cap _ _ _ _      => true
+  | term_resume _ _       => true
   | _                     => false
   end.

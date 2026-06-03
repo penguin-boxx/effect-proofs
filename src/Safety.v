@@ -53,9 +53,10 @@ Proof. induction 1; intros; simpl; auto. Qed.
 (* ------------------------------------------------------------------ *)
 
 Axiom no_typed_perform_cap_under_eval_ctx :
-  forall Γ T E_tag m Ts sig op_body v P,
+  forall Γ T E_tag m Ts op_body Ss v P,
     eval_ctx Γ ->
-    Γ ⊢ₜ plug P (term_perform (term_cap E_tag m Ts sig op_body) v) : T ->
+    pure_ectx_m m P ->
+    Γ ⊢ₜ plug P (term_perform (term_cap E_tag m Ts op_body) Ss v) : T ->
     False.
 
 (* ------------------------------------------------------------------ *)
@@ -162,7 +163,8 @@ Lemma canonical_fun : forall Γ v A l B,
   eval_ctx Γ ->
   Γ ⊢ₜ v : type_fun A l B ->
   value v ->
-  exists body T, v = term_lam body T.
+  (exists body T, v = term_lam body T)
+  \/ (exists m b, v = term_resume m b).
 Proof.
   intros Γ v A l B Hec Hty Hval.
   remember (type_fun A l B) as T0 eqn:HT.
@@ -173,7 +175,8 @@ Proof.
   - (* T_Sub *)
     destruct (sub_fun_inv _ _ _ _ _ Hec H) as [A' [l' [B' [HeqT _]]]]; subst.
     eapply IHHty; eauto.
-  - (* T_Lam *) eauto.
+  - (* T_Lam *) left; eauto.
+  - (* T_Resume *) right; eauto.
 Qed.
 
 Lemma canonical_ctor : forall Γ v K l Ts,
@@ -307,8 +310,10 @@ Proof.
   - left; constructor.
   - destruct IHHty1 as [Hv1 | [t1' Hs1]]; auto.
     + destruct IHHty2 as [Hv2 | [t2' Hs2]]; auto.
-      * destruct (canonical_fun _ _ _ _ _ Hec Hty1 Hv1) as [body [T0 Heq]]; subst.
-        right. eexists. apply S_Beta; auto.
+      * destruct (canonical_fun _ _ _ _ _ Hec Hty1 Hv1) as
+          [[body [T0 Heq]] | [m [b Heq]]]; subst.
+        -- right. eexists. apply S_Beta; auto.
+        -- right. eexists. apply S_Resume; auto.
       * right. eexists. eapply S_App2; eauto.
     + right. eexists. eapply S_App1; eauto.
   - left; constructor.
@@ -368,6 +373,7 @@ Proof.
     destruct IHHty as [Hv | [t' Hs]]; auto.
     + right. exists t. apply S_Return; auto.
     + right. exists (term_handler_m m t'). apply S_HandlerM; auto.
+  - (* T_Resume: a reified resumption is a value. *) left; constructor.
 Qed.
 
 (* ------------------------------------------------------------------ *)
@@ -433,6 +439,20 @@ Proof.
   - subst. destruct (IHHty eq_refl) as [U0 [Hbody Hsub]].
     exists U0; split; auto. eapply SA_Trans; eauto.
   - injection Ht; intros; subst. exists T; split; auto.
+Qed.
+
+Lemma resume_typing_inv : forall Γ m b T,
+  Γ ⊢ₜ term_resume m b : T ->
+  exists A B,
+    (bind_tm A :: Γ) ⊢ₜ b : B /\
+    Γ ⊢ type_fun A lt_local B <:: T.
+Proof.
+  intros Γ m b T Hty.
+  remember (term_resume m b) as t eqn:Ht.
+  induction Hty; try discriminate.
+  - subst. destruct (IHHty eq_refl) as [A0 [B0 [Hbody Hsub]]].
+    exists A0, B0; split; auto. eapply SA_Trans; eauto.
+  - injection Ht; intros; subst. exists A, T_R; split; auto.
 Qed.
 
 (* ------------------------------------------------------------------ *)
@@ -1033,7 +1053,8 @@ Proof.
   - (* App *)
     apply step_app_inv in Hstep.
     destruct Hstep as [(body0 & T0 & v0 & E1 & E2 & Hv0 & E3)
-                      | [ (t1' & Hs1 & E3) | (t2' & Hv1 & Hs2 & E3) ]].
+                      | [ (m0 & b0 & v0 & E1 & E2 & Hv0 & E3)
+                      | [ (t1' & Hs1 & E3) | (t2' & Hv1 & Hs2 & E3) ]]].
     + (* S_Beta: (λx.body) v  →  subst body *)
       subst t1 t2 t''.
       apply lam_typing_inv in Hty1.
@@ -1041,6 +1062,17 @@ Proof.
       destruct (sub_fun_inv _ _ _ _ _ Hec Hsub)
         as [A'' [l'' [B'' [HeqT [HAsub [Hlsub HBsub]]]]]].
       injection HeqT; intros; subst.
+      eapply T_Sub; [| exact HBsub].
+      eapply subst_tm_lemma; [exact Hbody|].
+      eapply T_Sub; [exact Hty2 | exact HAsub].
+    + (* S_Resume: (resume m b) v  →  handler_m m (subst v b) *)
+      subst t1 t2 t''.
+      apply resume_typing_inv in Hty1.
+      destruct Hty1 as [A' [B' [Hbody Hsub]]].
+      destruct (sub_fun_inv _ _ _ _ _ Hec Hsub)
+        as [A'' [l'' [B'' [HeqT [HAsub [Hlsub HBsub]]]]]].
+      injection HeqT; intros; subst.
+      apply T_HandlerM.
       eapply T_Sub; [| exact HBsub].
       eapply subst_tm_lemma; [exact Hbody|].
       eapply T_Sub; [exact Hty2 | exact HAsub].
@@ -1110,7 +1142,7 @@ Proof.
     destruct Hstep as
       [(Hv & Et)
       | [(t' & Hs & Et)
-      | (E_tag & Ts & sig & op_body & v & P & Hv & Hpe & Edec & Et)]].
+      | (E_tag & Ts & op_body & Ss & v & P & Hv & Hpe & Edec & Et)]].
     + (* H_Return: t value, t'' = t *)
       subst t''. assumption.
     + (* S_HandlerM: t ==> t', t'' = handler_m m t' *)
