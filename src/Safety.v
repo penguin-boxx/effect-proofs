@@ -41,23 +41,172 @@ Proof. induction 1; intros; simpl; auto. Qed.
 (* ------------------------------------------------------------------ *)
 (* Effect-handler invariant                                           *)
 (*                                                                    *)
-(* Under an `eval_ctx` (no `bind_eff` entries), `T_Cap`, `T_Handle`,  *)
-(* `T_Perform` cannot fire, so a well-typed term cannot be a perform  *)
-(* of a typed capability.  We axiomatize the structural form of this  *)
-(* invariant — namely that no well-typed (under eval_ctx) term has a  *)
-(* `term_perform (term_cap …) v` subterm sitting under a pure         *)
-(* evaluation context — and use it to discharge the H_Perform branch  *)
-(* of preservation for `T_HandlerM`.  A direct proof would proceed by *)
-(* induction on the typing derivation, threading the invariant under  *)
-(* every binder-introducing rule (none of which adds a `bind_eff`).   *)
+(* Under an `eval_ctx` (no `bind_eff` entries), `T_Cap` cannot fire,  *)
+(* so a well-typed term cannot be a perform of a typed capability.    *)
+(* We prove this structurally:                                         *)
+(*                                                                    *)
+(*   1. A well-typed `term_cap E …` forces `ctx_lookup_eff Γ E` to be *)
+(*      `Some …` (recorded by `T_Cap`; `T_Sub` is term-preserving).   *)
+(*   2. Every evaluation-context constructor (`ectx`) types its hole  *)
+(*      sub-term in the *same* context `Γ` — none introduce binders — *)
+(*      so `Γ ⊢ₜ plug P u : T` yields a typing of `u` under `Γ`.       *)
+(*   3. Inverting the `term_perform`/`term_cap` typing then collides   *)
+(*      with `eval_ctx_no_eff`, giving the contradiction.             *)
 (* ------------------------------------------------------------------ *)
 
-Axiom no_typed_perform_cap_under_eval_ctx :
+(* From a `Forall2` typing premise, recover per-element typability. *)
+Lemma Forall2_Forall_exists :
+  forall (A B : Type) (R : A -> B -> Prop) xs ys,
+    Forall2 R xs ys ->
+    Forall (fun x => exists y, R x y) xs.
+Proof.
+  induction 1; constructor; eauto.
+Qed.
+
+(* A well-typed capability value forces its effect tag to be in Γ.    *)
+Lemma cap_typed_eff_some : forall Γ E_tag m Ts op_body T,
+  Γ ⊢ₜ term_cap E_tag m Ts op_body : T ->
+  exists n_α n_β sig0 ret, ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig0, ret).
+Proof.
+  intros Γ E_tag m Ts op_body T H.
+  remember (term_cap E_tag m Ts op_body) as s eqn:Hs.
+  revert Hs. induction H; intros Hs; try discriminate Hs.
+  - (* T_Sub *) apply IHtyping; exact Hs.
+  - (* T_Cap *) injection Hs; intros; subst. eauto.
+Qed.
+
+(* Subsumption-stripping inversions: each gives a typing of the      *)
+(* hole-bearing sub-term in the same context Γ.                       *)
+
+Lemma typed_app_inv : forall Γ f x T,
+  Γ ⊢ₜ term_app f x : T ->
+  exists A l B, Γ ⊢ₜ f : type_fun A l B /\ Γ ⊢ₜ x : A.
+Proof.
+  intros Γ f x T H.
+  remember (term_app f x) as s eqn:Hs.
+  revert Hs. induction H; intros Hs; try discriminate Hs.
+  - apply IHtyping; exact Hs.
+  - injection Hs; intros; subst. exists A, l, B; split; assumption.
+Qed.
+
+Lemma typed_ty_app_inv : forall Γ t S T,
+  Γ ⊢ₜ term_ty_app t S : T -> exists T0, Γ ⊢ₜ t : T0.
+Proof.
+  intros Γ t S T H.
+  remember (term_ty_app t S) as s eqn:Hs.
+  revert Hs. induction H; intros Hs; try discriminate Hs.
+  - apply IHtyping; exact Hs.
+  - injection Hs; intros; subst. eexists; eassumption.
+Qed.
+
+Lemma typed_lt_app_inv : forall Γ t l T,
+  Γ ⊢ₜ term_lt_app t l : T -> exists T0, Γ ⊢ₜ t : T0.
+Proof.
+  intros Γ t l T H.
+  remember (term_lt_app t l) as s eqn:Hs.
+  revert Hs. induction H; intros Hs; try discriminate Hs.
+  - apply IHtyping; exact Hs.
+  - injection Hs; intros; subst. eexists; eassumption.
+Qed.
+
+Lemma typed_match_inv : forall Γ scrut K arity yes no T,
+  Γ ⊢ₜ term_match scrut K arity yes no : T -> exists T0, Γ ⊢ₜ scrut : T0.
+Proof.
+  intros Γ scrut K arity yes no T H.
+  remember (term_match scrut K arity yes no) as s eqn:Hs.
+  revert Hs. induction H; intros Hs; try discriminate Hs.
+  - apply IHtyping; exact Hs.
+  - injection Hs; intros; subst. eexists; eassumption.
+Qed.
+
+Lemma typed_handler_m_inv : forall Γ m t T,
+  Γ ⊢ₜ term_handler_m m t : T -> exists T0, Γ ⊢ₜ t : T0.
+Proof.
+  intros Γ m t T H.
+  remember (term_handler_m m t) as s eqn:Hs.
+  revert Hs. induction H; intros Hs; try discriminate Hs.
+  - apply IHtyping; exact Hs.
+  - injection Hs; intros; subst. eexists; eassumption.
+Qed.
+
+Lemma typed_perform_inv : forall Γ recv Ss arg T,
+  Γ ⊢ₜ term_perform recv Ss arg : T ->
+  exists Tr Ta, Γ ⊢ₜ recv : Tr /\ Γ ⊢ₜ arg : Ta.
+Proof.
+  intros Γ recv Ss arg T H.
+  remember (term_perform recv Ss arg) as s eqn:Hs.
+  revert Hs. induction H; intros Hs; try discriminate Hs.
+  - apply IHtyping; exact Hs.
+  - injection Hs; intros; subst. eexists; eexists; split; eassumption.
+Qed.
+
+Lemma typed_ctor_inv : forall Γ K l lts Ts args T,
+  Γ ⊢ₜ term_ctor K l lts Ts args : T ->
+  Forall (fun a => exists rho, Γ ⊢ₜ a : rho) args.
+Proof.
+  intros Γ K l lts Ts args T H.
+  remember (term_ctor K l lts Ts args) as s eqn:Hs.
+  revert Hs. induction H; intros Hs; try discriminate Hs.
+  - (* T_Sub *) apply IHtyping; exact Hs.
+  - (* T_Ctor *) injection Hs; intros; subst.
+    match goal with
+    | Hf : Forall2 _ _ _ |- _ =>
+        exact (Forall2_Forall_exists _ _ _ _ _ Hf)
+    end.
+Qed.
+
+(* Typing of `plug P u` yields a typing of the plugged sub-term `u`   *)
+(* under the same context: evaluation contexts add no binders.        *)
+Lemma plug_typing_inv : forall P Γ u T,
+  Γ ⊢ₜ plug P u : T -> exists T', Γ ⊢ₜ u : T'.
+Proof.
+  induction P; intros Γ u T H; simpl in H.
+  - (* EC_hole *) exists T; exact H.
+  - (* EC_app1 *)
+    apply typed_app_inv in H. destruct H as [A [l [B [Hf _]]]].
+    eapply IHP; exact Hf.
+  - (* EC_app2 *)
+    apply typed_app_inv in H. destruct H as [A [l [B [_ Hx]]]].
+    eapply IHP; exact Hx.
+  - (* EC_ty_app *)
+    apply typed_ty_app_inv in H. destruct H as [T0 Ht].
+    eapply IHP; exact Ht.
+  - (* EC_lt_app *)
+    apply typed_lt_app_inv in H. destruct H as [T0 Ht].
+    eapply IHP; exact Ht.
+  - (* EC_ctor *)
+    apply typed_ctor_inv in H.
+    rewrite Forall_app in H. destruct H as [_ H].
+    apply Forall_inv in H. destruct H as [rho Hrho].
+    eapply IHP; exact Hrho.
+  - (* EC_match *)
+    apply typed_match_inv in H. destruct H as [T0 Ht].
+    eapply IHP; exact Ht.
+  - (* EC_handler_m *)
+    apply typed_handler_m_inv in H. destruct H as [T0 Ht].
+    eapply IHP; exact Ht.
+  - (* EC_perform_r *)
+    apply typed_perform_inv in H. destruct H as [Tr [Ta [Hr _]]].
+    eapply IHP; exact Hr.
+  - (* EC_perform_a *)
+    apply typed_perform_inv in H. destruct H as [Tr [Ta [_ Ha]]].
+    eapply IHP; exact Ha.
+Qed.
+
+Theorem no_typed_perform_cap_under_eval_ctx :
   forall Γ T E_tag m Ts op_body Ss v P,
     eval_ctx Γ ->
     pure_ectx_m m P ->
     Γ ⊢ₜ plug P (term_perform (term_cap E_tag m Ts op_body) Ss v) : T ->
     False.
+Proof.
+  intros Γ T E_tag m Ts op_body Ss v P Hec Hpe Hty.
+  apply plug_typing_inv in Hty. destruct Hty as [T' Hty].
+  apply typed_perform_inv in Hty. destruct Hty as [Tr [Ta [Hr _]]].
+  apply cap_typed_eff_some in Hr.
+  destruct Hr as [n_α [n_β [sig0 [ret Hlk]]]].
+  rewrite (eval_ctx_no_eff _ E_tag Hec) in Hlk. discriminate.
+Qed.
 
 (* ------------------------------------------------------------------ *)
 (* Subtyping shape inversion under eval_ctx.                          *)
@@ -491,13 +640,346 @@ Proof.
   - (* TyAll *) discriminate HU.
 Qed.
 
-Axiom sub_ty_all_inv_full : forall Γ S B T,
+(* ------------------------------------------------------------------ *)
+(* Kernel-F<: narrowing for subtyping (now a theorem).                 *)
+(*                                                                    *)
+(* Replacing the bound of a type-variable binder by a *subtype*        *)
+(* preserves any subtyping derivation under it.  We prove this by       *)
+(* induction on the derivation, generalised over an arbitrary context   *)
+(* prefix `Δ` so the binder cases (`SA_LtAll`/`SA_TyAll`) go through.   *)
+(*                                                                    *)
+(* Three context-level facts are needed:                               *)
+(*   (a) lifetime subtyping is invariant under narrowing a `bind_ty`    *)
+(*       (proved: `ctx_lookup_lt` skips `bind_ty` entries),             *)
+(*   (b) general (no-shift) weakening of `<::` — for the `SA_VarCtx`    *)
+(*       case when the looked-up variable *is* the narrowed one,        *)
+(*   (c) `lt_of_ty_G` is monotone under narrowing — narrowing a bound   *)
+(*       to a subtype can only shrink the computed `lt_∅`.              *)
+(* (b) and (c) are standard de Bruijn / lattice facts kept axiomatic,   *)
+(* in the same spirit as `sub_weaken_ty`; everything else is proved.    *)
+(* ------------------------------------------------------------------ *)
+
+(* (a.0) `ctx_lookup_lt` ignores the narrowed `bind_ty` slot. *)
+Lemma ctx_lookup_lt_narrow : forall Δ Γ Bsup Bsub x,
+  ctx_lookup_lt (Δ ++ bind_ty Bsub :: Γ) x
+  = ctx_lookup_lt (Δ ++ bind_ty Bsup :: Γ) x.
+Proof.
+  induction Δ as [|b Δ' IH]; intros Γ Bsup Bsub x; simpl.
+  - reflexivity.
+  - destruct b; simpl.
+    all: try apply IH.
+    (* bind_lt remains *)
+    destruct x; [reflexivity | apply IH].
+Qed.
+
+(* (a.1) Lifetime subtyping only depends on the lt-lookup function. *)
+Lemma lt_sub_lookup_eq : forall G1 l1 l2,
+  G1 ⊢ₗ l1 <: l2 ->
+  forall G2, (forall x, ctx_lookup_lt G1 x = ctx_lookup_lt G2 x) ->
+  G2 ⊢ₗ l1 <: l2.
+Proof.
+  intros G1 l1 l2 H.
+  induction H; intros G2 Heq.
+  - apply LS_Free.
+  - apply LS_Local.
+  - apply LS_Var. rewrite <- (Heq x). exact H.
+  - apply LS_Refl.
+  - eapply LS_Trans; eauto.
+  - apply LS_MinL; eauto.
+  - apply LS_MinR1; eauto.
+  - apply LS_MinR2; eauto.
+Qed.
+
+(* (a) Lifetime subtyping is invariant under narrowing a `bind_ty`. *)
+Lemma lt_sub_narrow : forall Δ Γ Bsup Bsub l1 l2,
+  (Δ ++ bind_ty Bsup :: Γ) ⊢ₗ l1 <: l2 ->
+  (Δ ++ bind_ty Bsub :: Γ) ⊢ₗ l1 <: l2.
+Proof.
+  intros Δ Γ Bsup Bsub l1 l2 H.
+  eapply lt_sub_lookup_eq; [exact H |].
+  intros x. symmetry. apply ctx_lookup_lt_narrow.
+Qed.
+
+(* `ctx_lookup_ty` either is unchanged by narrowing or hits the slot. *)
+Lemma ctx_lookup_ty_narrow : forall Δ Γ Bsup Bsub α,
+  (ctx_lookup_ty (Δ ++ bind_ty Bsub :: Γ) α
+     = ctx_lookup_ty (Δ ++ bind_ty Bsup :: Γ) α)
+  \/ (ctx_lookup_ty (Δ ++ bind_ty Bsup :: Γ) α = Some Bsup
+      /\ ctx_lookup_ty (Δ ++ bind_ty Bsub :: Γ) α = Some Bsub).
+Proof.
+  induction Δ as [|b Δ' IH]; intros Γ Bsup Bsub α; simpl.
+  - destruct α.
+    + right. split; reflexivity.
+    + left. reflexivity.
+  - destruct b; simpl.
+    all: try apply IH.
+    (* bind_ty remains *)
+    destruct α; [left; reflexivity | apply IH].
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* Lattice helper: `lt_min` is monotone in both arguments.             *)
+(* ------------------------------------------------------------------ *)
+Lemma lt_min_mono : forall G a a' b b',
+  G ⊢ₗ a <: a' -> G ⊢ₗ b <: b' -> G ⊢ₗ lt_min a b <: lt_min a' b'.
+Proof.
+  intros G a a' b b' Ha Hb.
+  apply LS_MinL.
+  - eapply LS_Trans; [exact Ha | apply LS_MinR1; apply LS_Refl].
+  - eapply LS_Trans; [exact Hb | apply LS_MinR2; apply LS_Refl].
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* `lt_of_ty_ctx` is monotone in its fuel argument: with more fuel,    *)
+(* type-variable chains are resolved further, which can only *raise*   *)
+(* the computed lifetime (chains that run out of fuel bottom out at    *)
+(* `lt_free`, the lattice bottom).                                     *)
+(* ------------------------------------------------------------------ *)
+Lemma lt_of_ty_ctx_fuel_mono_S : forall f G T,
+  G ⊢ₗ lt_of_ty_ctx f G T <: lt_of_ty_ctx (S f) G T.
+Proof.
+  induction f as [|f' IH]; intros G T.
+  - (* f = 0 *)
+    destruct T; simpl.
+    + (* type_var *)
+      destruct (ctx_lookup_ty G n); apply LS_Free.
+    + (* type_fun *) apply LS_Refl.
+    + (* type_ctor *) apply LS_MinR1. apply LS_Refl.
+    + (* type_lt_all *) apply LS_Refl.
+    + (* type_ty_all *) apply LS_Refl.
+  - (* f = S f' *)
+    destruct T; simpl.
+    + (* type_var *)
+      destruct (ctx_lookup_ty G n).
+      * apply IH.
+      * apply LS_Refl.
+    + (* type_fun *) apply LS_Refl.
+    + (* type_ctor *)
+      apply lt_min_mono; [apply LS_Refl |].
+      (* monotonicity of the per-element minimum over the field list *)
+      induction l0 as [|A rest IHrest]; simpl.
+      * apply LS_Refl.
+      * apply lt_min_mono; [apply IH | apply IHrest].
+    + (* type_lt_all *) apply LS_Refl.
+    + (* type_ty_all *) apply LS_Refl.
+Qed.
+
+Lemma lt_of_ty_ctx_fuel_mono : forall f1 f2 G T,
+  f1 <= f2 ->
+  G ⊢ₗ lt_of_ty_ctx f1 G T <: lt_of_ty_ctx f2 G T.
+Proof.
+  intros f1 f2 G T Hle. induction Hle.
+  - apply LS_Refl.
+  - eapply LS_Trans; [exact IHHle | apply lt_of_ty_ctx_fuel_mono_S].
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* `lt_of_ty_ctx` is monotone under subtyping (fixed context), as long *)
+(* as the fuel does not exceed the context length (so the `SA_Any`     *)
+(* premise, stated at fuel `|G|`, can be transported down via fuel     *)
+(* monotonicity).                                                      *)
+(* ------------------------------------------------------------------ *)
+Lemma lt_of_ty_ctx_mono_sub : forall f G S T,
+  G ⊢ S <:: T ->
+  f <= List.length G ->
+  G ⊢ₗ lt_of_ty_ctx f G S <: lt_of_ty_ctx f G T.
+Proof.
+  intros f G S T Hsub. revert f.
+  induction Hsub; intros f Hf.
+  - (* SA_Refl *) apply LS_Refl.
+  - (* SA_Trans *) eapply LS_Trans; [apply IHHsub1 | apply IHHsub2]; exact Hf.
+  - (* SA_VarCtx *)
+    destruct f as [|f']; simpl.
+    + apply LS_Free.
+    + rewrite H. apply lt_of_ty_ctx_fuel_mono_S.
+  - (* SA_Data *)
+    destruct f as [|f']; simpl.
+    + exact H.
+    + apply lt_min_mono; [exact H | apply LS_Refl].
+  - (* SA_Any *)
+    (* lt_of_ty_ctx f Γ T <: Δ <: lt_of_ty_ctx f Γ (any Δ []).          *)
+    unfold lt_of_ty_G in H.
+    eapply LS_Trans.
+    + eapply LS_Trans; [ apply lt_of_ty_ctx_fuel_mono; exact Hf | exact H ].
+    + destruct f as [|f']; simpl;
+        [ apply LS_Refl | apply LS_MinR1; apply LS_Refl ].
+  - (* SA_Fun *) destruct f as [|f']; simpl; assumption.
+  - (* SA_LtAll *) destruct f as [|f']; simpl; apply LS_Refl.
+  - (* SA_TyAll *) destruct f as [|f']; simpl; apply LS_Refl.
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* (b) General no-shift weakening, reduced to a single-binding step.   *)
+(* The single-step version mirrors the file's existing `sub_weaken_ty` *)
+(* and is the only weakening primitive kept axiomatic.                 *)
+(* ------------------------------------------------------------------ *)
+Axiom sub_weaken_cons : forall b Γ T1 T2,
+  Γ ⊢ T1 <:: T2 ->
+  (b :: Γ) ⊢ T1 <:: T2.
+
+Lemma sub_weaken_app : forall Δ Γ T1 T2,
+  Γ ⊢ T1 <:: T2 ->
+  (Δ ++ Γ) ⊢ T1 <:: T2.
+Proof.
+  induction Δ as [|b Δ' IH]; intros Γ T1 T2 H; simpl.
+  - exact H.
+  - apply sub_weaken_cons. apply IH. exact H.
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* (c) Narrowing a bound to a subtype shrinks the computed `lt_∅`.     *)
+(* Now a theorem, resting only on the single weakening primitive.      *)
+(* ------------------------------------------------------------------ *)
+Lemma lt_of_ty_ctx_narrow : forall f Δ Γ Bsup Bsub T,
+  Γ ⊢ Bsub <:: Bsup ->
+  f <= List.length (Δ ++ bind_ty Bsub :: Γ) ->
+  (Δ ++ bind_ty Bsub :: Γ) ⊢ₗ
+     lt_of_ty_ctx f (Δ ++ bind_ty Bsub :: Γ) T
+     <: lt_of_ty_ctx f (Δ ++ bind_ty Bsup :: Γ) T.
+Proof.
+  induction f as [|f' IH]; intros Δ Γ Bsup Bsub T Hb Hf.
+  - (* fuel 0: result ignores the context entirely *)
+    destruct T; simpl; apply LS_Refl.
+  - (* fuel S f' *)
+    assert (Hf' : f' <= List.length (Δ ++ bind_ty Bsub :: Γ)) by (apply Nat.le_trans with (S f'); [apply Nat.le_succ_diag_r | exact Hf]).
+    destruct T; simpl.
+    + (* type_var *)
+      destruct (ctx_lookup_ty_narrow Δ Γ Bsup Bsub n)
+        as [Heq | [Horig Hnar]].
+      * rewrite Heq.
+        destruct (ctx_lookup_ty (Δ ++ bind_ty Bsup :: Γ) n) eqn:E.
+        -- exact (IH Δ Γ Bsup Bsub t Hb Hf').
+        -- apply LS_Refl.
+      * rewrite Horig, Hnar.
+        (* lt_of_ty_ctx f' (..Bsub..) Bsub <: lt_of_ty_ctx f' (..Bsup..) Bsup *)
+        eapply LS_Trans.
+        -- exact (IH Δ Γ Bsup Bsub Bsub Hb Hf').
+        -- (* lt_of_ty_ctx f' (..Bsup..) Bsub <: lt_of_ty_ctx f' (..Bsup..) Bsup *)
+           eapply lt_sub_narrow.
+           apply lt_of_ty_ctx_mono_sub.
+           ++ (* (Δ ++ bind_ty Bsup :: Γ) ⊢ Bsub <:: Bsup *)
+              assert (Hass : (Δ ++ [bind_ty Bsup]) ++ Γ = Δ ++ bind_ty Bsup :: Γ)
+                by (rewrite <- app_assoc; reflexivity).
+              rewrite <- Hass. apply sub_weaken_app. exact Hb.
+           ++ (* f' <= |Δ ++ bind_ty Bsup :: Γ| (= the Bsub-length) *)
+              assert (Hlen : List.length (Δ ++ bind_ty Bsup :: Γ)
+                             = List.length (Δ ++ bind_ty Bsub :: Γ))
+                by (rewrite !length_app; reflexivity).
+              rewrite Hlen. exact Hf'.
+    + (* type_fun *) apply LS_Refl.
+    + (* type_ctor *)
+      apply lt_min_mono; [apply LS_Refl |].
+      induction l0 as [|A rest IHrest]; simpl.
+      * apply LS_Refl.
+      * apply lt_min_mono; [ exact (IH Δ Γ Bsup Bsub A Hb Hf') | apply IHrest ].
+    + (* type_lt_all *) apply LS_Refl.
+    + (* type_ty_all *) apply LS_Refl.
+Qed.
+
+Lemma lt_of_ty_G_narrow : forall Δ Γ Bsup Bsub T,
+  Γ ⊢ Bsub <:: Bsup ->
+  (Δ ++ bind_ty Bsub :: Γ) ⊢ₗ
+     lt_of_ty_G (Δ ++ bind_ty Bsub :: Γ) T
+     <: lt_of_ty_G (Δ ++ bind_ty Bsup :: Γ) T.
+Proof.
+  intros Δ Γ Bsup Bsub T Hb.
+  unfold lt_of_ty_G.
+  (* both contexts have the same length, so the same fuel is used *)
+  assert (Hlen : List.length (Δ ++ bind_ty Bsup :: Γ)
+                 = List.length (Δ ++ bind_ty Bsub :: Γ)).
+  { rewrite !length_app. reflexivity. }
+  rewrite Hlen.
+  apply lt_of_ty_ctx_narrow; [exact Hb | apply Nat.le_refl].
+Qed.
+
+(* Prefix-generalised narrowing. *)
+Lemma sub_narrow_ty_gen : forall G S T,
+  G ⊢ S <:: T ->
+  forall Δ Γ Bsup Bsub,
+    G = Δ ++ bind_ty Bsup :: Γ ->
+    Γ ⊢ Bsub <:: Bsup ->
+    (Δ ++ bind_ty Bsub :: Γ) ⊢ S <:: T.
+Proof.
+  intros G S T Hsub.
+  induction Hsub; intros Δ0 Γ0 Bsup Bsub HG Hb; subst.
+  - (* SA_Refl *) apply SA_Refl.
+  - (* SA_Trans *)
+    eapply SA_Trans.
+    + exact (IHHsub1 Δ0 Γ0 Bsup Bsub eq_refl Hb).
+    + exact (IHHsub2 Δ0 Γ0 Bsup Bsub eq_refl Hb).
+  - (* SA_VarCtx *)
+    destruct (ctx_lookup_ty_narrow Δ0 Γ0 Bsup Bsub α) as [Heq | [Horig Hnar]].
+    + apply SA_VarCtx. rewrite Heq. exact H.
+    + rewrite Horig in H. injection H as HB. subst B.
+      eapply SA_Trans.
+      * apply SA_VarCtx. exact Hnar.
+      * assert (Hass : (Δ0 ++ [bind_ty Bsub]) ++ Γ0 = Δ0 ++ bind_ty Bsub :: Γ0)
+          by (rewrite <- app_assoc; reflexivity).
+        rewrite <- Hass. apply sub_weaken_app. exact Hb.
+  - (* SA_Data *) apply SA_Data. eapply lt_sub_narrow. exact H.
+  - (* SA_Any *)
+    apply SA_Any.
+    eapply LS_Trans.
+    + apply lt_of_ty_G_narrow. exact Hb.
+    + eapply lt_sub_narrow. exact H.
+  - (* SA_Fun *)
+    apply SA_Fun.
+    + exact (IHHsub1 Δ0 Γ0 Bsup Bsub eq_refl Hb).
+    + eapply lt_sub_narrow. exact H.
+    + exact (IHHsub2 Δ0 Γ0 Bsup Bsub eq_refl Hb).
+  - (* SA_LtAll *)
+    apply SA_LtAll.
+    exact (IHHsub (bind_lt lt_local :: Δ0) Γ0 Bsup Bsub eq_refl Hb).
+  - (* SA_TyAll *)
+    apply SA_TyAll.
+    + exact (IHHsub1 Δ0 Γ0 Bsup Bsub eq_refl Hb).
+    + exact (IHHsub2 (bind_ty B' :: Δ0) Γ0 Bsup Bsub eq_refl Hb).
+Qed.
+
+Lemma sub_narrow_ty : forall Γ Bsub Bsup T1 T2,
+  Γ ⊢ Bsub <:: Bsup ->
+  (bind_ty Bsup :: Γ) ⊢ T1 <:: T2 ->
+  (bind_ty Bsub :: Γ) ⊢ T1 <:: T2.
+Proof.
+  intros Γ Bsub Bsup T1 T2 Hb Hsub.
+  exact (sub_narrow_ty_gen _ _ _ Hsub [] Γ Bsup Bsub eq_refl Hb).
+Qed.
+
+(* Full inversion for `type_ty_all` supertypes, now a theorem: it       *)
+(* recovers both the bound-subtyping witness (contravariant) and the    *)
+(* body-subtyping witness (covariant, under the tighter bound).  The    *)
+(* transitivity case composes the two body witnesses by narrowing the   *)
+(* left one down to the common bound `B`.                               *)
+Lemma sub_ty_all_inv_full : forall Γ S B T,
   eval_ctx Γ ->
   Γ ⊢ S <:: type_ty_all B T ->
   exists B' T',
     S = type_ty_all B' T' /\
     Γ ⊢ B <:: B' /\
     (bind_ty B :: Γ) ⊢ T' <:: T.
+Proof.
+  intros Γ S B T Hec Hsub.
+  remember (type_ty_all B T) as U eqn:HU.
+  revert B T HU.
+  induction Hsub; intros B0 T0 HU.
+  - (* Refl *) inversion HU; subst.
+    exists B0, T0. repeat split; auto.
+  - (* Trans: S <:: U0 <:: type_ty_all B0 T0 *)
+    subst T.
+    destruct (IHHsub2 Hec _ _ eq_refl) as [Bm [Tm [HeqU [HBm HTm]]]]; subst.
+    destruct (IHHsub1 Hec _ _ eq_refl) as [B' [T' [HeqS [HB' HT']]]]; subst.
+    exists B', T'. repeat split; auto.
+    + eapply SA_Trans; eauto.
+    + eapply SA_Trans;
+        [ eapply sub_narrow_ty; [ exact HBm | exact HT' ] | exact HTm ].
+  - (* VarCtx *) subst. rewrite eval_ctx_no_ty in H; auto; discriminate.
+  - (* Data *) discriminate HU.
+  - (* Any *) discriminate HU.
+  - (* Fun *) discriminate HU.
+  - (* LtAll *) discriminate HU.
+  - (* TyAll *) injection HU; intros; subst.
+    eexists; eexists; repeat split; eauto.
+Qed.
 
 (* Subtyping-substitution lemmas.  Standard; axiomatized.             *)
 Axiom sub_subst_ty : forall Γ B U0 U S,
@@ -576,12 +1058,15 @@ Proof.
 Qed.
 
 (* --- Type-context weakening for subtyping --- *)
-(* Standard structural weakening; axiomatized.  Adding a fresh ty-bind *)
-(* preserves derivability of subtyping judgments, since the new var is *)
-(* fresh w.r.t. an existing derivation.                                *)
-Axiom sub_weaken_ty : forall Γ B T1 T2,
+(* Unified with the narrowing-block primitive: this is exactly the     *)
+(* `b := bind_ty B` instance of `sub_weaken_cons`, so it is no longer  *)
+(* an independent axiom.                                                *)
+Lemma sub_weaken_ty : forall Γ B T1 T2,
   Γ ⊢ T1 <:: T2 ->
   (bind_ty B :: Γ) ⊢ T1 <:: T2.
+Proof.
+  intros Γ B T1 T2 H. apply sub_weaken_cons. exact H.
+Qed.
 
 (* --- Single-step elim soundness for lifetimes --- *)
 (* Frame: lvar is the var being eliminated.  Result lives after the    *)
@@ -894,11 +1379,19 @@ Axiom ctor_lts_chain_bounded : forall Γ lts n_lt n_ty Ts sigma vs Delta,
   chain_bounded Γ lts (shift_lt n_lt 0 Delta).
 
 (* Monotonicity of chain_bounded under enlarging the ambient bound.    *)
-(* A standard consequence of weakening for the lifetime subtyping.     *)
-Axiom chain_bounded_mono : forall Γ lts B B',
+(* Now a theorem: each chain link composes with the substituted bound  *)
+(* growth via `lt_sub_subst_lt`.                                        *)
+Lemma chain_bounded_mono : forall Γ lts B B',
   chain_bounded Γ lts B ->
   Γ ⊢ₗ B <: B' ->
   chain_bounded Γ lts B'.
+Proof.
+  intros Γ lts. induction lts as [|w rest IH]; intros B B' Hcb Hsub.
+  - exact I.
+  - simpl in Hcb. destruct Hcb as [Hw Hrest]. simpl. split.
+    + eapply LS_Trans; [exact Hw |]. apply lt_sub_subst_lt. exact Hsub.
+    + eapply IH; [exact Hrest |]. apply lt_sub_subst_lt. exact Hsub.
+Qed.
 
 (* Lifetime subtyping is preserved by `shift_lt`.                       *)
 Axiom shift_lt_sub : forall Γ n k B B',
@@ -1177,4 +1670,193 @@ Proof.
     destruct (progress _ _ _ Hec Hty) as [Hv | [t'' Hs]]; [contradiction|].
     apply Hns; eauto.
   - apply IH. eapply preservation; eauto.
+Qed.
+
+(* ================================================================== *)
+(*                                                                    *)
+(*                NON-ESCAPING OF LOCAL VALUES                        *)
+(*                                                                    *)
+(* The lifetime lattice places `lt_free` at the bottom and            *)
+(* `lt_local` at the top, with subtyping oriented `free <: local`.    *)
+(* A value annotated `local` is confined to its scope: it may be      *)
+(* *used where* a `local` value is expected, but it must never flow   *)
+(* the other way, into a position demanding a `free` (escapable)      *)
+(* lifetime.                                                          *)
+(*                                                                    *)
+(* The formal content of "local values do not escape" is therefore    *)
+(* that subtyping can never relax a `local` lifetime down to `free`:  *)
+(* the lattice fact `local <: free` is underivable in *every*         *)
+(* context, and consequently a `local`-annotated datum can never be   *)
+(* coerced (by subsumption) to its `free` counterpart.                *)
+(* ================================================================== *)
+
+(* The boolean `no_local_lt` (defined in Typing.v) is a *downward     *)
+(* closed* invariant of the lifetime-subtyping order: if a supertype  *)
+(* has no top-level `local`, then neither does any of its subtypes.   *)
+(* This is the monotonicity engine behind non-escaping.               *)
+Lemma lt_sub_no_local_mono : forall Γ l1 l2,
+  Γ ⊢ₗ l1 <: l2 ->
+  no_local_lt l2 = true ->
+  no_local_lt l1 = true.
+Proof.
+  intros Γ l1 l2 H. induction H; intros Hsup; simpl in *.
+  - (* LS_Free  : free <: l   — free has no local *) reflexivity.
+  - (* LS_Local : l <: local  — supertype IS local, premise absurd *)
+    discriminate Hsup.
+  - (* LS_Var   : lt_var x <: Δ — a bare var has no top-level local *)
+    reflexivity.
+  - (* LS_Refl  *) exact Hsup.
+  - (* LS_Trans *) apply IHlt_sub1. apply IHlt_sub2. exact Hsup.
+  - (* LS_MinL  : lt_min l1 l2 <: l *)
+    rewrite (IHlt_sub1 Hsup). rewrite (IHlt_sub2 Hsup). reflexivity.
+  - (* LS_MinR1 : l <: lt_min l1 l2 *)
+    apply IHlt_sub.
+    destruct (no_local_lt l1) eqn:E1; simpl in Hsup; [reflexivity | discriminate].
+  - (* LS_MinR2 : l <: lt_min l1 l2 *)
+    apply IHlt_sub.
+    destruct (no_local_lt l2) eqn:E2;
+      [reflexivity | destruct (no_local_lt l1); simpl in Hsup; discriminate].
+Qed.
+
+(* Lattice form: the top lifetime `local` never outlives the bottom   *)
+(* `free`.  Holds in *any* context (no `eval_ctx` needed): even       *)
+(* context-bounded lt-variables cannot bridge `local` to `free`.      *)
+Theorem lt_local_not_escapes : forall Γ,
+  ~ (Γ ⊢ₗ lt_local <: lt_free).
+Proof.
+  intros Γ H.
+  pose proof (lt_sub_no_local_mono _ _ _ H (eq_refl : no_local_lt lt_free = true))
+    as Hcontra.
+  simpl in Hcontra. discriminate.
+Qed.
+
+(* Value/type form: a `local`-annotated data value can never be       *)
+(* subsumed to the same data carrying `free`.  This is the            *)
+(* "no escape via subtyping" theorem for local values.               *)
+Theorem local_data_not_escapes : forall Γ K Ts,
+  eval_ctx Γ ->
+  K <> any_tag ->
+  ~ (Γ ⊢ type_ctor K lt_local Ts <:: type_ctor K lt_free Ts).
+Proof.
+  intros Γ K Ts Hec HK H.
+  destruct (sub_ctor_inv _ _ _ _ _ Hec H HK) as [l' [Heq Hlsub]].
+  injection Heq as Hl'. subst l'.
+  exact (lt_local_not_escapes _ Hlsub).
+Qed.
+
+(* ================================================================== *)
+(*                                                                    *)
+(*           OPERATIONAL NON-ESCAPE OF LOCAL VALUES                   *)
+(*                                                                    *)
+(* The lattice/subtyping theorems above forbid *coercing* a `local`   *)
+(* datum to `free`.  Transported along the dynamics they deliver the  *)
+(* operational guarantee: whatever value a closed program computes    *)
+(* at an escapable (`free`) data type is itself annotated with a      *)
+(* lifetime that carries no top-level `local`.  A `local`-confined    *)
+(* datum can never surface as the result delivered at a `free` type.  *)
+(* ================================================================== *)
+
+(* Typing is preserved along an entire reduction sequence. *)
+Lemma multi_preservation : forall Γ t t' T,
+  eval_ctx Γ ->
+  Γ ⊢ₜ t : T ->
+  multi_step t t' ->
+  Γ ⊢ₜ t' : T.
+Proof.
+  intros Γ t t' T Hec Hty Hms.
+  induction Hms as [t | t1 t2 t3 Hs12 Hms IH].
+  - exact Hty.
+  - apply IH. eapply preservation; eauto.
+Qed.
+
+(* Operational non-escape: a value produced at an escapable `free`    *)
+(* data type is a constructor whose *own* lifetime annotation         *)
+(* provably contains no top-level `local`.  Equivalently, a value     *)
+(* confined to a `local` lifetime is never the result a program       *)
+(* hands back at a `free` (escapable) type.                           *)
+Theorem local_value_does_not_escape : forall Γ t K Ts v,
+  eval_ctx Γ ->
+  K <> any_tag ->
+  Γ ⊢ₜ t : type_ctor K lt_free Ts ->
+  multi_step t v ->
+  value v ->
+  exists l' lts' vs,
+    v = term_ctor K l' lts' Ts vs /\
+    no_local_lt l' = true.
+Proof.
+  intros Γ t K Ts v Hec HK Hty Hms Hval.
+  pose proof (multi_preservation _ _ _ _ Hec Hty Hms) as Htyv.
+  destruct (canonical_ctor _ _ _ _ _ Hec Htyv Hval HK)
+    as [K' [l' [lts' [Ts' [vs [Hveq Hvs]]]]]].
+  subst v.
+  apply ctor_typing_inv in Htyv.
+  destruct Htyv as
+    [n_lt [n_ty [sig [res [Hlk [Hltlen [HTslen [Hl [Hvslen [Hf2 Hsub]]]]]]]]]].
+  destruct (sub_ctor_inv _ _ _ _ _ Hec Hsub HK) as [lx [Heq Hlsub]].
+  injection Heq as HKeq Hleq HTseq.
+  subst K'. subst Ts'.
+  exists l', lts', vs. split; [reflexivity|].
+  rewrite Hleq.
+  apply (lt_sub_no_local_mono _ _ _ Hlsub).
+  reflexivity.
+Qed.
+
+(* ================================================================== *)
+(*                                                                    *)
+(*                   CAPABILITY CONFINEMENT                           *)
+(*                                                                    *)
+(* A runtime capability `cap_E^m _ _` is the only construct whose      *)
+(* typing rule (`T_Cap`) consults the effect environment: it is       *)
+(* well-typed solely in a context that *binds* the effect tag `E`.    *)
+(* Capabilities are minted exclusively by `H_Handle`, which wraps     *)
+(* each one immediately inside its own `handler_m m` delimiter        *)
+(*   handle …  -->h  handler_m m (… cap_E^m …).                       *)
+(* In the program-level evaluation scenario the ambient context is an *)
+(* `eval_ctx` (no `bind_eff`), so a capability can never inhabit a    *)
+(* typed evaluation position: every evaluation context surrounding a  *)
+(* (well-typed) capability must pass through its handler.             *)
+(* ================================================================== *)
+
+(* Core confinement.  Because `plug E _` types its hole in the *same* *)
+(* context (ectx frames introduce no binders), a capability in the    *)
+(* hole would force its effect tag into Γ — impossible under          *)
+(* `eval_ctx`.  The conclusion is the strongest possible: no such     *)
+(* configuration is even well-typed.                                  *)
+Theorem capability_confined : forall Γ E E_tag m Ts op_body T,
+  eval_ctx Γ ->
+  Γ ⊢ₜ plug E (term_cap E_tag m Ts op_body) : T ->
+  False.
+Proof.
+  intros Γ E E_tag m Ts op_body T Hec Hty.
+  apply plug_typing_inv in Hty. destruct Hty as [T' Hty].
+  apply cap_typed_eff_some in Hty.
+  destruct Hty as [n_α [n_β [sig0 [ret Hlk]]]].
+  rewrite (eval_ctx_no_eff _ E_tag Hec) in Hlk. discriminate.
+Qed.
+
+(* Operational form.  A closed well-typed program never reduces to a  *)
+(* configuration that exposes a capability at an evaluation position. *)
+Theorem capability_never_exposed : forall Γ t E E_tag m Ts op_body T,
+  eval_ctx Γ ->
+  Γ ⊢ₜ t : T ->
+  multi_step t (plug E (term_cap E_tag m Ts op_body)) ->
+  False.
+Proof.
+  intros Γ t E E_tag m Ts op_body T Hec Hty Hms.
+  pose proof (multi_preservation _ _ _ _ Hec Hty Hms) as Hty'.
+  eapply capability_confined; eauto.
+Qed.
+
+(* The user-facing phrasing: if a closed program does reach `E[cap]`, *)
+(* then `E` is *not* delimiter-free for the capability's marker `m` — *)
+(* i.e. a matching `handler_m m` always lies above the hole.  (It     *)
+(* holds a fortiori, the premise being unreachable in this model.)    *)
+Corollary capability_under_handler : forall Γ t E E_tag m Ts op_body T,
+  eval_ctx Γ ->
+  Γ ⊢ₜ t : T ->
+  multi_step t (plug E (term_cap E_tag m Ts op_body)) ->
+  ~ pure_ectx_m m E.
+Proof.
+  intros Γ t E E_tag m Ts op_body T Hec Hty Hms _.
+  eapply capability_never_exposed; eauto.
 Qed.
