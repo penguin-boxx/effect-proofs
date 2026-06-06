@@ -1355,10 +1355,257 @@ Proof.
 Qed.
 
 (* Likewise, inserting a `bind_lt` binding shifts the lifetime          *)
-(* namespace inside types by one.                                       *)
-Axiom sub_weaken_lt_shift : forall Γ D T1 T2,
+(* namespace inside types by one.  Derived from `sub_InsLt`.           *)
+
+(* ===== InsLt: depth-general bind_lt weakening ===== *)
+
+Lemma shift_lt_var_eq : forall a c n,
+  shift_lt a c (lt_var n) = lt_var (if Nat.leb c n then n + a else n).
+Proof. reflexivity. Qed.
+
+(* swap law for shift_lt (lifetimes) *)
+Lemma shift_lt_swap : forall l c1 c2, c1 <= c2 ->
+  shift_lt 1 c1 (shift_lt 1 c2 l) = shift_lt 1 (S c2) (shift_lt 1 c1 l).
+Proof.
+  induction l as [n| | |l1 IH1 l2 IH2]; intros c1 c2 Hle.
+  - rewrite !shift_lt_var_eq. f_equal.
+    destruct (Nat.leb c2 n) eqn:E2.
+    + apply Nat.leb_le in E2.
+      rewrite (proj2 (Nat.leb_le c1 n)) by lia.
+      rewrite (proj2 (Nat.leb_le c1 (n+1))) by lia.
+      rewrite (proj2 (Nat.leb_le (S c2) (n+1))) by lia.
+      reflexivity.
+    + apply Nat.leb_gt in E2.
+      destruct (Nat.leb c1 n) eqn:E1.
+      * apply Nat.leb_le in E1.
+        rewrite (proj2 (Nat.leb_gt (S c2) (n+1))) by lia. reflexivity.
+      * apply Nat.leb_gt in E1.
+        rewrite (proj2 (Nat.leb_gt (S c2) n)) by lia. reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - simpl. rewrite IH1 by lia. rewrite IH2 by lia. reflexivity.
+Qed.
+
+Lemma shift_lt_swap_0 : forall l c,
+  shift_lt 1 0 (shift_lt 1 c l) = shift_lt 1 (S c) (shift_lt 1 0 l).
+Proof. intros l c. apply shift_lt_swap. lia. Qed.
+
+(* swap law for shift_lt_in_ty (types) *)
+Lemma shift_lt_in_ty_swap : forall T c1 c2, c1 <= c2 ->
+  shift_lt_in_ty 1 c1 (shift_lt_in_ty 1 c2 T)
+  = shift_lt_in_ty 1 (S c2) (shift_lt_in_ty 1 c1 T).
+Proof.
+  intros T. apply (type_list_ind
+    (fun T => forall c1 c2, c1 <= c2 ->
+      shift_lt_in_ty 1 c1 (shift_lt_in_ty 1 c2 T)
+      = shift_lt_in_ty 1 (S c2) (shift_lt_in_ty 1 c1 T))
+    (fun Ts => forall c1 c2, c1 <= c2 ->
+      List.map (shift_lt_in_ty 1 c1) (List.map (shift_lt_in_ty 1 c2) Ts)
+      = List.map (shift_lt_in_ty 1 (S c2)) (List.map (shift_lt_in_ty 1 c1) Ts))).
+  - intros n c1 c2 Hle. reflexivity.
+  - intros A l B HA HB c1 c2 Hle.
+    simpl. rewrite HA by lia. rewrite HB by lia. rewrite shift_lt_swap by lia. reflexivity.
+  - intros K l Ts HTs c1 c2 Hle.
+    rewrite !shift_lt_in_ty_ctor_eq. rewrite shift_lt_swap by lia. f_equal. apply HTs. lia.
+  - intros A HA c1 c2 Hle.
+    simpl. rewrite HA by lia. reflexivity.
+  - intros B A HB HA c1 c2 Hle.
+    simpl. rewrite HB by lia. rewrite HA by lia. reflexivity.
+  - intros c1 c2 Hle. reflexivity.
+  - intros A Ts HA HTs c1 c2 Hle.
+    simpl. rewrite HA by lia. f_equal. apply HTs. lia.
+Qed.
+
+Lemma shift_lt_in_ty_swap_0 : forall T c,
+  shift_lt_in_ty 1 0 (shift_lt_in_ty 1 c T)
+  = shift_lt_in_ty 1 (S c) (shift_lt_in_ty 1 0 T).
+Proof. intros T c. apply shift_lt_in_ty_swap. lia. Qed.
+
+Inductive InsLt : nat -> ctx -> ctx -> Prop :=
+| InsLt_here : forall D G, InsLt 0 G (bind_lt D :: G)
+| InsLt_lt : forall c G G' D,
+    InsLt c G G' -> InsLt (S c) (bind_lt D :: G) (bind_lt (shift_lt 1 c D) :: G')
+| InsLt_ty : forall c G G' A,
+    InsLt c G G' -> InsLt c (bind_ty A :: G) (bind_ty (shift_lt_in_ty 1 c A) :: G')
+| InsLt_tm : forall c G G' T,
+    InsLt c G G' -> InsLt c (bind_tm T :: G) (bind_tm (shift_lt_in_ty 1 c T) :: G')
+| InsLt_ctor : forall c G G' tg n1 n2 Ts Tr,
+    InsLt c G G' ->
+    InsLt c (bind_ctor tg n1 n2 Ts Tr :: G)
+            (bind_ctor tg n1 n2 (List.map (shift_lt_in_ty 1 c) Ts) (shift_lt_in_ty 1 c Tr) :: G')
+| InsLt_eff : forall c G G' eg m1 m2 Ts Tr,
+    InsLt c G G' ->
+    InsLt c (bind_eff eg m1 m2 Ts Tr :: G)
+            (bind_eff eg m1 m2 (shift_lt_in_ty 1 c Ts) (shift_lt_in_ty 1 c Tr) :: G').
+
+Lemma InsLt_length : forall c G G', InsLt c G G' -> length G' = S (length G).
+Proof. intros c G G' H. induction H; simpl; lia. Qed.
+
+(* lt-lookups shift by shift_lt 1 c at the renamed index shv c x *)
+Lemma InsLt_lookup_lt : forall c G G', InsLt c G G' ->
+  forall x, ctx_lookup_lt G' (shv c x)
+            = option_map (shift_lt 1 c) (ctx_lookup_lt G x).
+Proof.
+  intros c G G' H. induction H; intro x.
+  - unfold shv; simpl Nat.leb. destruct x as [|x']; reflexivity.
+  - destruct x as [|x'].
+    + unfold shv; simpl Nat.leb. simpl ctx_lookup_lt.
+      rewrite shift_lt_swap_0. reflexivity.
+    + specialize (IHInsLt x').
+      destruct (Nat.leb c x') eqn:E.
+      * assert (E2 : shv (S c) (S x') = S (S x')).
+        { unfold shv. apply Nat.leb_le in E. rewrite (proj2 (Nat.leb_le (S c)(S x'))) by lia. reflexivity. }
+        rewrite E2. unfold shv in IHInsLt. rewrite E in IHInsLt.
+        simpl ctx_lookup_lt. rewrite IHInsLt.
+        destruct (ctx_lookup_lt G x') as [X|]; simpl; [rewrite shift_lt_swap_0; reflexivity | reflexivity].
+      * apply Nat.leb_gt in E.
+        assert (E2 : shv (S c) (S x') = S x').
+        { unfold shv. rewrite (proj2 (Nat.leb_gt (S c)(S x'))) by lia. reflexivity. }
+        rewrite E2. unfold shv in IHInsLt. rewrite (proj2 (Nat.leb_gt c x')) in IHInsLt by lia.
+        simpl ctx_lookup_lt. rewrite IHInsLt.
+        destruct (ctx_lookup_lt G x') as [X|]; simpl; [rewrite shift_lt_swap_0; reflexivity | reflexivity].
+  - specialize (IHInsLt x). simpl ctx_lookup_lt. apply IHInsLt.
+  - specialize (IHInsLt x). simpl ctx_lookup_lt. apply IHInsLt.
+  - specialize (IHInsLt x). simpl ctx_lookup_lt. apply IHInsLt.
+  - specialize (IHInsLt x). simpl ctx_lookup_lt. apply IHInsLt.
+Qed.
+
+(* ty-lookups shift by shift_lt_in_ty 1 c (index unchanged) *)
+Lemma InsLt_lookup_ty : forall c G G', InsLt c G G' ->
+  forall a, ctx_lookup_ty G' a
+            = option_map (shift_lt_in_ty 1 c) (ctx_lookup_ty G a).
+Proof.
+  intros c G G' H. induction H; intro a.
+  - (* InsLt_here *) simpl ctx_lookup_ty.
+    destruct (ctx_lookup_ty G a) as [X|]; simpl; reflexivity.
+  - (* InsLt_lt *) specialize (IHInsLt a). simpl ctx_lookup_ty. rewrite IHInsLt.
+    destruct (ctx_lookup_ty G a) as [X|]; simpl;
+      [rewrite shift_lt_in_ty_swap_0; reflexivity | reflexivity].
+  - (* InsLt_ty *) destruct a as [|a'].
+    + simpl ctx_lookup_ty. rewrite shift_ty_shift_lt_in_ty_commute. reflexivity.
+    + specialize (IHInsLt a'). simpl ctx_lookup_ty. rewrite IHInsLt.
+      destruct (ctx_lookup_ty G a') as [X|]; simpl;
+        [rewrite shift_ty_shift_lt_in_ty_commute; reflexivity | reflexivity].
+  - specialize (IHInsLt a). simpl ctx_lookup_ty. apply IHInsLt.
+  - specialize (IHInsLt a). simpl ctx_lookup_ty. apply IHInsLt.
+  - specialize (IHInsLt a). simpl ctx_lookup_ty. apply IHInsLt.
+Qed.
+
+Lemma shv_shift_lt : forall c n, shift_lt 1 c (lt_var n) = lt_var (shv c n).
+Proof.
+  intros c n. simpl. unfold shv.
+  destruct (Nat.leb c n); [rewrite Nat.add_1_r|]; reflexivity.
+Qed.
+
+(* lt_of_ty_ctx commutes with shift_lt_in_ty under InsLt *)
+Lemma lt_of_ty_ctx_InsLt : forall c G G', InsLt c G G' ->
+  forall f T, lt_of_ty_ctx f G' (shift_lt_in_ty 1 c T) = shift_lt 1 c (lt_of_ty_ctx f G T).
+Proof.
+  intros c G G' HIns f. induction f as [|f' IHf]; intro T.
+  - induction T using type_list_ind with
+      (Q := fun Ts => lt_of_ty_ctx_list 0 G' (List.map (shift_lt_in_ty 1 c) Ts)
+                      = shift_lt 1 c (lt_of_ty_ctx_list 0 G Ts)).
+    + rewrite shift_lt_in_ty_var_eq. rewrite !(lt_of_ty_ctx_var 0). reflexivity.
+    + rewrite shift_lt_in_ty_fun_eq. rewrite !lt_of_ty_ctx_fun. reflexivity.
+    + rewrite shift_lt_in_ty_ctor_eq. rewrite !lt_of_ty_ctx_ctor. rewrite shift_lt_min_eq.
+      f_equal. exact IHT.
+    + rewrite !lt_of_ty_ctx_ltall. reflexivity.
+    + rewrite !lt_of_ty_ctx_tyall. reflexivity.
+    + reflexivity.
+    + cbn [List.map]. rewrite !lt_of_ty_ctx_list_cons. rewrite shift_lt_min_eq. rewrite IHT, IHT0. reflexivity.
+  - induction T using type_list_ind with
+      (Q := fun Ts => lt_of_ty_ctx_list (S f') G' (List.map (shift_lt_in_ty 1 c) Ts)
+                      = shift_lt 1 c (lt_of_ty_ctx_list (S f') G Ts)).
+    + rewrite shift_lt_in_ty_var_eq.
+      rewrite (lt_of_ty_ctx_var (S f') G' n), (lt_of_ty_ctx_var (S f') G n).
+      rewrite (InsLt_lookup_ty c G G' HIns n).
+      destruct (ctx_lookup_ty G n) as [B|] eqn:E; simpl.
+      * apply IHf.
+      * reflexivity.
+    + rewrite shift_lt_in_ty_fun_eq. rewrite !lt_of_ty_ctx_fun. reflexivity.
+    + rewrite shift_lt_in_ty_ctor_eq. rewrite !lt_of_ty_ctx_ctor. rewrite shift_lt_min_eq.
+      f_equal. exact IHT.
+    + rewrite !lt_of_ty_ctx_ltall. reflexivity.
+    + rewrite !lt_of_ty_ctx_tyall. reflexivity.
+    + reflexivity.
+    + cbn [List.map]. rewrite !lt_of_ty_ctx_list_cons. rewrite shift_lt_min_eq. rewrite IHT, IHT0. reflexivity.
+Qed.
+
+Lemma lt_of_ty_G_InsLt : forall c G G', InsLt c G G' ->
+  forall T, lt_of_ty_G G' (shift_lt_in_ty 1 c T) = shift_lt 1 c (lt_of_ty_G G T).
+Proof.
+  intros c G G' HIns T. unfold lt_of_ty_G.
+  rewrite (InsLt_length c G G' HIns).
+  rewrite (lt_of_ty_ctx_InsLt c G G' HIns (S (length G)) T).
+  f_equal.
+  apply (lt_of_ty_ctx_fuel_irrel (S (length G)) (length G) T G 0).
+  - apply VB_0.
+  - simpl; lia.
+  - simpl; lia.
+Qed.
+
+Lemma lt_sub_InsLt : forall G l1 l2, G ⊢ₗ l1 <: l2 ->
+  forall c G', InsLt c G G' -> G' ⊢ₗ shift_lt 1 c l1 <: shift_lt 1 c l2.
+Proof.
+  intros G l1 l2 H.
+  induction H as [Γ l|Γ l|Γ x Δ Hlk|Γ l
+                 |Γ l1 l2 l3 H1 IH1 H2 IH2|Γ l1 l2 l H1 IH1 H2 IH2
+                 |Γ l l1 l2 H1 IH1|Γ l l1 l2 H1 IH1];
+    intros c G' HIns; simpl.
+  - apply LS_Free.
+  - apply LS_Local.
+  - replace (if Nat.leb c x then x + 1 else x) with (shv c x)
+      by (unfold shv; destruct (Nat.leb c x); [rewrite Nat.add_1_r|]; reflexivity).
+    apply LS_Var.
+    rewrite (InsLt_lookup_lt c Γ G' HIns x). rewrite Hlk. reflexivity.
+  - apply LS_Refl.
+  - eapply LS_Trans; [apply (IH1 c G' HIns) | apply (IH2 c G' HIns)].
+  - apply LS_MinL; [apply (IH1 c G' HIns) | apply (IH2 c G' HIns)].
+  - apply LS_MinR1; apply (IH1 c G' HIns).
+  - apply LS_MinR2; apply (IH1 c G' HIns).
+Qed.
+
+Lemma shift_lt_in_ty_ltall_eq : forall a c A,
+  shift_lt_in_ty a c (type_lt_all A) = type_lt_all (shift_lt_in_ty a (S c) A).
+Proof. reflexivity. Qed.
+Lemma shift_lt_in_ty_tyall_eq : forall a c B A,
+  shift_lt_in_ty a c (type_ty_all B A)
+  = type_ty_all (shift_lt_in_ty a c B) (shift_lt_in_ty a c A).
+Proof. reflexivity. Qed.
+
+Lemma sub_InsLt : forall G T1 T2, G ⊢ T1 <:: T2 ->
+  forall c G', InsLt c G G' -> G' ⊢ shift_lt_in_ty 1 c T1 <:: shift_lt_in_ty 1 c T2.
+Proof.
+  intros G T1 T2 H.
+  induction H as [Γ T|Γ S U T H1 IH1 H2 IH2|Γ α B Hlk|Γ K l l' Ts Hls
+                 |Γ T Δ Hls|Γ A A' l l' B B' H1 IH1 Hl H2 IH2
+                 |Γ A A' H1 IH1|Γ B B' A A' H1 IH1 H2 IH2];
+    intros c G' HIns.
+  - apply SA_Refl.
+  - eapply SA_Trans; [apply (IH1 c G' HIns) | apply (IH2 c G' HIns)].
+  - simpl. apply SA_VarCtx.
+    rewrite (InsLt_lookup_ty c Γ G' HIns α). rewrite Hlk. reflexivity.
+  - rewrite !shift_lt_in_ty_ctor_eq. apply SA_Data. apply (lt_sub_InsLt Γ l l' Hls c G' HIns).
+  - rewrite shift_lt_in_ty_ctor_eq. cbn [List.map]. apply SA_Any.
+    rewrite (lt_of_ty_G_InsLt c Γ G' HIns T).
+    apply (lt_sub_InsLt Γ (lt_of_ty_G Γ T) Δ Hls c G' HIns).
+  - rewrite !shift_lt_in_ty_fun_eq. apply SA_Fun.
+    + apply (IH1 c G' HIns).
+    + apply (lt_sub_InsLt Γ l l' Hl c G' HIns).
+    + apply (IH2 c G' HIns).
+  - rewrite !shift_lt_in_ty_ltall_eq. apply SA_LtAll.
+    apply (IH1 (S c) (bind_lt (shift_lt 1 c lt_local) :: G') (InsLt_lt c Γ G' lt_local HIns)).
+  - rewrite !shift_lt_in_ty_tyall_eq. apply SA_TyAll.
+    + apply (IH1 c G' HIns).
+    + apply (IH2 c (bind_ty (shift_lt_in_ty 1 c B') :: G') (InsLt_ty c Γ G' B' HIns)).
+Qed.
+
+Lemma sub_weaken_lt_shift : forall Γ D T1 T2,
   Γ ⊢ T1 <:: T2 ->
   (bind_lt D :: Γ) ⊢ shift_lt_in_ty 1 0 T1 <:: shift_lt_in_ty 1 0 T2.
+Proof.
+  intros Γ D T1 T2 H. apply (sub_InsLt Γ T1 T2 H 0 (bind_lt D :: Γ)). apply InsLt_here.
+Qed.
 
 (* Subtyping-substitution lemmas.  Standard; axiomatized.             *)
 Axiom sub_subst_ty : forall Γ B U0 U S,
