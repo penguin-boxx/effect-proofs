@@ -7,3 +7,5 @@ SubstitutionTheory.v
 Examples.v
 Safety.v
 Sugar.v
+ExamplesProofs.v
+ExamplesSafetyProofs.v
