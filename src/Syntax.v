@@ -60,6 +60,7 @@ Inductive term : Type :=
   | term_ty_lam : type -> term -> term  (* bound, body *)
   | term_lt_app : term -> lifetime -> term
   | term_lt_lam : term -> term
+  (* ctor, resulting lifetime (min of all), argument lifetimes, argument types, argument terms *)
   | term_ctor : ctor_tag -> lifetime -> list lifetime -> list type -> list term -> term
   (* match scrutinee against one constructor; yes_body binds each      *)
   (* constructor argument (variables 0..arity-1, outermost-first);     *)

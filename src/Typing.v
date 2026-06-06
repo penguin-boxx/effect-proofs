@@ -4,16 +4,21 @@ Import ListNotations.
 Require Import Syntax.
 Require Import Substitution.
 
-(* ================================================================== *)
-(* Typing Context                                                     *)
-(*                                                                    *)
-(* Γ ::= ∅  |  x:T, Γ  |  α<:B, Γ  |  l<:Δ, Γ                         *)
-(*                                                                    *)
-(* Each namespace uses independent de Bruijn indices.                 *)
-(* ctx_lookup_tm Γ x  — x-th  bind_tm  entry (innermost = 0)          *)
-(* ctx_lookup_ty Γ α  — α-th  bind_ty  entry (innermost = 0)          *)
-(* ctx_lookup_lt Γ l  — l-th  bind_lt  entry (innermost = 0)          *)
-(* ================================================================== *)
+(* ==================================================================== *)
+(* Typing Context                                                       *)
+(*                                                                      *)
+(* Γ ::= ∅  |  x:T, Γ  |  α<:B, Γ  |  l<:Δ, Γ                           *)
+(*                                                                      *)
+(* Each namespace uses independent de Bruijn indices.                   *)
+(* Bounds are stored relative to the context *below* their binder, so   *)
+(* a lookup must re-interpret the bound at the use site (the head of    *)
+(* Γ).  Walking past a `bind_ty` shifts the type-variable namespace by  *)
+(* one (`shift_ty 1 0`); walking past a `bind_lt` shifts the lifetime   *)
+(* namespace by one (`shift_lt`/`shift_lt_in_ty 1 0`).  `bind_tm`,      *)
+(* `bind_ctor`, `bind_eff` introduce no ty/lt binder, so they shift     *)
+(* nothing.  (The earlier no-shift lookups mis-scoped open bounds and   *)
+(* made context weakening unsound; for closed bounds the shifts are     *)
+(* the identity, so well-formed programs are unaffected.)               *)
 
 Inductive binding : Type :=
   | bind_tm  : type     -> binding  (* x : T         *)
@@ -43,6 +48,8 @@ Fixpoint ctx_lookup_tm (Γ : ctx) (x : nat) : option type :=
       | O   => Some T
       | S n => ctx_lookup_tm rest n
       end
+  | bind_ty _ :: rest => option_map (shift_ty 1 0) (ctx_lookup_tm rest x)
+  | bind_lt _ :: rest => option_map (shift_lt_in_ty 1 0) (ctx_lookup_tm rest x)
   | _ :: rest         => ctx_lookup_tm rest x
   end.
 
@@ -51,9 +58,10 @@ Fixpoint ctx_lookup_ty (Γ : ctx) (α : nat) : option type :=
   | []                => None
   | bind_ty B :: rest =>
       match α with
-      | O   => Some B
-      | S n => ctx_lookup_ty rest n
+      | O   => Some (shift_ty 1 0 B)
+      | S n => option_map (shift_ty 1 0) (ctx_lookup_ty rest n)
       end
+  | bind_lt _ :: rest => option_map (shift_lt_in_ty 1 0) (ctx_lookup_ty rest α)
   | _ :: rest         => ctx_lookup_ty rest α
   end.
 
@@ -62,8 +70,8 @@ Fixpoint ctx_lookup_lt (Γ : ctx) (l : nat) : option lifetime :=
   | []                => None
   | bind_lt Δ :: rest =>
       match l with
-      | O   => Some Δ
-      | S n => ctx_lookup_lt rest n
+      | O   => Some (shift_lt 1 0 Δ)
+      | S n => option_map (shift_lt 1 0) (ctx_lookup_lt rest n)
       end
   | _ :: rest         => ctx_lookup_lt rest l
   end.
@@ -681,7 +689,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       Γ ⊢ₜ term_lt_app t l : subst_lt_in_ty 0 l T
 
   (* --- Constructor typing (Figure 7 — Ctor) ----------------------- *)
-  (* K[l, T̄](v̄) : type_ctor K l T̄                                     *)
+  (* K[l, l̄, T̄](v̄) : type_ctor K l T̄                                  *)
   (*   Look up K's signature ∀ l̄(n_lt) ᾱ(n_ty). σ̄ → T@(+lt_∅(σ̄)).     *)
   (*   Instantiate field types σ̄ with the supplied T̄ and the fresh    *)
   (*   lt-vars [lt_var(n_lt-1)..lt_var 0] to obtain ρ̄.                *)

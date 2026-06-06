@@ -56,7 +56,7 @@ Fixpoint plug (E : ectx) (t : term) : term :=
 (* are allowed EXCEPT EC_handler_m with the *same* marker m.          *)
 (* Handlers with a *different* marker m' ≠ m are transparent and      *)
 (* may sit in the hole, so that H_Perform can look past inner         *)
-(* handlers for different effects and find the correct matching        *)
+(* handlers for different effects and find the correct matching       *)
 (* delimiter outside.                                                 *)
 Inductive pure_ectx_m (m : marker) : ectx -> Prop :=
   | pem_hole      : pure_ectx_m m EC_hole
@@ -162,16 +162,16 @@ Inductive head_step : term -> term -> Prop :=
       value v -> pure_ectx_m m P ->
       term_handler_m m
         (plug P (term_perform (term_cap E_tag m Ts op_body) Ss v))
-        -->h 
+        -->h
           subst_list_tm [v; term_resume m (plug (shift_ectx_tm 1 0 P) (term_var 0))]
-            (subst_list_ty_in_tm Ss 
+            (subst_list_ty_in_tm Ss
               op_body)
 
   (* (resume): apply a reified resumption to a value. *)
   | H_Resume : forall m b v,
       value v ->
       term_app (term_resume m b) v
-        -->h 
+        -->h
           term_handler_m m (subst_tm 0 v b)
 
 where "t '-->h' t'" := (head_step t t').
@@ -225,7 +225,7 @@ where "t '==>' t'" := (step t t').
 Hint Constructors step : core.
 
 (* ================================================================== *)
-(* Derived structural rules                                            *)
+(* Derived structural rules                                           *)
 (*                                                                    *)
 (* These are the familiar S_* rules of a structural small-step        *)
 (* presentation, here proven from the layered (head + plug) form.     *)

@@ -4,19 +4,17 @@ Require Import Stdlib.micromega.Lia.
 Import ListNotations.
 Require Import Syntax.
 Require Import Substitution.
+Require Import Typing.
 
 (* ================================================================== *)
 (*                                                                    *)
 (*    LEMMAS ABOUT shift_X / subst_X (statements only)                *)
 (*                                                                    *)
 (* The lemmas below state the standard de-Bruijn / σ-calculus laws    *)
-(* governing shifting and substitution.  None of them are proved      *)
-(* here; each ends in `Admitted.` so the file still type-checks.      *)
-(*                                                                    *)
-(* Once these are discharged, the substitution-related Axioms in      *)
-(* Safety.v (subst_tm_lemma, subst_ty_in_tm_lemma,                    *)
-(* subst_lt_in_tm_lemma, sub_subst_ty, sub_subst_lt,                  *)
-(* match_yes_preservation) become provable lemmas.                    *)
+(* governing shifting and substitution.  Only the laws actually used  *)
+(* in the metatheory are kept here, and all of them are proved        *)
+(* (`*_zero`, `*_fuse`, the cross-sort `*_commute` lemmas and the     *)
+(* list-substitution laws below).                                     *)
 (*                                                                    *)
 (* Naming convention                                                  *)
 (* ----------------                                                   *)
@@ -185,7 +183,7 @@ Section TermListInd.
     end.
 End TermListInd.
 
-(* Helper: the inline 'go' fixpoint in each shift equals List.map *)  
+(* Helper: the inline 'go' fixpoint in each shift equals List.map *)
 Lemma shift_lt_in_ty_go_eq_map : forall amount cutoff Ts,
   (fix go Ts := match Ts with [] => [] | A :: rest => shift_lt_in_ty amount cutoff A :: go rest end) Ts =
   List.map (shift_lt_in_ty amount cutoff) Ts.
@@ -577,53 +575,6 @@ Qed.
 
 
 (* ================================================================== *)
-(* SECTION 4 — shift_swap                                             *)
-(*                                                                    *)
-(* Two shifts at *different* cutoffs commute, with the standard       *)
-(* cutoff-shift adjustment.  Shape: when c2 ≤ c1,                     *)
-(*                                                                    *)
-(*   shift a c2 (shift b c1 t) = shift b (c1 + a) (shift a c2 t)      *)
-(*                                                                    *)
-(* ================================================================== *)
-
-Lemma shift_lt_swap : forall a b c1 c2 l,
-  c2 <= c1 ->
-  shift_lt a c2 (shift_lt b c1 l)
-    = shift_lt b (c1 + a) (shift_lt a c2 l).
-Admitted.
-
-Lemma shift_ty_swap : forall a b c1 c2 T,
-  c2 <= c1 ->
-  shift_ty a c2 (shift_ty b c1 T)
-    = shift_ty b (c1 + a) (shift_ty a c2 T).
-Admitted.
-
-Lemma shift_tm_swap : forall a b c1 c2 t,
-  c2 <= c1 ->
-  shift_tm a c2 (shift_tm b c1 t)
-    = shift_tm b (c1 + a) (shift_tm a c2 t).
-Admitted.
-
-Lemma shift_lt_in_ty_swap : forall a b c1 c2 T,
-  c2 <= c1 ->
-  shift_lt_in_ty a c2 (shift_lt_in_ty b c1 T)
-    = shift_lt_in_ty b (c1 + a) (shift_lt_in_ty a c2 T).
-Admitted.
-
-Lemma shift_ty_in_tm_swap : forall a b c1 c2 t,
-  c2 <= c1 ->
-  shift_ty_in_tm a c2 (shift_ty_in_tm b c1 t)
-    = shift_ty_in_tm b (c1 + a) (shift_ty_in_tm a c2 t).
-Admitted.
-
-Lemma shift_lt_in_tm_swap : forall a b c1 c2 t,
-  c2 <= c1 ->
-  shift_lt_in_tm a c2 (shift_lt_in_tm b c1 t)
-    = shift_lt_in_tm b (c1 + a) (shift_lt_in_tm a c2 t).
-Admitted.
-
-
-(* ================================================================== *)
 (* SECTION 5 — shift_independent (cross-sort: same carrier,           *)
 (*             unrelated index sorts commute trivially)               *)
 (*                                                                    *)
@@ -699,11 +650,6 @@ Proof.
   - intros t ts Ht Hts a1 c1 a2 c2; simpl; rewrite Ht; f_equal; apply Hts.
 Qed.
 
-Lemma shift_ty_in_tm_shift_lt_in_tm_commute : forall a1 c1 a2 c2 t,
-  shift_ty_in_tm a1 c1 (shift_lt_in_tm a2 c2 t)
-    = shift_lt_in_tm a2 c2 (shift_ty_in_tm a1 c1 t).
-Admitted.
-
 Lemma shift_ty_shift_lt_in_ty_commute : forall a1 c1 a2 c2 T,
   shift_ty a1 c1 (shift_lt_in_ty a2 c2 T)
     = shift_lt_in_ty a2 c2 (shift_ty a1 c1 T).
@@ -731,150 +677,6 @@ Qed.
 
 
 (* ================================================================== *)
-(* SECTION 6 — subst_shift_cancel                                     *)
-(*                                                                    *)
-(* The crucial sanity lemma: substituting at a fresh slot inserted    *)
-(* by a shift undoes the shift.                                       *)
-(*                                                                    *)
-(*   subst c v (shift 1 c t) = t                                      *)
-(*                                                                    *)
-(* ================================================================== *)
-
-Lemma subst_shift_cancel_lt : forall c v l,
-  subst_lt c v (shift_lt 1 c l) = l.
-Admitted.
-
-Lemma subst_shift_cancel_lt_in_ty : forall c v T,
-  subst_lt_in_ty c v (shift_lt_in_ty 1 c T) = T.
-Admitted.
-
-Lemma subst_shift_cancel_ty : forall c U T,
-  subst_ty c U (shift_ty 1 c T) = T.
-Admitted.
-
-Lemma subst_shift_cancel_tm : forall c v t,
-  subst_tm c v (shift_tm 1 c t) = t.
-Admitted.
-
-Lemma subst_shift_cancel_ty_in_tm : forall c U t,
-  subst_ty_in_tm c U (shift_ty_in_tm 1 c t) = t.
-Admitted.
-
-Lemma subst_shift_cancel_lt_in_tm : forall c v t,
-  subst_lt_in_tm c v (shift_lt_in_tm 1 c t) = t.
-Admitted.
-
-
-(* ================================================================== *)
-(* SECTION 7 — shift / subst commutation                              *)
-(*                                                                    *)
-(* Distributing a shift through a substitution.  Standard form:       *)
-(*                                                                    *)
-(*   shift d c (subst x v t)                                          *)
-(*     = subst (if c ≤ x then x + d else x) (shift d c v) (shift d c' t)*)
-(*                                                                    *)
-(* where c' is c adjusted to account for the variable-0 slot the      *)
-(* substitution opens.  We state two clean specialisations: one when  *)
-(* the shift cutoff sits at or below the subst variable, one when     *)
-(* strictly above.                                                    *)
-(* ================================================================== *)
-
-Lemma shift_subst_lt : forall d c x v l,
-  c <= x ->
-  shift_lt d c (subst_lt x v l)
-    = subst_lt (x + d) (shift_lt d c v) (shift_lt d c l).
-Admitted.
-
-Lemma shift_subst_ty : forall d c x U T,
-  c <= x ->
-  shift_ty d c (subst_ty x U T)
-    = subst_ty (x + d) (shift_ty d c U) (shift_ty d c T).
-Admitted.
-
-Lemma shift_subst_tm : forall d c x v t,
-  c <= x ->
-  shift_tm d c (subst_tm x v t)
-    = subst_tm (x + d) (shift_tm d c v) (shift_tm d c t).
-Admitted.
-
-Lemma shift_subst_lt_in_ty : forall d c x v T,
-  c <= x ->
-  shift_lt_in_ty d c (subst_lt_in_ty x v T)
-    = subst_lt_in_ty (x + d) (shift_lt d c v) (shift_lt_in_ty d c T).
-Admitted.
-
-Lemma shift_subst_ty_in_tm : forall d c x U t,
-  c <= x ->
-  shift_ty_in_tm d c (subst_ty_in_tm x U t)
-    = subst_ty_in_tm (x + d) (shift_ty d c U) (shift_ty_in_tm d c t).
-Admitted.
-
-Lemma shift_subst_lt_in_tm : forall d c x v t,
-  c <= x ->
-  shift_lt_in_tm d c (subst_lt_in_tm x v t)
-    = subst_lt_in_tm (x + d) (shift_lt d c v) (shift_lt_in_tm d c t).
-Admitted.
-
-
-(* ================================================================== *)
-(* SECTION 8 — subst / subst commutation (substitution lemma)         *)
-(*                                                                    *)
-(* The classical "substitution lemma" in σ-calculus form: when        *)
-(* x ≤ y (no recapture), two single substitutions can be reordered.   *)
-(*                                                                    *)
-(*   subst x u (subst (S y) v t)                                      *)
-(*     = subst y (subst x u v) (subst x (shift 1 0 u) t)              *)
-(*                                                                    *)
-(* (The exact form depends on the chosen variable convention; the     *)
-(* lemma is stated here for the de-Bruijn-with-decrement scheme of    *)
-(* this file.)                                                        *)
-(* ================================================================== *)
-
-Lemma subst_subst_lt : forall x y u v l,
-  x <= y ->
-  subst_lt x u (subst_lt (S y) v l)
-    = subst_lt y (subst_lt x u v) (subst_lt x (shift_lt 1 0 u) l).
-Admitted.
-
-Lemma subst_subst_ty : forall x y U V T,
-  x <= y ->
-  subst_ty x U (subst_ty (S y) V T)
-    = subst_ty y (subst_ty x U V) (subst_ty x (shift_ty 1 0 U) T).
-Admitted.
-
-Lemma subst_subst_tm : forall x y u v t,
-  x <= y ->
-  subst_tm x u (subst_tm (S y) v t)
-    = subst_tm y (subst_tm x u v) (subst_tm x (shift_tm 1 0 u) t).
-Admitted.
-
-
-(* ================================================================== *)
-(* SECTION 9 — cross-sort independence of subst                       *)
-(*                                                                    *)
-(* A subst on sort X commutes with a subst/shift on a different sort  *)
-(* Y inside the same carrier, with no cutoff adjustment between them. *)
-(* ================================================================== *)
-
-Lemma subst_tm_subst_ty_in_tm_commute : forall x u y U t,
-  subst_tm x u (subst_ty_in_tm y U t)
-    = subst_ty_in_tm y U (subst_tm x (shift_ty_in_tm 1 0 u) t).
-Admitted.
-(* Note: the shift on u accounts for the ty-binder direction; the     *)
-(* exact form may need adjustment after experimenting.                *)
-
-Lemma subst_tm_subst_lt_in_tm_commute : forall x u y v t,
-  subst_tm x u (subst_lt_in_tm y v t)
-    = subst_lt_in_tm y v (subst_tm x (shift_lt_in_tm 1 0 u) t).
-Admitted.
-
-Lemma subst_ty_in_tm_subst_lt_in_tm_commute : forall x U y v t,
-  subst_ty_in_tm x U (subst_lt_in_tm y v t)
-    = subst_lt_in_tm y v (subst_ty_in_tm x (shift_lt_in_ty 1 0 U) t).
-Admitted.
-
-
-(* ================================================================== *)
 (* SECTION 10 — list-substitution properties                          *)
 (*                                                                    *)
 (* Connect the simultaneous list-substitution operations with their   *)
@@ -898,13 +700,6 @@ Proof. reflexivity. Qed.
 Lemma subst_list_ty_nil : forall T, subst_list_ty [] T = T.
 Proof. reflexivity. Qed.
 
-(* On a free variable below the substituted segment, list-subst picks *)
-(* the i-th list element.  (For subst_list_tm.)                       *)
-Lemma subst_list_tm_var_lookup : forall vs i,
-  i < List.length vs ->
-  subst_list_tm vs (term_var i) = List.nth i vs (term_var 0).
-Admitted.
-
 (* On a free variable above the substituted segment, list-subst       *)
 (* decrements the index by the list length.                           *)
 Lemma subst_list_tm_var_above : forall vs i,
@@ -919,54 +714,232 @@ Qed.
 
 
 (* ================================================================== *)
-(* SECTION 11 — closedness / no-free-variable lemmas                  *)
 (*                                                                    *)
-(* Substitution and shift on a sort that has no free variables of    *)
-(* that sort act as the identity.  These are useful e.g. for a closed *)
-(* type substituted into a term whose free type-vars are all bound.   *)
+(*   TYPING-DEPENDENT SUBSTITUTION / WEAKENING / SHIFT LEMMAS         *)
+(*   (relocated from Safety.v)                                        *)
 (*                                                                    *)
-(* We state them only in their most useful "shift-is-id" form; a      *)
-(* complete development would parameterise over a `closed_at` index.  *)
+(* These lemmas mention the typing (`⊢ₜ`) and subtyping (`<::`, `<:`) *)
+(* judgments, so they live here — after `Require Import Typing` —     *)
+(* rather than in the syntax-only σ-law section above.  Their content *)
+(* is the standard de Bruijn plumbing of a System-F₊-with-lifetimes   *)
+(* metatheory, orthogonal to the paper's contribution.                *)
 (* ================================================================== *)
 
-(* If the maximum free lt-index in l is < c, shifting at cutoff c is  *)
-(* the identity. *)
-Lemma shift_lt_closed_id : forall a c l,
-  (forall x, x >= c -> ~ (* x is free in *) True (*<-- placeholder*) ) ->
-  shift_lt a c l = l.
-Admitted.
-(* NOTE: this is intentionally schematic — the real statement needs   *)
-(* a `free_lt_below c l` predicate; included as a marker that such a  *)
-(* family of "identity on closed terms" lemmas should be added.       *)
+(* ---- Pure de Bruijn σ-laws (shift / subst commutation) ---------- *)
 
+(* shift / subst_lt commute (de Bruijn).  Proven by induction on the  *)
+(* lifetime, with case analysis on the de Bruijn index comparisons.   *)
+Lemma shift_subst_lt_comm : forall l x,
+  shift_lt 1 0 (subst_lt x lt_free l) =
+  subst_lt (S x) lt_free (shift_lt 1 0 l).
+Proof.
+  induction l as [y | | | l1 IH1 l2 IH2]; intro x; try reflexivity.
+  - (* lt_var y *)
+    simpl.
+    destruct (Nat.eqb_spec y x) as [Hyx | Hyx].
+    + subst y. simpl.
+      destruct (Nat.eqb_spec (x + 1) (S x)) as [_ | Hcon].
+      * reflexivity.
+      * exfalso. apply Hcon. lia.
+    + destruct (Nat.ltb_spec x y) as [Hlt | Hge].
+      * simpl.
+        destruct (Nat.eqb_spec (y + 1) (S x)) as [Heq | _].
+        -- exfalso. lia.
+        -- destruct (Nat.ltb_spec (S x) (y + 1)) as [_ | Hge2].
+           ++ simpl. f_equal. lia.
+           ++ exfalso. lia.
+      * simpl.
+        destruct (Nat.eqb_spec (y + 1) (S x)) as [Heq | _].
+        -- exfalso. lia.
+        -- destruct (Nat.ltb_spec (S x) (y + 1)) as [Hlt2 | _].
+           ++ exfalso. lia.
+           ++ reflexivity.
+  - (* lt_min *)
+    simpl. rewrite IH1, IH2. reflexivity.
+Qed.
 
-(* ================================================================== *)
-(* SECTION 12 — corollaries used by Safety.v                          *)
-(*                                                                    *)
-(* These are exactly the shapes needed to prove the substitution      *)
-(* lemmas axiomatised in Safety.v.  Each follows from §6–§8 by        *)
-(* picking specific cutoffs/variables (c = 0, x = 0).                 *)
-(* ================================================================== *)
+(* subst_lt_in_ty's internal list fix coincides with map. *)
+Lemma subst_lt_in_ty_ctor_eq : forall var replacement K l Ts,
+  subst_lt_in_ty var replacement (type_ctor K l Ts)
+    = type_ctor K (subst_lt var replacement l)
+                  (List.map (subst_lt_in_ty var replacement) Ts).
+Proof.
+  intros var replacement K l Ts.
+  induction Ts as [|A rest IH].
+  - reflexivity.
+  - simpl. simpl in IH. inversion IH. reflexivity.
+Qed.
 
-(* Beta-reduction sanity: applying subst_tm 0 to (shift_tm 1 0 t) is  *)
-(* the identity — which is the syntactic content of the application  *)
-(* of subst_tm_lemma at the term-application case.                    *)
-Corollary subst_tm_shift_tm_0 : forall v t,
-  subst_tm 0 v (shift_tm 1 0 t) = t.
-Admitted.
+(* `iter_subst_lt_in_ty ws T` substitutes the witnesses ws sequentially *)
+(* at de Bruijn position 0, decrementing the remaining lt-vars after    *)
+(* each step.  This matches `elim_ty_n`'s iteration where each step     *)
+(* closes a binder via `subst_lt 0 lt_free`.                            *)
+Fixpoint iter_subst_lt_in_ty (ws : list lifetime) (T : type) : type :=
+  match ws with
+  | []        => T
+  | w :: rest => iter_subst_lt_in_ty rest (subst_lt_in_ty 0 w T)
+  end.
 
-Corollary subst_ty_in_tm_shift_ty_in_tm_0 : forall U t,
-  subst_ty_in_tm 0 U (shift_ty_in_tm 1 0 t) = t.
-Admitted.
+(* Apply `subst_list_lt_in_ty lts` pointwise to a list of types.       *)
+Definition subst_list_lt_in_ty_each (lts : list lifetime) (rhos : list type) : list type :=
+  List.map (subst_list_lt_in_ty lts) rhos.
 
-Corollary subst_lt_in_tm_shift_lt_in_tm_0 : forall v t,
-  subst_lt_in_tm 0 v (shift_lt_in_tm 1 0 t) = t.
-Admitted.
+(* Bridge: parallel lt-substitution `subst_list_lt_in_ty` is exactly    *)
+(* the iterated single-var substitution `iter_subst_lt_in_ty` applied   *)
+(* to the *pre-shifted* witness list.  `subst_list_lt_in_ty` shifts      *)
+(* each witness by the number of remaining witnesses before             *)
+(* substituting at position 0; the faithful bridge threads that shift    *)
+(* through.  This is the corrected form of the previously-unsound        *)
+(* `subst_list_lt_in_ty lts T = iter_subst_lt_in_ty lts T` axiom         *)
+(* (which dropped the shift) and is now a theorem.                      *)
+Fixpoint shift_each_lt (lts : list lifetime) : list lifetime :=
+  match lts with
+  | []        => []
+  | l :: rest => shift_lt (List.length rest) 0 l :: shift_each_lt rest
+  end.
 
-Corollary subst_ty_shift_ty_0 : forall U T,
-  subst_ty 0 U (shift_ty 1 0 T) = T.
-Admitted.
+Lemma subst_list_lt_in_ty_eq_iter : forall lts T,
+  subst_list_lt_in_ty lts T = iter_subst_lt_in_ty (shift_each_lt lts) T.
+Proof.
+  intros lts; induction lts as [|l rest IH]; intros T; simpl.
+  - reflexivity.
+  - apply IH.
+Qed.
 
-Corollary subst_lt_in_ty_shift_lt_in_ty_0 : forall v T,
-  subst_lt_in_ty 0 v (shift_lt_in_ty 1 0 T) = T.
-Admitted.
+(* ---- Subtyping weakening (correctly shifted) -------------------- *)
+
+(* Correct context weakening for subtyping.  Inserting a `bind_ty`      *)
+(* binding at the front shifts the type-variable namespace by one, so    *)
+(* the related types must be shifted by `shift_ty 1 0`.  (The earlier    *)
+(* no-shift `sub_weaken_cons` omitted this shift and was unsound:         *)
+(* prepending a binding silently re-captured the de Bruijn indices.)     *)
+(* Standard weakening metatheory; axiomatized.                          *)
+Axiom sub_weaken_ty_shift : forall Γ B T1 T2,
+  Γ ⊢ T1 <:: T2 ->
+  (bind_ty B :: Γ) ⊢ shift_ty 1 0 T1 <:: shift_ty 1 0 T2.
+
+(* Likewise, inserting a `bind_lt` binding shifts the lifetime          *)
+(* namespace inside types by one.                                       *)
+Axiom sub_weaken_lt_shift : forall Γ D T1 T2,
+  Γ ⊢ T1 <:: T2 ->
+  (bind_lt D :: Γ) ⊢ shift_lt_in_ty 1 0 T1 <:: shift_lt_in_ty 1 0 T2.
+
+(* Subtyping-substitution lemmas.  Standard; axiomatized.             *)
+Axiom sub_subst_ty : forall Γ B U0 U S,
+  (bind_ty B :: Γ) ⊢ U0 <:: U ->
+  Γ ⊢ S <:: B ->
+  Γ ⊢ subst_ty 0 S U0 <:: subst_ty 0 S U.
+
+Axiom sub_subst_lt : forall Γ Δ U0 U Δ',
+  (bind_lt Δ :: Γ) ⊢ U0 <:: U ->
+  Γ ⊢ₗ Δ' <: Δ ->
+  Γ ⊢ subst_lt_in_ty 0 Δ' U0 <:: subst_lt_in_ty 0 Δ' U.
+
+(* Shifting preserves lifetime subtyping. *)
+Axiom lt_sub_shift_lt : forall Γ Δ l1 l2 cutoff,
+  Γ ⊢ₗ l1 <: l2 ->
+  (bind_lt Δ :: Γ) ⊢ₗ shift_lt 1 cutoff l1 <: shift_lt 1 cutoff l2.
+
+(* Subtyping is monotone in single-var lt-substitution at any depth. *)
+Axiom lt_sub_subst_lt : forall Γ x l_0 l1 l2,
+  Γ ⊢ₗ l1 <: l2 ->
+  Γ ⊢ₗ subst_lt x l_0 l1 <: subst_lt x l_0 l2.
+
+(* Type subtyping monotone in single-var lt-substitution. *)
+Axiom sub_subst_lt_at : forall Γ x l_0 T1 T2,
+  Γ ⊢ T1 <:: T2 ->
+  Γ ⊢ subst_lt_in_ty x l_0 T1 <:: subst_lt_in_ty x l_0 T2.
+
+(* Lifetime subtyping is preserved by `shift_lt`.                       *)
+Axiom shift_lt_sub : forall Γ n k B B',
+  Γ ⊢ₗ B <: B' ->
+  Γ ⊢ₗ shift_lt n k B <: shift_lt n k B'.
+
+(* ---- chain_bounded witnesses + iteration monotonicity ---------- *)
+
+(* Witnesses are valid w.r.t. a chain of progressively-closed bounds.   *)
+Fixpoint chain_bounded (Γ : ctx) (ws : list lifetime) (bound : lifetime) : Prop :=
+  match ws with
+  | []        => True
+  | w :: rest =>
+      (Γ ⊢ₗ w <: subst_lt 0 lt_free bound) /\
+      chain_bounded Γ rest (subst_lt 0 lt_free bound)
+  end.
+
+(* Subtyping is preserved through `iter_subst_lt_in_ty`.                *)
+Lemma iter_subst_lt_in_ty_mono : forall ws Γ T1 T2,
+  Γ ⊢ T1 <:: T2 ->
+  Γ ⊢ iter_subst_lt_in_ty ws T1 <:: iter_subst_lt_in_ty ws T2.
+Proof.
+  induction ws as [|w rest IH]; intros Γ T1 T2 Hsub; simpl.
+  - assumption.
+  - apply IH. apply sub_subst_lt_at. assumption.
+Qed.
+
+(* Monotonicity of chain_bounded under enlarging the ambient bound.    *)
+Lemma chain_bounded_mono : forall Γ lts B B',
+  chain_bounded Γ lts B ->
+  Γ ⊢ₗ B <: B' ->
+  chain_bounded Γ lts B'.
+Proof.
+  intros Γ lts. induction lts as [|w rest IH]; intros B B' Hcb Hsub.
+  - exact I.
+  - simpl in Hcb. destruct Hcb as [Hw Hrest]. simpl. split.
+    + eapply LS_Trans; [exact Hw |]. apply lt_sub_subst_lt. exact Hsub.
+    + eapply IH; [exact Hrest |]. apply lt_sub_subst_lt. exact Hsub.
+Qed.
+
+(* From the typing of a ctor *value* `term_ctor K Delta lts Ts vs`     *)
+(* against type `type_ctor K Delta Ts`, the witnesses `lts` form a     *)
+(* `chain_bounded` chain w.r.t. the shifted Delta.                     *)
+Axiom ctor_lts_chain_bounded : forall Γ lts n_lt n_ty Ts sigma vs Delta,
+  Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs
+          (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma) ->
+  List.length lts = n_lt ->
+  Delta = lt_of_ty_list (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma) ->
+  chain_bounded Γ lts (shift_lt n_lt 0 Delta).
+
+(* ---- Substitution preservation (typing) ------------------------ *)
+
+Axiom subst_tm_lemma : forall Γ T1 t T2 v,
+  (bind_tm T1 :: Γ) ⊢ₜ t : T2 ->
+  Γ ⊢ₜ v : T1 ->
+  Γ ⊢ₜ subst_tm 0 v t : T2.
+
+Axiom subst_ty_in_tm_lemma : forall Γ B t T S,
+  (bind_ty B :: Γ) ⊢ₜ t : T ->
+  Γ ⊢ S <:: B ->
+  Γ ⊢ₜ subst_ty_in_tm 0 S t : subst_ty 0 S T.
+
+Axiom subst_lt_in_tm_lemma : forall Γ Δ t T Δ',
+  (bind_lt Δ :: Γ) ⊢ₜ t : T ->
+  Γ ⊢ₗ Δ' <: Δ ->
+  Γ ⊢ₜ subst_lt_in_tm 0 Δ' t : subst_lt_in_ty 0 Δ' T.
+
+(* Parallel lt substitution lemma.  Closes the n_lt fresh lt-binders   *)
+(* introduced by `push_lt_vars n_lt Delta`, while propagating through  *)
+(* an arbitrary stack of `bind_tm` binders sitting above.              *)
+Axiom subst_list_lt_in_tm_lemma : forall Γ rhos n_lt Delta lts t T,
+  List.length lts = n_lt ->
+  chain_bounded Γ lts (shift_lt n_lt 0 Delta) ->
+  (fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
+              (push_lt_vars n_lt Delta Γ) rhos) ⊢ₜ t : T ->
+  (fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
+              Γ (subst_list_lt_in_ty_each lts rhos))
+    ⊢ₜ subst_list_lt_in_tm lts t : subst_list_lt_in_ty lts T.
+
+(* Parallel term substitution: closes a list of tm-binders against a   *)
+(* matching list of values typed in the outer Γ.                       *)
+Axiom subst_list_tm_lemma : forall Γ vs rhos t T,
+  List.length vs = List.length rhos ->
+  Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rhos ->
+  (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ rhos) ⊢ₜ t : T ->
+  Γ ⊢ₜ subst_list_tm vs t : T.
+
+(* Substituting `lts` for the schema variables `lt_var_list n_lt`      *)
+(* yields direct schema instantiation.                                 *)
+Axiom inst_ctor_type_subst_eq : forall n_lt n_ty lts Ts sigma_fields,
+  List.length lts = n_lt ->
+  subst_list_lt_in_ty_each lts
+    (List.map (inst_ctor_type n_lt n_ty (lt_var_list n_lt) Ts) sigma_fields)
+  = List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields.
