@@ -806,6 +806,320 @@ Proof.
   - apply IH.
 Qed.
 
+(* ================================================================== *)
+(*  lt_of_ty_ctx: rewrite equations, var-bound invariant, fuel        *)
+(*  sufficiency, and shift commutation.                               *)
+(*                                                                    *)
+(*  The shift-on-lookup discipline makes EVERY context structurally   *)
+(*  acyclic (a bound looked up across k binders is var-bounded by k),  *)
+(*  so fuel = |Γ| always suffices: the computed lt_∅ is independent    *)
+(*  of any fuel ≥ |Γ|.  This is what lets context weakening go through *)
+(*  at the `SA_Any` rule without a separate well-formedness premise.   *)
+(* ================================================================== *)
+
+(* External per-field minimum, matching the internal field fold. *)
+Definition lt_of_ty_ctx_list (f : nat) (G : ctx) (Ts : list type) : lifetime :=
+  fold_right (fun A acc => lt_min (lt_of_ty_ctx f G A) acc) lt_free Ts.
+
+Lemma lt_of_ty_ctx_list_nil : forall f G, lt_of_ty_ctx_list f G [] = lt_free.
+Proof. reflexivity. Qed.
+Lemma lt_of_ty_ctx_list_cons : forall f G A Ts,
+  lt_of_ty_ctx_list f G (A :: Ts)
+  = lt_min (lt_of_ty_ctx f G A) (lt_of_ty_ctx_list f G Ts).
+Proof. reflexivity. Qed.
+
+(* Clean rewrite equations for each head constructor. *)
+Lemma lt_of_ty_ctx_var : forall f G a,
+  lt_of_ty_ctx f G (type_var a)
+  = match f with
+    | O => lt_free
+    | S f' => match ctx_lookup_ty G a with
+              | Some B => lt_of_ty_ctx f' G B
+              | None => lt_free end
+    end.
+Proof. intros f G a. destruct f; reflexivity. Qed.
+
+Lemma lt_of_ty_ctx_fun : forall f G A l B, lt_of_ty_ctx f G (type_fun A l B) = l.
+Proof. intros f G A l B. destruct f; reflexivity. Qed.
+
+Lemma lt_of_ty_ctx_ltall : forall f G A, lt_of_ty_ctx f G (type_lt_all A) = lt_free.
+Proof. intros f G A. destruct f; reflexivity. Qed.
+
+Lemma lt_of_ty_ctx_tyall : forall f G B A, lt_of_ty_ctx f G (type_ty_all B A) = lt_free.
+Proof. intros f G B A. destruct f; reflexivity. Qed.
+
+Lemma lt_of_ty_ctx_ctor : forall f G K l Ts,
+  lt_of_ty_ctx f G (type_ctor K l Ts) = lt_min l (lt_of_ty_ctx_list f G Ts).
+Proof.
+  intros f G K l Ts. unfold lt_of_ty_ctx_list.
+  destruct f as [|f']; simpl; f_equal;
+    induction Ts as [|A rest IH]; simpl; try reflexivity; rewrite IH; reflexivity.
+Qed.
+
+(* shift_ty 1 0 (insert a bind_ty at the front) leaves the computed lt
+   unchanged at equal fuel. *)
+Lemma lt_of_ty_ctx_shift_ty : forall f G B T,
+  lt_of_ty_ctx f (bind_ty B :: G) (shift_ty 1 0 T) = lt_of_ty_ctx f G T.
+Proof.
+  induction f as [|f' IHf]; intros G B T.
+  - induction T using type_list_ind with
+      (Q := fun Ts => lt_of_ty_ctx_list 0 (bind_ty B::G) (List.map (shift_ty 1 0) Ts)
+                      = lt_of_ty_ctx_list 0 G Ts).
+    + simpl shift_ty. rewrite !(lt_of_ty_ctx_var 0). reflexivity.
+    + simpl shift_ty. rewrite !lt_of_ty_ctx_fun. reflexivity.
+    + simpl shift_ty. rewrite !lt_of_ty_ctx_ctor. f_equal. exact IHT.
+    + simpl shift_ty. rewrite !lt_of_ty_ctx_ltall. reflexivity.
+    + simpl shift_ty. rewrite !lt_of_ty_ctx_tyall. reflexivity.
+    + reflexivity.
+    + cbn [List.map]. rewrite !lt_of_ty_ctx_list_cons. rewrite IHT, IHT0. reflexivity.
+  - induction T using type_list_ind with
+      (Q := fun Ts => lt_of_ty_ctx_list (S f') (bind_ty B::G) (List.map (shift_ty 1 0) Ts)
+                      = lt_of_ty_ctx_list (S f') G Ts).
+    + simpl shift_ty. rewrite Nat.add_1_r.
+      rewrite (lt_of_ty_ctx_var (S f')). rewrite (lt_of_ty_ctx_var (S f')).
+      simpl ctx_lookup_ty.
+      destruct (ctx_lookup_ty G n) as [B'|] eqn:E; simpl.
+      * apply IHf.
+      * reflexivity.
+    + simpl shift_ty. rewrite !lt_of_ty_ctx_fun. reflexivity.
+    + simpl shift_ty. rewrite !lt_of_ty_ctx_ctor. f_equal. exact IHT.
+    + simpl shift_ty. rewrite !lt_of_ty_ctx_ltall. reflexivity.
+    + simpl shift_ty. rewrite !lt_of_ty_ctx_tyall. reflexivity.
+    + reflexivity.
+    + cbn [List.map]. rewrite !lt_of_ty_ctx_list_cons. rewrite IHT, IHT0. reflexivity.
+Qed.
+
+(* "var-bounded by k": every type-var inspected by lt_of_ty_ctx (head or
+   in ctor fields, never under a binder) has index >= k. *)
+Fixpoint VB (k : nat) (T : type) : Prop :=
+  match T with
+  | type_var a => k <= a
+  | type_fun _ _ _ => True
+  | type_ctor _ _ Ts =>
+      (fix all (l : list type) : Prop :=
+         match l with [] => True | A :: r => VB k A /\ all r end) Ts
+  | type_lt_all _ => True
+  | type_ty_all _ _ => True
+  end.
+
+Definition VBL (k : nat) (Ts : list type) : Prop :=
+  fold_right (fun A acc => VB k A /\ acc) True Ts.
+
+Lemma VB_ctor : forall k K l Ts, VB k (type_ctor K l Ts) = VBL k Ts.
+Proof. reflexivity. Qed.
+Lemma VBL_cons : forall k A Ts, VBL k (A :: Ts) = (VB k A /\ VBL k Ts).
+Proof. reflexivity. Qed.
+
+Lemma shift_ty_var_eq : forall a c n,
+  shift_ty a c (type_var n) = type_var (if Nat.leb c n then n + a else n).
+Proof. reflexivity. Qed.
+Lemma shift_ty_ctor_eq : forall a c K l Ts,
+  shift_ty a c (type_ctor K l Ts) = type_ctor K l (List.map (shift_ty a c) Ts).
+Proof. reflexivity. Qed.
+Lemma shift_lt_in_ty_var_eq : forall a c n,
+  shift_lt_in_ty a c (type_var n) = type_var n.
+Proof. reflexivity. Qed.
+Lemma shift_lt_in_ty_ctor_eq : forall a c K l Ts,
+  shift_lt_in_ty a c (type_ctor K l Ts)
+  = type_ctor K (shift_lt a c l) (List.map (shift_lt_in_ty a c) Ts).
+Proof. reflexivity. Qed.
+
+Lemma shift_ty_VB : forall T k, VB k T -> VB (S k) (shift_ty 1 0 T).
+Proof.
+  intros T. induction T using type_list_ind with
+    (Q := fun Ts => forall k, VBL k Ts -> VBL (S k) (List.map (shift_ty 1 0) Ts));
+    intros k H.
+  - rewrite shift_ty_var_eq. simpl Nat.leb. simpl in H. simpl. rewrite Nat.add_1_r. lia.
+  - exact I.
+  - rewrite shift_ty_ctor_eq. rewrite VB_ctor. rewrite VB_ctor in H. apply IHT. exact H.
+  - exact I.
+  - exact I.
+  - exact I.
+  - rewrite VBL_cons in H. destruct H as [Ha Hr].
+    cbn [List.map]. rewrite VBL_cons. split; [apply IHT; exact Ha | apply IHT0; exact Hr].
+Qed.
+
+Lemma shift_lt_in_ty_VB : forall T k, VB k T -> VB k (shift_lt_in_ty 1 0 T).
+Proof.
+  intros T. induction T using type_list_ind with
+    (Q := fun Ts => forall k, VBL k Ts -> VBL k (List.map (shift_lt_in_ty 1 0) Ts));
+    intros k H.
+  - rewrite shift_lt_in_ty_var_eq. exact H.
+  - exact I.
+  - rewrite shift_lt_in_ty_ctor_eq. rewrite VB_ctor. rewrite VB_ctor in H. apply IHT. exact H.
+  - exact I.
+  - exact I.
+  - exact I.
+  - rewrite VBL_cons in H. destruct H as [Ha Hr].
+    cbn [List.map]. rewrite VBL_cons. split; [apply IHT; exact Ha | apply IHT0; exact Hr].
+Qed.
+
+Lemma VB_0 : forall T, VB 0 T.
+Proof.
+  intros T. induction T using type_list_ind with (Q := fun Ts => VBL 0 Ts).
+  - simpl. apply Nat.le_0_l.
+  - exact I.
+  - rewrite VB_ctor. exact IHT.
+  - exact I.
+  - exact I.
+  - exact I.
+  - rewrite VBL_cons. split; [exact IHT | exact IHT0].
+Qed.
+
+(* The acyclicity invariant holds for ARBITRARY contexts, purely because
+   ctx_lookup_ty shifts the looked-up bound up past the binders crossed. *)
+Lemma ctx_inv_all : forall G a B, ctx_lookup_ty G a = Some B -> VB (S a) B.
+Proof.
+  induction G as [|b rest IH]; intros a B H.
+  - simpl in H. discriminate.
+  - destruct b as [C|C|D|tg n1 n2 Ts Tr|eg m1 m2 Ts Tr]; simpl in H.
+    + apply IH. exact H.
+    + destruct a as [|a'].
+      * injection H as H. subst B. apply (shift_ty_VB C 0). apply VB_0.
+      * destruct (ctx_lookup_ty rest a') as [B'|] eqn:E; simpl in H; try discriminate.
+        injection H as H. subst B. apply (shift_ty_VB B' (S a')). apply IH. exact E.
+    + destruct (ctx_lookup_ty rest a) as [B'|] eqn:E; simpl in H; try discriminate.
+      injection H as H. subst B. apply shift_lt_in_ty_VB. apply IH. exact E.
+    + apply IH. exact H.
+    + apply IH. exact H.
+Qed.
+
+Lemma ctx_lookup_ty_None : forall G a, length G <= a -> ctx_lookup_ty G a = None.
+Proof.
+  induction G as [|b rest IH]; intros a H.
+  - reflexivity.
+  - simpl in H. destruct b as [C|C|D|tg n1 n2 Ts Tr|eg m1 m2 Ts Tr].
+    + simpl. apply IH. lia.
+    + simpl. destruct a as [|a'].
+      * exfalso. lia.
+      * rewrite IH by lia. reflexivity.
+    + simpl. rewrite IH by lia. reflexivity.
+    + simpl. apply IH. lia.
+    + simpl. apply IH. lia.
+Qed.
+
+Lemma lt_of_ty_ctx_var_oob : forall f G a,
+  ctx_lookup_ty G a = None -> lt_of_ty_ctx f G (type_var a) = lt_free.
+Proof.
+  intros f G a H. rewrite lt_of_ty_ctx_var.
+  destruct f; [reflexivity | rewrite H; reflexivity].
+Qed.
+
+(* Fuel irrelevance above the threshold (|G| - k). *)
+Lemma lt_of_ty_ctx_fuel_irrel : forall f g T G k,
+  VB k T -> length G <= k + f -> length G <= k + g ->
+  lt_of_ty_ctx f G T = lt_of_ty_ctx g G T.
+Proof.
+  induction f as [|f' IHf]; intros g T G k HVB Hf Hg.
+  - revert HVB.
+    induction T using type_list_ind with
+      (Q := fun Ts => VBL k Ts -> lt_of_ty_ctx_list 0 G Ts = lt_of_ty_ctx_list g G Ts);
+      intro HVB.
+    + simpl in HVB.
+      assert (Hoob : ctx_lookup_ty G n = None) by (apply ctx_lookup_ty_None; lia).
+      rewrite !(lt_of_ty_ctx_var_oob _ _ _ Hoob). reflexivity.
+    + rewrite !lt_of_ty_ctx_fun. reflexivity.
+    + rewrite !lt_of_ty_ctx_ctor. rewrite VB_ctor in HVB. f_equal. apply IHT. exact HVB.
+    + rewrite !lt_of_ty_ctx_ltall. reflexivity.
+    + rewrite !lt_of_ty_ctx_tyall. reflexivity.
+    + reflexivity.
+    + rewrite VBL_cons in HVB. destruct HVB as [Ha Hr].
+      rewrite !lt_of_ty_ctx_list_cons. rewrite IHT by exact Ha. rewrite IHT0 by exact Hr.
+      reflexivity.
+  - revert HVB.
+    induction T using type_list_ind with
+      (Q := fun Ts => VBL k Ts -> lt_of_ty_ctx_list (S f') G Ts = lt_of_ty_ctx_list g G Ts);
+      intro HVB.
+    + simpl in HVB.
+      destruct (ctx_lookup_ty G n) as [B|] eqn:E.
+      * assert (Hlt : n < length G).
+        { destruct (Nat.le_gt_cases (length G) n) as [Hle|Hgt]; [|exact Hgt].
+          rewrite ctx_lookup_ty_None in E by exact Hle. discriminate. }
+        destruct g as [|g']. { exfalso. lia. }
+        rewrite (lt_of_ty_ctx_var (S f') G n), (lt_of_ty_ctx_var (S g') G n), E.
+        apply (IHf g' B G (S n)).
+        -- exact (ctx_inv_all G n B E).
+        -- lia.
+        -- lia.
+      * rewrite !(lt_of_ty_ctx_var_oob _ _ _ E). reflexivity.
+    + rewrite !lt_of_ty_ctx_fun. reflexivity.
+    + rewrite !lt_of_ty_ctx_ctor. rewrite VB_ctor in HVB. f_equal. apply IHT. exact HVB.
+    + rewrite !lt_of_ty_ctx_ltall. reflexivity.
+    + rewrite !lt_of_ty_ctx_tyall. reflexivity.
+    + reflexivity.
+    + rewrite VBL_cons in HVB. destruct HVB as [Ha Hr].
+      rewrite !lt_of_ty_ctx_list_cons. rewrite IHT by exact Ha. rewrite IHT0 by exact Hr.
+      reflexivity.
+Qed.
+
+Lemma shift_lt_min_eq : forall a c l1 l2,
+  shift_lt a c (lt_min l1 l2) = lt_min (shift_lt a c l1) (shift_lt a c l2).
+Proof. reflexivity. Qed.
+Lemma shift_lt_in_ty_fun_eq : forall a c A l B,
+  shift_lt_in_ty a c (type_fun A l B)
+  = type_fun (shift_lt_in_ty a c A) (shift_lt a c l) (shift_lt_in_ty a c B).
+Proof. reflexivity. Qed.
+
+(* shift_lt_in_ty commutation: lifetimes shift, then computing lt_∅ equals
+   computing lt_∅ then shifting the resulting lifetime. *)
+Lemma lt_of_ty_ctx_shift_lt_in_ty : forall f G D T,
+  lt_of_ty_ctx f (bind_lt D :: G) (shift_lt_in_ty 1 0 T)
+  = shift_lt 1 0 (lt_of_ty_ctx f G T).
+Proof.
+  induction f as [|f' IHf]; intros G D T.
+  - induction T using type_list_ind with
+      (Q := fun Ts => lt_of_ty_ctx_list 0 (bind_lt D::G) (List.map (shift_lt_in_ty 1 0) Ts)
+                      = shift_lt 1 0 (lt_of_ty_ctx_list 0 G Ts)).
+    + rewrite shift_lt_in_ty_var_eq. rewrite !(lt_of_ty_ctx_var 0). reflexivity.
+    + rewrite shift_lt_in_ty_fun_eq. rewrite !lt_of_ty_ctx_fun. reflexivity.
+    + rewrite shift_lt_in_ty_ctor_eq. rewrite !lt_of_ty_ctx_ctor. rewrite shift_lt_min_eq.
+      f_equal. exact IHT.
+    + rewrite !lt_of_ty_ctx_ltall. reflexivity.
+    + rewrite !lt_of_ty_ctx_tyall. reflexivity.
+    + reflexivity.
+    + cbn [List.map]. rewrite !lt_of_ty_ctx_list_cons. rewrite shift_lt_min_eq.
+      rewrite IHT, IHT0. reflexivity.
+  - induction T using type_list_ind with
+      (Q := fun Ts => lt_of_ty_ctx_list (S f') (bind_lt D::G) (List.map (shift_lt_in_ty 1 0) Ts)
+                      = shift_lt 1 0 (lt_of_ty_ctx_list (S f') G Ts)).
+    + rewrite shift_lt_in_ty_var_eq.
+      rewrite (lt_of_ty_ctx_var (S f') (bind_lt D::G) n), (lt_of_ty_ctx_var (S f') G n).
+      simpl ctx_lookup_ty.
+      destruct (ctx_lookup_ty G n) as [B|] eqn:E; simpl.
+      * apply IHf.
+      * reflexivity.
+    + rewrite shift_lt_in_ty_fun_eq. rewrite !lt_of_ty_ctx_fun. reflexivity.
+    + rewrite shift_lt_in_ty_ctor_eq. rewrite !lt_of_ty_ctx_ctor. rewrite shift_lt_min_eq.
+      f_equal. exact IHT.
+    + rewrite !lt_of_ty_ctx_ltall. reflexivity.
+    + rewrite !lt_of_ty_ctx_tyall. reflexivity.
+    + reflexivity.
+    + cbn [List.map]. rewrite !lt_of_ty_ctx_list_cons. rewrite shift_lt_min_eq.
+      rewrite IHT, IHT0. reflexivity.
+Qed.
+
+(* Weakening corollaries for lt_of_ty_G (= lt_of_ty_ctx (length Γ) Γ). *)
+Lemma lt_of_ty_G_weaken_ty : forall G B T,
+  lt_of_ty_G (bind_ty B :: G) (shift_ty 1 0 T) = lt_of_ty_G G T.
+Proof.
+  intros G B T. unfold lt_of_ty_G. simpl length. rewrite lt_of_ty_ctx_shift_ty.
+  apply (lt_of_ty_ctx_fuel_irrel (S (length G)) (length G) T G 0).
+  - apply VB_0.
+  - simpl; lia.
+  - simpl; lia.
+Qed.
+
+Lemma lt_of_ty_G_weaken_lt : forall G D T,
+  lt_of_ty_G (bind_lt D :: G) (shift_lt_in_ty 1 0 T) = shift_lt 1 0 (lt_of_ty_G G T).
+Proof.
+  intros G D T. unfold lt_of_ty_G. simpl length. rewrite lt_of_ty_ctx_shift_lt_in_ty.
+  f_equal.
+  apply (lt_of_ty_ctx_fuel_irrel (S (length G)) (length G) T G 0).
+  - apply VB_0.
+  - simpl; lia.
+  - simpl; lia.
+Qed.
+
 (* ---- Subtyping weakening (correctly shifted) -------------------- *)
 
 (* Correct context weakening for subtyping.  Inserting a `bind_ty`      *)

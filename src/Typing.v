@@ -206,32 +206,28 @@ Definition lt_of_ty_list (Ts : list type) : lifetime :=
 (* ================================================================== *)
 
 Fixpoint lt_of_ty_ctx (fuel : nat) (Γ : ctx) (T : type) : lifetime :=
-  match fuel with
-  | O =>
-      match T with
-      | type_fun _ l _   => l
-      | type_ctor _ l _  => l
-      | _                => lt_free
-      end
-  | S fuel' =>
-      let fix go_list (Ts : list type) : lifetime :=
-        match Ts with
-        | []        => lt_free
-        | A :: rest => lt_min (lt_of_ty_ctx fuel' Γ A) (go_list rest)
+  let fix go (T : type) : lifetime :=
+    match T with
+    | type_var α =>
+        match fuel with
+        | O => lt_free
+        | S fuel' =>
+            match ctx_lookup_ty Γ α with
+            | Some B => lt_of_ty_ctx fuel' Γ B
+            | None   => lt_free
+            end
         end
-      in
-      match T with
-      | type_var α =>
-          match ctx_lookup_ty Γ α with
-          | Some B => lt_of_ty_ctx fuel' Γ B
-          | None   => lt_free
-          end
-      | type_fun _ l _    => l
-      | type_ctor _ l Ts  => lt_min l (go_list Ts)
-      | type_lt_all _     => lt_free
-      | type_ty_all _ _   => lt_free
-      end
-  end.
+    | type_fun _ l _    => l
+    | type_ctor _ l Ts  =>
+        lt_min l ((fix gol (Ts : list type) : lifetime :=
+                     match Ts with
+                     | []        => lt_free
+                     | A :: rest => lt_min (go A) (gol rest)
+                     end) Ts)
+    | type_lt_all _     => lt_free
+    | type_ty_all _ _   => lt_free
+    end
+  in go T.
 
 Definition lt_of_ty_G (Γ : ctx) (T : type) : lifetime :=
   lt_of_ty_ctx (List.length Γ) Γ T.
@@ -612,7 +608,7 @@ Definition lt_var_list (n : nat) : list lifetime :=
 (*                                                                    *)
 (* Γ ⊢ₜ t : T  (Figures 6–7 of the paper)                             *)
 (*                                                                    *)
-(* T_Var    : ctx_lookup_tm Γ x = Some T → Γ ⊢ₜ x : T     (Var)       *)
+(* T_Var    : ctx_lookup_tm Γ x = Some T → Γ ⊢ₜ x : T    (Var)        *)
 (* T_Sub    : Γ ⊢ₜ t : T → Γ ⊢ T <:: U → Γ ⊢ₜ t : U      (Sub)        *)
 (* T_Lam    : (x:A)::Γ ⊢ₜ body : B →                                  *)
 (*              Γ ⊢ₜ λ(x:A).body : A -l-> B             (Lam)         *)
@@ -757,10 +753,10 @@ Inductive typing : ctx -> term -> type -> Prop :=
   (* subst_list_tm [v; resume] op_body substitutes:                    *)
   (*   $$ 0 → v      (operation argument,  type sig_β)                 *)
   (*   $$ 1 → resume (resumption k, type ret_β -local-> T_R)           *)
-  (* Both T_Cap and T_Handle use the context                            *)
+  (* Both T_Cap and T_Handle use the context                           *)
   (*   bind_tm sig_β               ← $$ 0 = arg  (innermost)           *)
   (*   :: bind_tm (ret_β -local->) ← $$ 1 = k                          *)
-  (*   :: push_ty_vars n_β ...      ← β type-vars above                 *)
+  (*   :: push_ty_vars n_β ...      ← β type-vars above                *)
 
   (* (Handle): allocate a capability and run the body.                 *)
   | T_Handle : forall Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β,

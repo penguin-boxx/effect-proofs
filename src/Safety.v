@@ -898,30 +898,32 @@ Qed.
 Lemma lt_of_ty_ctx_fuel_mono_S : forall f G T,
   G ⊢ₗ lt_of_ty_ctx f G T <: lt_of_ty_ctx (S f) G T.
 Proof.
-  induction f as [|f' IH]; intros G T.
-  - (* f = 0 *)
-    destruct T; simpl.
-    + (* type_var *)
-      destruct (ctx_lookup_ty G n); apply LS_Free.
-    + (* type_fun *) apply LS_Refl.
-    + (* type_ctor *) apply LS_MinR1. apply LS_Refl.
-    + (* type_lt_all *) apply LS_Refl.
-    + (* type_ty_all *) apply LS_Refl.
-  - (* f = S f' *)
-    destruct T; simpl.
-    + (* type_var *)
-      destruct (ctx_lookup_ty G n).
-      * apply IH.
+  induction f as [|f' IHf]; intros G T.
+  - (* f = 0 -> 1 *)
+    induction T using type_list_ind with
+      (Q := fun Ts => G ⊢ₗ lt_of_ty_ctx_list 0 G Ts <: lt_of_ty_ctx_list 1 G Ts).
+    + (* var: LHS bottoms out at lt_free *)
+      rewrite (lt_of_ty_ctx_var 0). apply LS_Free.
+    + rewrite !lt_of_ty_ctx_fun. apply LS_Refl.
+    + rewrite !lt_of_ty_ctx_ctor. apply lt_min_mono; [apply LS_Refl | exact IHT].
+    + rewrite !lt_of_ty_ctx_ltall. apply LS_Refl.
+    + rewrite !lt_of_ty_ctx_tyall. apply LS_Refl.
+    + rewrite !lt_of_ty_ctx_list_nil. apply LS_Refl.
+    + rewrite !lt_of_ty_ctx_list_cons. apply lt_min_mono; [exact IHT | exact IHT0].
+  - (* f = S f' -> S (S f') *)
+    induction T using type_list_ind with
+      (Q := fun Ts =>
+              G ⊢ₗ lt_of_ty_ctx_list (S f') G Ts <: lt_of_ty_ctx_list (S (S f')) G Ts).
+    + rewrite (lt_of_ty_ctx_var (S f')), (lt_of_ty_ctx_var (S (S f'))).
+      destruct (ctx_lookup_ty G n) as [B|].
+      * apply IHf.
       * apply LS_Refl.
-    + (* type_fun *) apply LS_Refl.
-    + (* type_ctor *)
-      apply lt_min_mono; [apply LS_Refl |].
-      (* monotonicity of the per-element minimum over the field list *)
-      induction l0 as [|A rest IHrest]; simpl.
-      * apply LS_Refl.
-      * apply lt_min_mono; [apply IH | apply IHrest].
-    + (* type_lt_all *) apply LS_Refl.
-    + (* type_ty_all *) apply LS_Refl.
+    + rewrite !lt_of_ty_ctx_fun. apply LS_Refl.
+    + rewrite !lt_of_ty_ctx_ctor. apply lt_min_mono; [apply LS_Refl | exact IHT].
+    + rewrite !lt_of_ty_ctx_ltall. apply LS_Refl.
+    + rewrite !lt_of_ty_ctx_tyall. apply LS_Refl.
+    + rewrite !lt_of_ty_ctx_list_nil. apply LS_Refl.
+    + rewrite !lt_of_ty_ctx_list_cons. apply lt_min_mono; [exact IHT | exact IHT0].
 Qed.
 
 Lemma lt_of_ty_ctx_fuel_mono : forall f1 f2 G T,
@@ -949,20 +951,17 @@ Proof.
   - (* SA_Refl *) apply LS_Refl.
   - (* SA_Trans *) eapply LS_Trans; [apply IHHsub1 | apply IHHsub2]; exact Hf.
   - (* SA_VarCtx *)
-    destruct f as [|f']; simpl.
+    rewrite (lt_of_ty_ctx_var f). destruct f as [|f'].
     + apply LS_Free.
     + rewrite H. apply lt_of_ty_ctx_fuel_mono_S.
   - (* SA_Data *)
-    destruct f as [|f']; simpl.
-    + exact H.
-    + apply lt_min_mono; [exact H | apply LS_Refl].
+    rewrite !lt_of_ty_ctx_ctor. apply lt_min_mono; [exact H | apply LS_Refl].
   - (* SA_Any *)
     (* lt_of_ty_ctx f Γ T <: Δ <: lt_of_ty_ctx f Γ (any Δ []).          *)
     unfold lt_of_ty_G in H.
     eapply LS_Trans.
     + eapply LS_Trans; [ apply lt_of_ty_ctx_fuel_mono; exact Hf | exact H ].
-    + destruct f as [|f']; simpl;
-        [ apply LS_Refl | apply LS_MinR1; apply LS_Refl ].
+    + rewrite lt_of_ty_ctx_ctor. apply LS_MinR1. apply LS_Refl.
   - (* SA_Fun *) destruct f as [|f']; simpl; assumption.
   - (* SA_LtAll *) destruct f as [|f']; simpl; apply LS_Refl.
   - (* SA_TyAll *) destruct f as [|f']; simpl; apply LS_Refl.
