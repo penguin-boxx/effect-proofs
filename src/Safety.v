@@ -1,5 +1,6 @@
 Require Import Stdlib.Lists.List.
 Require Import Stdlib.Arith.PeanoNat.
+Require Import Stdlib.micromega.Lia.
 Import ListNotations.
 Require Import Syntax.
 Require Import Substitution.
@@ -972,44 +973,178 @@ Qed.
 (* ------------------------------------------------------------------ *)
 
 (* ------------------------------------------------------------------ *)
-(* (c) Narrowing a bound to a subtype shrinks the computed `lt_∅`.     *)
-(* Honest axiom (1B): the prior proof relied on the unsound no-shift    *)
-(* `sub_weaken_app`.  The statement is the standard F<: narrowing       *)
-(* property and is taken as a trusted assumption pending the full       *)
-(* shifting-weakening metatheory (option 1A).                          *)
-Axiom lt_of_ty_ctx_narrow : forall f Δ Γ Bsup Bsub T,
-  Γ ⊢ Bsub <:: Bsup ->
-  f <= List.length (Δ ++ bind_ty Bsub :: Γ) ->
-  (Δ ++ bind_ty Bsub :: Γ) ⊢ₗ
-     lt_of_ty_ctx f (Δ ++ bind_ty Bsub :: Γ) T
-     <: lt_of_ty_ctx f (Δ ++ bind_ty Bsup :: Γ) T.
+(* (c) Narrowing a `bind_ty` bound to a subtype.  Now fully proved via  *)
+(* the `NarrowTy` relation, resting only on the (proved) shifting        *)
+(* weakening lemmas `sub_weaken_ty_shift` / `sub_weaken_lt_shift`.       *)
+(* ------------------------------------------------------------------ *)
 
-Lemma lt_of_ty_G_narrow : forall Δ Γ Bsup Bsub T,
-  Γ ⊢ Bsub <:: Bsup ->
-  (Δ ++ bind_ty Bsub :: Γ) ⊢ₗ
-     lt_of_ty_G (Δ ++ bind_ty Bsub :: Γ) T
-     <: lt_of_ty_G (Δ ++ bind_ty Bsup :: Γ) T.
+(* `G` is the wider (sup) context, `G'` the narrowed (sub) context. *)
+Inductive NarrowTy : type -> type -> ctx -> ctx -> Prop :=
+| NT_here : forall Bsub Bsup Γ,
+    Γ ⊢ Bsub <:: Bsup ->
+    NarrowTy Bsub Bsup (bind_ty Bsup :: Γ) (bind_ty Bsub :: Γ)
+| NT_ty : forall Bsub Bsup G G' A,
+    NarrowTy Bsub Bsup G G' ->
+    NarrowTy Bsub Bsup (bind_ty A :: G) (bind_ty A :: G')
+| NT_lt : forall Bsub Bsup G G' D,
+    NarrowTy Bsub Bsup G G' ->
+    NarrowTy Bsub Bsup (bind_lt D :: G) (bind_lt D :: G').
+
+Lemma NT_length : forall Bsub Bsup G G',
+  NarrowTy Bsub Bsup G G' -> length G = length G'.
+Proof. intros Bsub Bsup G G' H. induction H; simpl; lia. Qed.
+
+(* lt-lookups are unchanged by narrowing a `bind_ty` slot *)
+Lemma NT_lookup_lt : forall Bsub Bsup G G',
+  NarrowTy Bsub Bsup G G' ->
+  forall x, ctx_lookup_lt G x = ctx_lookup_lt G' x.
 Proof.
-  intros Δ Γ Bsup Bsub T Hb.
-  unfold lt_of_ty_G.
-  (* both contexts have the same length, so the same fuel is used *)
-  assert (Hlen : List.length (Δ ++ bind_ty Bsup :: Γ)
-                 = List.length (Δ ++ bind_ty Bsub :: Γ)).
-  { rewrite !length_app. reflexivity. }
-  rewrite Hlen.
-  apply lt_of_ty_ctx_narrow; [exact Hb | apply Nat.le_refl].
+  intros Bsub Bsup G G' H. induction H; intro x.
+  - simpl. reflexivity.
+  - simpl. apply IHNarrowTy.
+  - destruct x as [|x']; simpl.
+    + reflexivity.
+    + rewrite (IHNarrowTy x'). reflexivity.
 Qed.
 
-(* Prefix-generalised narrowing.  Honest axiom (1B): the SA_VarCtx case  *)
-(* of the prior proof relied on the unsound no-shift `sub_weaken_app`.    *)
-(* This is the standard F<: narrowing statement; trusted pending the      *)
-(* shifting-weakening metatheory (option 1A).                            *)
-Axiom sub_narrow_ty_gen : forall G S T,
-  G ⊢ S <:: T ->
-  forall Δ Γ Bsup Bsub,
-    G = Δ ++ bind_ty Bsup :: Γ ->
-    Γ ⊢ Bsub <:: Bsup ->
-    (Δ ++ bind_ty Bsub :: Γ) ⊢ S <:: T.
+Lemma lt_sub_NT : forall Bsub Bsup G G',
+  NarrowTy Bsub Bsup G G' ->
+  forall l1 l2, G ⊢ₗ l1 <: l2 -> G' ⊢ₗ l1 <: l2.
+Proof.
+  intros Bsub Bsup G G' HN l1 l2 H.
+  eapply lt_sub_lookup_eq; [exact H |].
+  intros x. apply (NT_lookup_lt Bsub Bsup G G' HN x).
+Qed.
+
+(* ty-lookup narrowing: the narrowed bound is a subtype, in both ctxs *)
+Lemma NT_lookup_sub : forall Bsub Bsup G G',
+  NarrowTy Bsub Bsup G G' ->
+  forall α U, ctx_lookup_ty G α = Some U ->
+    exists U', ctx_lookup_ty G' α = Some U'
+            /\ G ⊢ U' <:: U
+            /\ G' ⊢ U' <:: U.
+Proof.
+  intros Bsub Bsup G G' H. induction H; intros α U Hlk.
+  - (* NT_here *) destruct α as [|n].
+    + simpl in Hlk. injection Hlk; intros; subst U.
+      exists (shift_ty 1 0 Bsub). split; [reflexivity|]. split.
+      * apply (sub_weaken_ty_shift Γ Bsup Bsub Bsup H).
+      * apply (sub_weaken_ty_shift Γ Bsub Bsub Bsup H).
+    + exists U. split; [exact Hlk | split; apply SA_Refl].
+  - (* NT_ty *) destruct α as [|n].
+    + simpl in Hlk. injection Hlk; intros; subst U.
+      exists (shift_ty 1 0 A). simpl. split; [reflexivity|]. split; apply SA_Refl.
+    + simpl in Hlk. destruct (ctx_lookup_ty G n) as [W|] eqn:E; simpl in Hlk;
+        [|discriminate].
+      injection Hlk; intros; subst U.
+      destruct (IHNarrowTy n W E) as [W' [HW' [HsubG HsubG']]].
+      exists (shift_ty 1 0 W'). simpl. rewrite HW'. simpl.
+      split; [reflexivity|]. split.
+      * apply (sub_weaken_ty_shift G A W' W HsubG).
+      * apply (sub_weaken_ty_shift G' A W' W HsubG').
+  - (* NT_lt *) simpl in Hlk.
+    destruct (ctx_lookup_ty G α) as [W|] eqn:E; simpl in Hlk; [|discriminate].
+    injection Hlk; intros; subst U.
+    destruct (IHNarrowTy α W E) as [W' [HW' [HsubG HsubG']]].
+    exists (shift_lt_in_ty 1 0 W'). simpl. rewrite HW'. simpl.
+    split; [reflexivity|]. split.
+    + apply (sub_weaken_lt_shift G D W' W HsubG).
+    + apply (sub_weaken_lt_shift G' D W' W HsubG').
+Qed.
+
+Lemma NT_lookup_None : forall Bsub Bsup G G',
+  NarrowTy Bsub Bsup G G' ->
+  forall α, ctx_lookup_ty G α = None -> ctx_lookup_ty G' α = None.
+Proof.
+  intros Bsub Bsup G G' H. induction H; intros α Hlk.
+  - destruct α as [|n]; simpl in *.
+    + discriminate.
+    + destruct (ctx_lookup_ty Γ n) as [W|] eqn:E; simpl in Hlk; [discriminate|].
+      reflexivity.
+  - destruct α as [|n]; simpl in *.
+    + discriminate.
+    + destruct (ctx_lookup_ty G n) as [W|] eqn:E; simpl in Hlk; [discriminate|].
+      rewrite (IHNarrowTy n E). reflexivity.
+  - simpl in *.
+    destruct (ctx_lookup_ty G α) as [W|] eqn:E; simpl in Hlk; [discriminate|].
+    rewrite (IHNarrowTy α E). reflexivity.
+Qed.
+
+(* lt_of_ty_ctx is monotone under narrowing (computed lt_∅ can only shrink) *)
+Lemma lt_of_ty_ctx_NT : forall Bsub Bsup G G',
+  NarrowTy Bsub Bsup G G' ->
+  forall f T, f <= List.length G ->
+    G' ⊢ₗ lt_of_ty_ctx f G' T <: lt_of_ty_ctx f G T.
+Proof.
+  intros Bsub Bsup G G' HN f.
+  induction f as [|f' IHf]; intros T Hf.
+  - (* f = 0 *)
+    induction T using type_list_ind with
+      (Q := fun Ts => G' ⊢ₗ lt_of_ty_ctx_list 0 G' Ts <: lt_of_ty_ctx_list 0 G Ts).
+    + rewrite !(lt_of_ty_ctx_var 0). apply LS_Refl.
+    + rewrite !lt_of_ty_ctx_fun. apply LS_Refl.
+    + rewrite !lt_of_ty_ctx_ctor. apply lt_min_mono; [apply LS_Refl | exact IHT].
+    + rewrite !lt_of_ty_ctx_ltall. apply LS_Refl.
+    + rewrite !lt_of_ty_ctx_tyall. apply LS_Refl.
+    + rewrite !lt_of_ty_ctx_list_nil. apply LS_Refl.
+    + rewrite !lt_of_ty_ctx_list_cons. apply lt_min_mono; [exact IHT | exact IHT0].
+  - (* f = S f' *)
+    assert (Hf' : f' <= List.length G) by lia.
+    induction T using type_list_ind with
+      (Q := fun Ts => G' ⊢ₗ lt_of_ty_ctx_list (S f') G' Ts <: lt_of_ty_ctx_list (S f') G Ts).
+    + rewrite (lt_of_ty_ctx_var (S f') G' n), (lt_of_ty_ctx_var (S f') G n).
+      destruct (ctx_lookup_ty G n) as [U|] eqn:E.
+      * destruct (NT_lookup_sub Bsub Bsup G G' HN n U E) as [U' [HU' [HsubG HsubG']]].
+        rewrite HU'.
+        eapply LS_Trans.
+        -- apply (IHf U' Hf').
+        -- apply (lt_sub_NT Bsub Bsup G G' HN).
+           apply (lt_of_ty_ctx_mono_sub f' G U' U HsubG Hf').
+      * rewrite (NT_lookup_None Bsub Bsup G G' HN n E). apply LS_Refl.
+    + rewrite !lt_of_ty_ctx_fun. apply LS_Refl.
+    + rewrite !lt_of_ty_ctx_ctor. apply lt_min_mono; [apply LS_Refl | exact IHT].
+    + rewrite !lt_of_ty_ctx_ltall. apply LS_Refl.
+    + rewrite !lt_of_ty_ctx_tyall. apply LS_Refl.
+    + rewrite !lt_of_ty_ctx_list_nil. apply LS_Refl.
+    + rewrite !lt_of_ty_ctx_list_cons. apply lt_min_mono; [exact IHT | exact IHT0].
+Qed.
+
+Lemma lt_of_ty_G_NT : forall Bsub Bsup G G',
+  NarrowTy Bsub Bsup G G' ->
+  forall T, G' ⊢ₗ lt_of_ty_G G' T <: lt_of_ty_G G T.
+Proof.
+  intros Bsub Bsup G G' HN T. unfold lt_of_ty_G.
+  rewrite <- (NT_length Bsub Bsup G G' HN).
+  apply (lt_of_ty_ctx_NT Bsub Bsup G G' HN (List.length G) T (Nat.le_refl _)).
+Qed.
+
+Lemma sub_NT : forall G S T, G ⊢ S <:: T ->
+  forall Bsub Bsup G', NarrowTy Bsub Bsup G G' -> G' ⊢ S <:: T.
+Proof.
+  intros G S T H.
+  induction H as [Γ T|Γ S U T H1 IH1 H2 IH2|Γ α B Hlk|Γ K l l' Ts Hls
+                 |Γ T Δ Hls|Γ A A' l l' B B' H1 IH1 Hl H2 IH2
+                 |Γ A A' H1 IH1|Γ B B' A A' H1 IH1 H2 IH2];
+    intros Bsub Bsup G' HN.
+  - apply SA_Refl.
+  - eapply SA_Trans; [apply (IH1 _ _ _ HN) | apply (IH2 _ _ _ HN)].
+  - destruct (NT_lookup_sub Bsub Bsup Γ G' HN α B Hlk) as [B' [HB' [_ HsubG']]].
+    eapply SA_Trans; [apply SA_VarCtx; exact HB' | exact HsubG'].
+  - apply SA_Data. apply (lt_sub_NT Bsub Bsup Γ G' HN _ _ Hls).
+  - apply SA_Any.
+    eapply LS_Trans.
+    + apply (lt_of_ty_G_NT Bsub Bsup Γ G' HN T).
+    + apply (lt_sub_NT Bsub Bsup Γ G' HN _ _ Hls).
+  - apply SA_Fun.
+    + apply (IH1 _ _ _ HN).
+    + apply (lt_sub_NT Bsub Bsup Γ G' HN _ _ Hl).
+    + apply (IH2 _ _ _ HN).
+  - apply SA_LtAll.
+    apply (IH1 Bsub Bsup (bind_lt lt_local :: G') (NT_lt Bsub Bsup Γ G' lt_local HN)).
+  - apply SA_TyAll.
+    + apply (IH1 _ _ _ HN).
+    + apply (IH2 Bsub Bsup (bind_ty B' :: G') (NT_ty Bsub Bsup Γ G' B' HN)).
+Qed.
 
 Lemma sub_narrow_ty : forall Γ Bsub Bsup T1 T2,
   Γ ⊢ Bsub <:: Bsup ->
@@ -1017,7 +1152,8 @@ Lemma sub_narrow_ty : forall Γ Bsub Bsup T1 T2,
   (bind_ty Bsub :: Γ) ⊢ T1 <:: T2.
 Proof.
   intros Γ Bsub Bsup T1 T2 Hb Hsub.
-  exact (sub_narrow_ty_gen _ _ _ Hsub [] Γ Bsup Bsub eq_refl Hb).
+  apply (sub_NT (bind_ty Bsup :: Γ) T1 T2 Hsub Bsub Bsup (bind_ty Bsub :: Γ)).
+  apply NT_here. exact Hb.
 Qed.
 
 (* Full inversion for `type_ty_all` supertypes, now a theorem: it       *)
