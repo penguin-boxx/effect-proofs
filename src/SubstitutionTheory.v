@@ -3209,6 +3209,126 @@ Proof.
   apply SubstLt_here. exact HltΔ.
 Qed.
 
+(* ================================================================== *)
+(* SubstTm : substitute a term for a tm-binder at depth n             *)
+(* ================================================================== *)
+
+Inductive SubstTm : term -> nat -> ctx -> ctx -> Prop :=
+| SubstTm_here : forall Gamma T v,
+    value v ->
+    Gamma ⊢ₜ v : T ->
+    SubstTm v 0 (bind_tm T :: Gamma) Gamma
+| SubstTm_tm : forall v n G G' A,
+    SubstTm v n G G' ->
+    SubstTm (shift_tm 1 0 v) (S n) (bind_tm A :: G) (bind_tm A :: G')
+| SubstTm_ty : forall v n G G' B,
+    SubstTm v n G G' ->
+    SubstTm (shift_ty_in_tm 1 0 v) n (bind_ty B :: G) (bind_ty B :: G')
+| SubstTm_lt : forall v n G G' D,
+    SubstTm v n G G' ->
+    SubstTm (shift_lt_in_tm 1 0 v) n (bind_lt D :: G) (bind_lt D :: G')
+| SubstTm_ctor : forall v n G G' K n_lt n_ty fields result,
+    SubstTm v n G G' ->
+    SubstTm v n (bind_ctor K n_lt n_ty fields result :: G)
+                (bind_ctor K n_lt n_ty fields result :: G')
+| SubstTm_eff : forall v n G G' E n_a n_b sig ret,
+    SubstTm v n G G' ->
+    SubstTm v n (bind_eff E n_a n_b sig ret :: G)
+                (bind_eff E n_a n_b sig ret :: G').
+
+Lemma SubstTm_length : forall v n G G', SubstTm v n G G' -> length G = S (length G').
+Proof. intros v n G G' H. induction H; simpl; lia. Qed.
+
+Lemma SubstTm_value : forall v n G G', SubstTm v n G G' -> value v.
+Proof.
+  intros v n G G' H. induction H.
+  - exact H.
+  - apply value_shift_tm. exact IHSubstTm.
+  - apply value_shift_ty_in_tm. exact IHSubstTm.
+  - apply value_shift_lt_in_tm. exact IHSubstTm.
+  - exact IHSubstTm.
+  - exact IHSubstTm.
+Qed.
+
+Lemma SubstTm_lookup_tm : forall v n G G', SubstTm v n G G' ->
+  forall x, x <> n -> ctx_lookup_tm G' (slv n x) = ctx_lookup_tm G x.
+Proof.
+  intros v n G G' H. induction H; intros x Hne.
+  - destruct x as [|x']; [contradiction|]. reflexivity.
+  - destruct x as [|x'].
+    + reflexivity.
+    + assert (x' <> n) by lia.
+      rewrite slv_S. simpl ctx_lookup_tm. apply IHSubstTm. exact H0.
+  - simpl ctx_lookup_tm. rewrite IHSubstTm by exact Hne. reflexivity.
+  - simpl ctx_lookup_tm. rewrite IHSubstTm by exact Hne. reflexivity.
+  - simpl ctx_lookup_tm. apply IHSubstTm. exact Hne.
+  - simpl ctx_lookup_tm. apply IHSubstTm. exact Hne.
+Qed.
+
+Lemma SubstTm_lookup_ty : forall v n G G', SubstTm v n G G' ->
+  forall a, ctx_lookup_ty G' a = ctx_lookup_ty G a.
+Proof.
+  intros v n G G' H. induction H; intro a; simpl.
+  - reflexivity.
+  - apply IHSubstTm.
+  - destruct a as [|a']; simpl.
+    + reflexivity.
+    + rewrite IHSubstTm. reflexivity.
+  - rewrite IHSubstTm. reflexivity.
+  - apply IHSubstTm.
+  - apply IHSubstTm.
+Qed.
+
+Lemma SubstTm_lookup_lt : forall v n G G', SubstTm v n G G' ->
+  forall x, ctx_lookup_lt G' x = ctx_lookup_lt G x.
+Proof.
+  intros v n G G' H. induction H; intro x; simpl.
+  - reflexivity.
+  - apply IHSubstTm.
+  - apply IHSubstTm.
+  - destruct x as [|x']; simpl.
+    + reflexivity.
+    + rewrite IHSubstTm. reflexivity.
+  - apply IHSubstTm.
+  - apply IHSubstTm.
+Qed.
+
+Lemma SubstTm_lookup_ctor : forall v n G G', SubstTm v n G G' ->
+  forall K, ctx_lookup_ctor G' K = ctx_lookup_ctor G K.
+Proof.
+  intros v n G G' H.
+  induction H as [Gamma T v Hv Hty
+                 |v n G G' A H IH
+                 |v n G G' B H IH
+                 |v n G G' D H IH
+                 |v n G G' K0 n_lt n_ty fields result H IH
+                 |v n G G' E n_a n_b sig ret H IH]; intro K; simpl.
+  - reflexivity.
+  - apply IH.
+  - apply IH.
+  - apply IH.
+  - destruct (Nat.eqb K K0); [reflexivity|apply IH].
+  - apply IH.
+Qed.
+
+Lemma SubstTm_lookup_eff : forall v n G G', SubstTm v n G G' ->
+  forall E, ctx_lookup_eff G' E = ctx_lookup_eff G E.
+Proof.
+  intros v n G G' H.
+  induction H as [Gamma T v Hv Hty
+                 |v n G G' A H IH
+                 |v n G G' B H IH
+                 |v n G G' D H IH
+                 |v n G G' K n_lt n_ty fields result H IH
+                 |v n G G' E0 n_a n_b sig ret H IH]; intro E; simpl.
+  - reflexivity.
+  - apply IH.
+  - apply IH.
+  - apply IH.
+  - apply IH.
+  - destruct (Nat.eqb E E0); [reflexivity|apply IH].
+Qed.
+
 Fixpoint subst_list_lt (lts : list lifetime) (l : lifetime) : lifetime :=
   match lts with
   | [] => l
