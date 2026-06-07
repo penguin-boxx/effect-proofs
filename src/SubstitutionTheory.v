@@ -1177,6 +1177,54 @@ Lemma shift_ty_swap_0 : forall T c,
   shift_ty 1 0 (shift_ty 1 c T) = shift_ty 1 (S c) (shift_ty 1 0 T).
 Proof. intros T c. apply shift_ty_swap. lia. Qed.
 
+Lemma shift_ty_ctor_sig_swap_0 : forall sig c,
+  shift_ty_ctor_sig 1 0 (shift_ty_ctor_sig 1 c sig) =
+  shift_ty_ctor_sig 1 (S c) (shift_ty_ctor_sig 1 0 sig).
+Proof.
+  intros [[[n_lt n_ty] fields] result] c. unfold shift_ty_ctor_sig. simpl.
+  f_equal.
+  - f_equal. rewrite !List.map_map. apply List.map_ext. intro T.
+    replace (n_ty + 0) with n_ty by lia.
+    replace (n_ty + S c) with (S (n_ty + c)) by lia.
+    apply shift_ty_swap. lia.
+  - replace (n_ty + 0) with n_ty by lia.
+    replace (n_ty + S c) with (S (n_ty + c)) by lia.
+    apply shift_ty_swap. lia.
+Qed.
+
+Lemma shift_ty_eff_sig_swap_0 : forall sig c,
+  shift_ty_eff_sig 1 0 (shift_ty_eff_sig 1 c sig) =
+  shift_ty_eff_sig 1 (S c) (shift_ty_eff_sig 1 0 sig).
+Proof.
+  intros [[[n_α n_β] sig_ty] ret_ty] c. unfold shift_ty_eff_sig. simpl.
+  f_equal.
+  - f_equal. replace (n_α + n_β + 0) with (n_α + n_β) by lia.
+    replace (n_α + n_β + S c) with (S (n_α + n_β + c)) by lia.
+    apply shift_ty_swap. lia.
+  - replace (n_α + n_β + 0) with (n_α + n_β) by lia.
+    replace (n_α + n_β + S c) with (S (n_α + n_β + c)) by lia.
+    apply shift_ty_swap. lia.
+Qed.
+
+Lemma shift_ty_ctor_sig_shift_lt_comm : forall sig c,
+  shift_lt_ctor_sig 1 0 (shift_ty_ctor_sig 1 c sig) =
+  shift_ty_ctor_sig 1 c (shift_lt_ctor_sig 1 0 sig).
+Proof.
+  intros [[[n_lt n_ty] fields] result] c. unfold shift_lt_ctor_sig, shift_ty_ctor_sig. simpl.
+  f_equal.
+  - f_equal. rewrite !List.map_map. apply List.map_ext. intro T.
+    symmetry. apply shift_ty_shift_lt_in_ty_commute.
+  - symmetry. apply shift_ty_shift_lt_in_ty_commute.
+Qed.
+
+Lemma shift_ty_eff_sig_shift_lt_comm : forall sig c,
+  shift_lt_eff_sig 1 0 (shift_ty_eff_sig 1 c sig) =
+  shift_ty_eff_sig 1 c (shift_lt_eff_sig 1 0 sig).
+Proof.
+  intros [[[n_α n_β] sig_ty] ret_ty] c. unfold shift_lt_eff_sig, shift_ty_eff_sig. simpl.
+  f_equal; [f_equal|]; symmetry; apply shift_ty_shift_lt_in_ty_commute.
+Qed.
+
 Inductive InsTy : nat -> ctx -> ctx -> Prop :=
 | InsTy_here : forall B G, InsTy 0 G (bind_ty B :: G)
 | InsTy_ty : forall c G G' A,
@@ -1257,6 +1305,38 @@ Proof.
     + apply IHInsTy.
   - simpl ctx_lookup_tm. apply IHInsTy.
   - simpl ctx_lookup_tm. apply IHInsTy.
+Qed.
+
+Lemma InsTy_lookup_ctor : forall c G G', InsTy c G G' ->
+  forall K, ctx_lookup_ctor G' K = option_map (shift_ty_ctor_sig 1 c) (ctx_lookup_ctor G K).
+Proof.
+  intros c G G' H. induction H; intro K.
+  - simpl. reflexivity.
+  - simpl. rewrite IHInsTy. destruct (ctx_lookup_ctor G K) as [sig|] eqn:E; cbn [option_map].
+    + rewrite shift_ty_ctor_sig_swap_0. reflexivity.
+    + reflexivity.
+  - simpl. rewrite IHInsTy. destruct (ctx_lookup_ctor G K) as [sig|] eqn:E; cbn [option_map].
+    + rewrite shift_ty_ctor_sig_shift_lt_comm. reflexivity.
+    + reflexivity.
+  - simpl. apply IHInsTy.
+  - simpl. destruct (Nat.eqb K tg); [reflexivity|apply IHInsTy].
+  - simpl. apply IHInsTy.
+Qed.
+
+Lemma InsTy_lookup_eff : forall c G G', InsTy c G G' ->
+  forall E, ctx_lookup_eff G' E = option_map (shift_ty_eff_sig 1 c) (ctx_lookup_eff G E).
+Proof.
+  intros c G G' H. induction H; intro E.
+  - simpl. reflexivity.
+  - simpl. rewrite IHInsTy. destruct (ctx_lookup_eff G E) as [sig|] eqn:Ef; cbn [option_map].
+    + rewrite shift_ty_eff_sig_swap_0. reflexivity.
+    + reflexivity.
+  - simpl. rewrite IHInsTy. destruct (ctx_lookup_eff G E) as [sig|] eqn:Ef; cbn [option_map].
+    + rewrite shift_ty_eff_sig_shift_lt_comm. reflexivity.
+    + reflexivity.
+  - simpl. apply IHInsTy.
+  - simpl. apply IHInsTy.
+  - simpl. destruct (Nat.eqb E eg); [reflexivity|apply IHInsTy].
 Qed.
 
 Lemma shift_ty_fun_eq : forall a c A l B,
@@ -1448,6 +1528,48 @@ Lemma shift_lt_in_ty_swap_0 : forall T c,
   = shift_lt_in_ty 1 (S c) (shift_lt_in_ty 1 0 T).
 Proof. intros T c. apply shift_lt_in_ty_swap. lia. Qed.
 
+Lemma shift_lt_ctor_sig_swap_0 : forall sig c,
+  shift_lt_ctor_sig 1 0 (shift_lt_ctor_sig 1 c sig) =
+  shift_lt_ctor_sig 1 (S c) (shift_lt_ctor_sig 1 0 sig).
+Proof.
+  intros [[[n_lt n_ty] fields] result] c. unfold shift_lt_ctor_sig. simpl.
+  f_equal.
+  - f_equal. rewrite !List.map_map. apply List.map_ext. intro T.
+    replace (n_lt + 0) with n_lt by lia.
+    replace (n_lt + S c) with (S (n_lt + c)) by lia.
+    apply shift_lt_in_ty_swap. lia.
+  - replace (n_lt + 0) with n_lt by lia.
+    replace (n_lt + S c) with (S (n_lt + c)) by lia.
+    apply shift_lt_in_ty_swap. lia.
+Qed.
+
+Lemma shift_lt_eff_sig_swap_0 : forall sig c,
+  shift_lt_eff_sig 1 0 (shift_lt_eff_sig 1 c sig) =
+  shift_lt_eff_sig 1 (S c) (shift_lt_eff_sig 1 0 sig).
+Proof.
+  intros [[[n_α n_β] sig_ty] ret_ty] c. unfold shift_lt_eff_sig. simpl.
+  f_equal; [f_equal|]; apply shift_lt_in_ty_swap_0.
+Qed.
+
+Lemma shift_lt_ctor_sig_shift_ty_comm : forall sig c,
+  shift_ty_ctor_sig 1 0 (shift_lt_ctor_sig 1 c sig) =
+  shift_lt_ctor_sig 1 c (shift_ty_ctor_sig 1 0 sig).
+Proof.
+  intros [[[n_lt n_ty] fields] result] c. unfold shift_lt_ctor_sig, shift_ty_ctor_sig. simpl.
+  f_equal.
+  - f_equal. rewrite !List.map_map. apply List.map_ext. intro T.
+    apply shift_ty_shift_lt_in_ty_commute.
+  - apply shift_ty_shift_lt_in_ty_commute.
+Qed.
+
+Lemma shift_lt_eff_sig_shift_ty_comm : forall sig c,
+  shift_ty_eff_sig 1 0 (shift_lt_eff_sig 1 c sig) =
+  shift_lt_eff_sig 1 c (shift_ty_eff_sig 1 0 sig).
+Proof.
+  intros [[[n_α n_β] sig_ty] ret_ty] c. unfold shift_lt_eff_sig, shift_ty_eff_sig. simpl.
+  f_equal; [f_equal|]; apply shift_ty_shift_lt_in_ty_commute.
+Qed.
+
 Inductive InsLt : nat -> ctx -> ctx -> Prop :=
 | InsLt_here : forall D G, InsLt 0 G (bind_lt D :: G)
 | InsLt_lt : forall c G G' D,
@@ -1535,6 +1657,38 @@ Proof.
     + apply IHInsLt.
   - simpl ctx_lookup_tm. apply IHInsLt.
   - simpl ctx_lookup_tm. apply IHInsLt.
+Qed.
+
+Lemma InsLt_lookup_ctor : forall c G G', InsLt c G G' ->
+  forall K, ctx_lookup_ctor G' K = option_map (shift_lt_ctor_sig 1 c) (ctx_lookup_ctor G K).
+Proof.
+  intros c G G' H. induction H; intro K.
+  - simpl. reflexivity.
+  - simpl. rewrite IHInsLt. destruct (ctx_lookup_ctor G K) as [sig|] eqn:E; cbn [option_map].
+    + rewrite shift_lt_ctor_sig_swap_0. reflexivity.
+    + reflexivity.
+  - simpl. rewrite IHInsLt. destruct (ctx_lookup_ctor G K) as [sig|] eqn:E; cbn [option_map].
+    + rewrite shift_lt_ctor_sig_shift_ty_comm. reflexivity.
+    + reflexivity.
+  - simpl. apply IHInsLt.
+  - simpl. destruct (Nat.eqb K tg); [reflexivity|apply IHInsLt].
+  - simpl. apply IHInsLt.
+Qed.
+
+Lemma InsLt_lookup_eff : forall c G G', InsLt c G G' ->
+  forall E, ctx_lookup_eff G' E = option_map (shift_lt_eff_sig 1 c) (ctx_lookup_eff G E).
+Proof.
+  intros c G G' H. induction H; intro E.
+  - simpl. reflexivity.
+  - simpl. rewrite IHInsLt. destruct (ctx_lookup_eff G E) as [sig|] eqn:Ef; cbn [option_map].
+    + rewrite shift_lt_eff_sig_swap_0. reflexivity.
+    + reflexivity.
+  - simpl. rewrite IHInsLt. destruct (ctx_lookup_eff G E) as [sig|] eqn:Ef; cbn [option_map].
+    + rewrite shift_lt_eff_sig_shift_ty_comm. reflexivity.
+    + reflexivity.
+  - simpl. apply IHInsLt.
+  - simpl. apply IHInsLt.
+  - simpl. destruct (Nat.eqb E eg); [reflexivity|apply IHInsLt].
 Qed.
 
 Lemma shv_shift_lt : forall c n, shift_lt 1 c (lt_var n) = lt_var (shv c n).
@@ -2190,6 +2344,41 @@ Proof.
   - apply IH. apply InsTmAt_ty. exact H.
 Qed.
 
+Lemma InsTy_push_lt_vars : forall n Delta c G G',
+  InsTy c G G' -> InsTy c (push_lt_vars n Delta G) (push_lt_vars n Delta G').
+Proof.
+  induction n as [|n IH]; intros Delta c G G' H; simpl.
+  - exact H.
+  - apply IH. apply InsTy_lt. exact H.
+Qed.
+
+Lemma shift_ty_any_at_free : forall c, shift_ty 1 c any_at_free = any_at_free.
+Proof. intros c. reflexivity. Qed.
+
+Lemma shift_lt_any_at_free : forall c, shift_lt_in_ty 1 c any_at_free = any_at_free.
+Proof. intros c. reflexivity. Qed.
+
+Lemma InsTy_push_ty_vars_any_at_free : forall n c G G',
+  InsTy c G G' ->
+  InsTy (n + c) (push_ty_vars n any_at_free G) (push_ty_vars n any_at_free G').
+Proof.
+  induction n as [|n IH]; intros c G G' H; simpl.
+  - replace (0 + c) with c by lia. exact H.
+  - replace (S (n + c)) with (n + S c) by lia.
+    apply IH. rewrite <- (shift_ty_any_at_free c).
+    apply InsTy_ty. exact H.
+Qed.
+
+Lemma InsLt_push_ty_vars_any_at_free : forall n c G G',
+  InsLt c G G' ->
+  InsLt c (push_ty_vars n any_at_free G) (push_ty_vars n any_at_free G').
+Proof.
+  induction n as [|n IH]; intros c G G' H; simpl.
+  - exact H.
+  - apply IH. rewrite <- (shift_lt_any_at_free c).
+    apply InsLt_ty. exact H.
+Qed.
+
 Lemma InsTmAt_fold_bind_tm : forall rhos c G G',
   InsTmAt c G G' ->
   InsTmAt (c + List.length rhos)
@@ -2202,10 +2391,58 @@ Proof.
     apply InsTmAt_tm. apply IH. exact H.
 Qed.
 
+Lemma InsTy_fold_bind_tm : forall rhos c G G',
+  InsTy c G G' ->
+  InsTy c
+    (List.fold_right (fun rho G0 => bind_tm rho :: G0) G rhos)
+    (List.fold_right (fun rho G0 => bind_tm (shift_ty 1 c rho) :: G0) G' rhos).
+Proof.
+  induction rhos as [|rho rhos IH]; intros c G G' H; simpl.
+  - exact H.
+  - apply InsTy_tm. apply IH. exact H.
+Qed.
+
+Lemma InsLt_fold_bind_tm : forall rhos c G G',
+  InsLt c G G' ->
+  InsLt c
+    (List.fold_right (fun rho G0 => bind_tm rho :: G0) G rhos)
+    (List.fold_right (fun rho G0 => bind_tm (shift_lt_in_ty 1 c rho) :: G0) G' rhos).
+Proof.
+  induction rhos as [|rho rhos IH]; intros c G G' H; simpl.
+  - exact H.
+  - apply InsLt_tm. apply IH. exact H.
+Qed.
+
 Lemma Forall2_typing_InsTmAt : forall Γ vs rhos,
   Forall2 (fun v rho => forall c G', InsTmAt c Γ G' -> G' ⊢ₜ shift_tm 1 c v : rho) vs rhos ->
   forall c G', InsTmAt c Γ G' ->
   Forall2 (fun v rho => G' ⊢ₜ v : rho) (List.map (shift_tm 1 c) vs) rhos.
+Proof.
+  intros Γ vs rhos H. induction H; intros c G' HIns; simpl.
+  - constructor.
+  - constructor.
+    + apply H. exact HIns.
+    + apply IHForall2. exact HIns.
+Qed.
+
+Lemma Forall2_typing_InsTy : forall Γ vs rhos,
+  Forall2 (fun v rho => forall c G', InsTy c Γ G' -> G' ⊢ₜ shift_ty_in_tm 1 c v : shift_ty 1 c rho) vs rhos ->
+  forall c G', InsTy c Γ G' ->
+  Forall2 (fun v rho => G' ⊢ₜ v : rho)
+           (List.map (shift_ty_in_tm 1 c) vs) (List.map (shift_ty 1 c) rhos).
+Proof.
+  intros Γ vs rhos H. induction H; intros c G' HIns; simpl.
+  - constructor.
+  - constructor.
+    + apply H. exact HIns.
+    + apply IHForall2. exact HIns.
+Qed.
+
+Lemma Forall2_typing_InsLt : forall Γ vs rhos,
+  Forall2 (fun v rho => forall c G', InsLt c Γ G' -> G' ⊢ₜ shift_lt_in_tm 1 c v : shift_lt_in_ty 1 c rho) vs rhos ->
+  forall c G', InsLt c Γ G' ->
+  Forall2 (fun v rho => G' ⊢ₜ v : rho)
+           (List.map (shift_lt_in_tm 1 c) vs) (List.map (shift_lt_in_ty 1 c) rhos).
 Proof.
   intros Γ vs rhos H. induction H; intros c G' HIns; simpl.
   - constructor.
