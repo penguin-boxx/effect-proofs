@@ -1188,11 +1188,13 @@ Inductive InsTy : nat -> ctx -> ctx -> Prop :=
 | InsTy_ctor : forall c G G' tg n1 n2 Ts Tr,
     InsTy c G G' ->
     InsTy c (bind_ctor tg n1 n2 Ts Tr :: G)
-            (bind_ctor tg n1 n2 (List.map (shift_ty 1 c) Ts) (shift_ty 1 c Tr) :: G')
+      (bind_ctor tg n1 n2 (List.map (shift_ty 1 (n2 + c)) Ts)
+                (shift_ty 1 (n2 + c) Tr) :: G')
 | InsTy_eff : forall c G G' eg m1 m2 Ts Tr,
     InsTy c G G' ->
     InsTy c (bind_eff eg m1 m2 Ts Tr :: G)
-            (bind_eff eg m1 m2 (shift_ty 1 c Ts) (shift_ty 1 c Tr) :: G').
+      (bind_eff eg m1 m2 (shift_ty 1 (m1 + m2 + c) Ts)
+                (shift_ty 1 (m1 + m2 + c) Tr) :: G').
 
 Definition shv (c a : nat) : nat := if Nat.leb c a then S a else a.
 
@@ -1457,7 +1459,8 @@ Inductive InsLt : nat -> ctx -> ctx -> Prop :=
 | InsLt_ctor : forall c G G' tg n1 n2 Ts Tr,
     InsLt c G G' ->
     InsLt c (bind_ctor tg n1 n2 Ts Tr :: G)
-            (bind_ctor tg n1 n2 (List.map (shift_lt_in_ty 1 c) Ts) (shift_lt_in_ty 1 c Tr) :: G')
+      (bind_ctor tg n1 n2 (List.map (shift_lt_in_ty 1 (n1 + c)) Ts)
+                (shift_lt_in_ty 1 (n1 + c) Tr) :: G')
 | InsLt_eff : forall c G G' eg m1 m2 Ts Tr,
     InsLt c G G' ->
     InsLt c (bind_eff eg m1 m2 Ts Tr :: G)
@@ -1692,17 +1695,31 @@ Qed.
 Lemma InsTm_lookup_ctor : forall G G', InsTm G G' ->
   forall K, ctx_lookup_ctor G' K = ctx_lookup_ctor G K.
 Proof.
-  intros G G' H. induction H; intro K0; simpl; try apply IHInsTm.
+  intros G G' H.
+  induction H as [A G|A G G' H IH|B G G' H IH|D G G' H IH
+                 |K0 n_lt n_ty f r G G' H IH|E n_a n_b sig ret G G' H IH];
+    intro K; simpl.
   - reflexivity.
-  - destruct (Nat.eqb K0 K); [reflexivity|apply IHInsTm].
+  - apply IH.
+  - rewrite IH. reflexivity.
+  - rewrite IH. reflexivity.
+  - destruct (Nat.eqb K K0); [reflexivity|apply IH].
+  - apply IH.
 Qed.
 
 Lemma InsTm_lookup_eff : forall G G', InsTm G G' ->
   forall E, ctx_lookup_eff G' E = ctx_lookup_eff G E.
 Proof.
-  intros G G' H. induction H; intro E0; simpl; try apply IHInsTm.
+  intros G G' H.
+  induction H as [A G|A G G' H IH|B G G' H IH|D G G' H IH
+                 |K n_lt n_ty f r G G' H IH|E0 n_a n_b sig ret G G' H IH];
+    intro E; simpl.
   - reflexivity.
-  - destruct (Nat.eqb E0 E); [reflexivity|apply IHInsTm].
+  - apply IH.
+  - rewrite IH. reflexivity.
+  - rewrite IH. reflexivity.
+  - apply IH.
+  - destruct (Nat.eqb E E0); [reflexivity|apply IH].
 Qed.
 
 Lemma lt_of_ty_ctx_InsTm : forall G G', InsTm G G' ->
@@ -3320,8 +3337,8 @@ Proof.
                  |v n G G' E n_a n_b sig ret H IH]; intro K; simpl.
   - reflexivity.
   - apply IH.
-  - apply IH.
-  - apply IH.
+  - rewrite IH. reflexivity.
+  - rewrite IH. reflexivity.
   - destruct (Nat.eqb K K0); [reflexivity|apply IH].
   - apply IH.
 Qed.
@@ -3338,8 +3355,8 @@ Proof.
                  |v n G G' E0 n_a n_b sig ret H IH]; intro E; simpl.
   - reflexivity.
   - apply IH.
-  - apply IH.
-  - apply IH.
+  - rewrite IH. reflexivity.
+  - rewrite IH. reflexivity.
   - apply IH.
   - destruct (Nat.eqb E E0); [reflexivity|apply IH].
 Qed.

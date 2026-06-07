@@ -49,7 +49,11 @@ Qed.
 
 Lemma eval_ctx_no_eff : forall Γ E,
   eval_ctx Γ -> ctx_lookup_eff Γ E = None.
-Proof. induction 1; intros; simpl; auto. Qed.
+Proof.
+  intros Γ E H; revert E; induction H; intros E; simpl; try reflexivity.
+  - rewrite IHeval_ctx. reflexivity.
+  - rewrite IHeval_ctx. reflexivity.
+Qed.
 
 (* ------------------------------------------------------------------ *)
 (* Effect-handler invariant                                           *)

@@ -76,10 +76,40 @@ Fixpoint ctx_lookup_lt (Γ : ctx) (l : nat) : option lifetime :=
   | _ :: rest         => ctx_lookup_lt rest l
   end.
 
+Definition shift_ty_ctor_sig (amount cutoff : nat)
+    (sig : nat * nat * list type * type) : nat * nat * list type * type :=
+  let '(n_lt, n_ty, fields, result) := sig in
+  (n_lt, n_ty,
+   List.map (shift_ty amount (n_ty + cutoff)) fields,
+   shift_ty amount (n_ty + cutoff) result).
+
+Definition shift_lt_ctor_sig (amount cutoff : nat)
+    (sig : nat * nat * list type * type) : nat * nat * list type * type :=
+  let '(n_lt, n_ty, fields, result) := sig in
+  (n_lt, n_ty,
+   List.map (shift_lt_in_ty amount (n_lt + cutoff)) fields,
+   shift_lt_in_ty amount (n_lt + cutoff) result).
+
+Definition shift_ty_eff_sig (amount cutoff : nat)
+    (sig : nat * nat * type * type) : nat * nat * type * type :=
+  let '(n_α, n_β, sig_ty, ret_ty) := sig in
+  (n_α, n_β,
+   shift_ty amount (n_α + n_β + cutoff) sig_ty,
+   shift_ty amount (n_α + n_β + cutoff) ret_ty).
+
+Definition shift_lt_eff_sig (amount cutoff : nat)
+    (sig : nat * nat * type * type) : nat * nat * type * type :=
+  let '(n_α, n_β, sig_ty, ret_ty) := sig in
+  (n_α, n_β,
+   shift_lt_in_ty amount cutoff sig_ty,
+   shift_lt_in_ty amount cutoff ret_ty).
+
 (* Look up a constructor signature by tag.  Returns                   *)
 (*   Some (n_lt, n_ty, fields, result)                                *)
 (* where n_lt / n_ty are the numbers of lifetime / type binders, and  *)
 (* fields / result use de Bruijn indices under those binders.         *)
+(* Walking past ambient type/lifetime binders shifts only variables   *)
+(* outside the schema binders.                                        *)
 Fixpoint ctx_lookup_ctor (Γ : ctx) (K : ctor_tag)
     : option (nat * nat * list type * type) :=
   match Γ with
@@ -87,11 +117,15 @@ Fixpoint ctx_lookup_ctor (Γ : ctx) (K : ctor_tag)
   | bind_ctor K' n_lt n_ty fields result :: rest =>
       if Nat.eqb K K' then Some (n_lt, n_ty, fields, result)
       else ctx_lookup_ctor rest K
+  | bind_ty _ :: rest => option_map (shift_ty_ctor_sig 1 0) (ctx_lookup_ctor rest K)
+  | bind_lt _ :: rest => option_map (shift_lt_ctor_sig 1 0) (ctx_lookup_ctor rest K)
   | _ :: rest => ctx_lookup_ctor rest K
   end.
 
 (* Look up an effect declaration by tag. Returns                      *)
 (*   Some (n_α, n_β, sig, ret).                                       *)
+(* Type binders are shifted outside the α/β schema binders; lifetime  *)
+(* binders shift throughout because effect schemas bind no lifetimes. *)
 Fixpoint ctx_lookup_eff (Γ : ctx) (E : eff_tag)
     : option (nat * nat * type * type) :=
   match Γ with
@@ -99,6 +133,8 @@ Fixpoint ctx_lookup_eff (Γ : ctx) (E : eff_tag)
   | bind_eff E' n_α n_β sig ret :: rest =>
       if Nat.eqb E E' then Some (n_α, n_β, sig, ret)
       else ctx_lookup_eff rest E
+  | bind_ty _ :: rest => option_map (shift_ty_eff_sig 1 0) (ctx_lookup_eff rest E)
+  | bind_lt _ :: rest => option_map (shift_lt_eff_sig 1 0) (ctx_lookup_eff rest E)
   | _ :: rest => ctx_lookup_eff rest E
   end.
 
