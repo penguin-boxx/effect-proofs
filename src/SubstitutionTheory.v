@@ -1794,6 +1794,81 @@ Proof.
   rewrite (InsTmAt_lookup_tm c G G' HIns x). exact Hlk.
 Qed.
 
+Lemma free_tm_vars_go_eq_concat : forall cutoff ts,
+  (fix go ts := match ts with [] => [] | u :: rest => free_tm_vars cutoff u ++ go rest end) ts =
+  List.concat (List.map (free_tm_vars cutoff) ts).
+Proof.
+  intros cutoff ts. induction ts as [|t ts IH]; simpl; [reflexivity|].
+  rewrite IH. reflexivity.
+Qed.
+
+Lemma free_tm_vars_shift_tm_1 : forall t cutoff c,
+  free_tm_vars cutoff (shift_tm 1 (cutoff + c) t) =
+  List.map (shv c) (free_tm_vars cutoff t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall cutoff c,
+      free_tm_vars cutoff (shift_tm 1 (cutoff + c) t) =
+      List.map (shv c) (free_tm_vars cutoff t))
+    (fun ts => forall cutoff c,
+      List.concat (List.map (free_tm_vars cutoff) (List.map (shift_tm 1 (cutoff + c)) ts)) =
+      List.map (shv c) (List.concat (List.map (free_tm_vars cutoff) ts)))).
+  - intros x cutoff c. simpl.
+    destruct (Nat.ltb x cutoff) eqn:Ex0.
+    + assert (Hlt : x < cutoff) by (apply Nat.ltb_lt; exact Ex0).
+      rewrite (proj2 (Nat.leb_gt (cutoff + c) x)) by lia.
+      rewrite Ex0. reflexivity.
+    + assert (Hge0 : cutoff <= x) by (apply Nat.ltb_ge; exact Ex0).
+      destruct (Nat.leb (cutoff + c) x) eqn:Ex.
+      * apply Nat.leb_le in Ex. rewrite Nat.add_1_r.
+        rewrite (proj2 (Nat.ltb_ge (S x) cutoff)) by lia.
+        unfold shv. cbn [List.map]. destruct (Nat.leb c (x - cutoff)) eqn:Ec.
+        -- f_equal. rewrite Nat.sub_succ_l by lia. reflexivity.
+        -- apply Nat.leb_gt in Ec. lia.
+      * apply Nat.leb_gt in Ex.
+        unfold shv. cbn [List.map]. destruct (Nat.leb c (x - cutoff)) eqn:Ec.
+        -- apply Nat.leb_le in Ec. lia.
+        -- rewrite Ex0. reflexivity.
+  - intros t1 t2 IH1 IH2 cutoff c. simpl. rewrite IH1, IH2. rewrite List.map_app. reflexivity.
+  - intros body T IH cutoff c. simpl. replace (S (cutoff + c)) with (S cutoff + c) by lia. apply IH.
+  - intros t T IH cutoff c. simpl. apply IH.
+  - intros bound body IH cutoff c. simpl. apply IH.
+  - intros t l IH cutoff c. simpl. apply IH.
+  - intros body IH cutoff c. simpl. apply IH.
+  - intros K l lts Ts ts IH cutoff c. simpl. rewrite shift_tm_go_eq_map.
+    rewrite !free_tm_vars_go_eq_concat. apply IH.
+  - intros scrut tag arity yes_body no_body IHs IHy IHn cutoff c. simpl.
+    rewrite IHs, IHn.
+    replace (cutoff + c + arity) with (cutoff + arity + c) by lia.
+    rewrite IHy. rewrite !List.map_app. reflexivity.
+  - intros E Ts op_body body IHop IHb cutoff c. simpl.
+    replace (cutoff + c + 2) with (cutoff + 2 + c) by lia.
+    rewrite IHop.
+    replace (S (cutoff + c)) with (S cutoff + c) by lia.
+    rewrite IHb. rewrite List.map_app. reflexivity.
+  - intros t Ss arg IHt IHa cutoff c. simpl. rewrite IHt, IHa. rewrite List.map_app. reflexivity.
+  - intros E m Ts op_body IHop cutoff c. simpl.
+    replace (cutoff + c + 2) with (cutoff + 2 + c) by lia. apply IHop.
+  - intros m t IH cutoff c. simpl. apply IH.
+  - intros m b IH cutoff c. simpl. replace (S (cutoff + c)) with (S cutoff + c) by lia. apply IH.
+  - intros cutoff c. reflexivity.
+  - intros t ts IHt IHts cutoff c. simpl. rewrite IHt, IHts. rewrite List.map_app. reflexivity.
+Qed.
+
+Lemma capture_lt_InsTmAt : forall c G G', InsTmAt c G G' ->
+  forall body, capture_lt G' (shift_tm 1 (S c) body) = capture_lt G body.
+Proof.
+  intros c G G' HIns body. unfold capture_lt.
+  replace (S c) with (1 + c) by lia.
+  rewrite free_tm_vars_shift_tm_1.
+  induction (free_tm_vars 1 body) as [|x xs IH]; simpl.
+  - reflexivity.
+  - rewrite (InsTmAt_lookup_tm c G G' HIns x).
+    destruct (ctx_lookup_tm G x) as [T|] eqn:Hlk;
+      [rewrite (lt_of_ty_G_InsTm G G' (InsTmAt_to_InsTm c G G' HIns) T)|];
+      rewrite IH; reflexivity.
+Qed.
+
 (* ============================================================ *)
 (* subst_lt_in_ty head-constructor rewrite equations             *)
 (* ============================================================ *)
