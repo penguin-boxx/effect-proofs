@@ -3284,6 +3284,84 @@ Proof.
   rewrite lt_of_ty_shift_ty, IH. reflexivity.
 Qed.
 
+Lemma elim_ty_shift_ty : forall T lvar bound p c,
+  elim_ty lvar bound p (shift_ty 1 c T) =
+  option_map (shift_ty 1 c) (elim_ty lvar bound p T).
+Proof.
+  apply (type_list_ind
+    (fun T => forall lvar bound p c,
+      elim_ty lvar bound p (shift_ty 1 c T) =
+      option_map (shift_ty 1 c) (elim_ty lvar bound p T))
+    (fun Ts => forall lvar bound p c,
+      (fix go_list (p' : variance) (Ts0 : list type) {struct Ts0} : option (list type) :=
+         match Ts0 with
+         | [] => Some []
+         | A :: rest =>
+             match elim_ty lvar bound p' A, go_list p' rest with
+             | Some A', Some rest' => Some (A' :: rest')
+             | _, _ => None
+             end
+         end) p (List.map (shift_ty 1 c) Ts) =
+      option_map (List.map (shift_ty 1 c))
+        ((fix go_list (p' : variance) (Ts0 : list type) {struct Ts0} : option (list type) :=
+          match Ts0 with
+          | [] => Some []
+          | A :: rest =>
+              match elim_ty lvar bound p' A, go_list p' rest with
+              | Some A', Some rest' => Some (A' :: rest')
+              | _, _ => None
+              end
+          end) p Ts))).
+  - intros n lvar bound p c. reflexivity.
+  - intros A l B HA HB lvar bound p c. simpl.
+    rewrite HA, HB. destruct (elim_ty lvar bound (flip_var p) A);
+      destruct (elim_lt lvar bound p l); destruct (elim_ty lvar bound p B); reflexivity.
+  - intros K l Ts HTs lvar bound p c. simpl.
+    destruct (elim_lt lvar bound p l); [|reflexivity].
+    rewrite shift_ty_go_eq_map.
+    pose proof (HTs lvar bound var_inv c) as HTs'. simpl in HTs'.
+    rewrite HTs'. destruct ((fix go_list (p' : variance) (Ts0 : list type) {struct Ts0} : option (list type) :=
+      match Ts0 with
+      | [] => Some []
+      | A :: rest =>
+          match elim_ty lvar bound p' A, go_list p' rest with
+          | Some A', Some rest' => Some (A' :: rest')
+          | _, _ => None
+          end
+      end) var_inv Ts); reflexivity.
+  - intros A HA lvar bound p c. simpl.
+    rewrite HA. destruct (elim_ty (S lvar) (shift_lt 1 0 bound) p A); reflexivity.
+  - intros B A HB HA lvar bound p c. simpl.
+    rewrite HB, HA. destruct (elim_ty lvar bound (flip_var p) B);
+      destruct (elim_ty lvar bound p A); reflexivity.
+  - intros lvar bound p c. reflexivity.
+  - intros A Ts HA HTs lvar bound p c. cbn [List.map]. simpl.
+    pose proof (HA lvar bound p c) as HA'.
+    pose proof (HTs lvar bound p c) as HTs'. simpl in HTs'.
+    rewrite HA', HTs'. destruct (elim_ty lvar bound p A);
+      destruct ((fix go_list (p' : variance) (Ts0 : list type) {struct Ts0} : option (list type) :=
+        match Ts0 with
+        | [] => Some []
+        | A0 :: rest =>
+            match elim_ty lvar bound p' A0, go_list p' rest with
+            | Some A', Some rest' => Some (A' :: rest')
+            | _, _ => None
+            end
+        end) p Ts); reflexivity.
+Qed.
+
+Lemma elim_ty_n_shift_ty : forall n bound p T T' c,
+  elim_ty_n n bound p T = Some T' ->
+  elim_ty_n n bound p (shift_ty 1 c T) = Some (shift_ty 1 c T').
+Proof.
+  induction n as [|n IH]; intros bound p T T' c H.
+  - simpl in *. injection H as H; subst T'. reflexivity.
+  - simpl in *. destruct (elim_ty 0 bound p T) as [U|] eqn:HU; [|discriminate].
+    rewrite elim_ty_shift_ty. rewrite HU. simpl.
+    rewrite <- shift_ty_subst_lt_in_ty_commute.
+    apply IH. exact H.
+Qed.
+
 Lemma shift_lt_in_ty_subst_ty_comm : forall T c n Sb,
   shift_lt_in_ty 1 c (subst_ty n Sb T)
   = subst_ty n (shift_lt_in_ty 1 c Sb) (shift_lt_in_ty 1 c T).
