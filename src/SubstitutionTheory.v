@@ -798,6 +798,13 @@ Fixpoint shift_each_lt (lts : list lifetime) : list lifetime :=
   | l :: rest => shift_lt (List.length rest) 0 l :: shift_each_lt rest
   end.
 
+Lemma shift_each_lt_length : forall lts,
+  List.length (shift_each_lt lts) = List.length lts.
+Proof.
+  induction lts as [|l rest IH]; simpl; [reflexivity|].
+  rewrite IH. reflexivity.
+Qed.
+
 Lemma subst_list_lt_in_ty_eq_iter : forall lts T,
   subst_list_lt_in_ty lts T = iter_subst_lt_in_ty (shift_each_lt lts) T.
 Proof.
@@ -2472,14 +2479,16 @@ Proof.
 Qed.
 
 (* From the typing of a ctor *value* `term_ctor K Delta lts Ts vs`     *)
-(* against type `type_ctor K Delta Ts`, the witnesses `lts` form a     *)
-(* `chain_bounded` chain w.r.t. the shifted Delta.                     *)
+(* against type `type_ctor K Delta Ts`, the witnesses form both the    *)
+(* raw chain used by term substitution and the `shift_each_lt` chain   *)
+(* used by the corrected subst-list/iterated-subst bridge.             *)
 Axiom ctor_lts_chain_bounded : forall Γ lts n_lt n_ty Ts sigma vs Delta,
   Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs
           (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma) ->
   List.length lts = n_lt ->
   Delta = lt_of_ty_list (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma) ->
-  chain_bounded Γ lts (shift_lt n_lt 0 Delta).
+  chain_bounded Γ lts (shift_lt n_lt 0 Delta) /\
+  chain_bounded Γ (shift_each_lt lts) (shift_lt n_lt 0 Delta).
 
 (* ---- Substitution preservation (typing) ------------------------ *)
 

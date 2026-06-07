@@ -17,9 +17,10 @@ Require Import SubstitutionTheory.
 (* no bind_ty).  This blocks SA_VarCtx at the top level and matches   *)
 (* the paper's "program-level" evaluation scenario.                   *)
 (*                                                                    *)
-(* Substitution-style lemmas (beta for tm/ty/lt, and the match-yes    *)
-(* simultaneous substitution) are axiomatized; they are standard de   *)
-(* Bruijn manipulations orthogonal to the paper's contribution.       *)
+(* Substitution-style lemmas (beta for tm/ty/lt and list              *)
+(* substitutions used by the match-yes case) are axiomatized; they    *)
+(* are standard de Bruijn manipulations orthogonal to the paper's     *)
+(* contribution.                                                      *)
 (* ================================================================== *)
 
 Inductive eval_ctx : ctx -> Prop :=
@@ -1603,18 +1604,57 @@ Qed.
 (* Match-yes preservation                                             *)
 (* ------------------------------------------------------------------ *)
 
-(* Honest axiom (1B): the prior proof bridged the parallel and iterated  *)
-(* lifetime substitutions via the unsound `subst_list_lt_in_ty lts =      *)
-(* iter_subst_lt_in_ty lts` (which dropped the per-witness shift; cf.     *)
-(* the corrected `subst_list_lt_in_ty_eq_iter` in SubstitutionTheory.v).  *)
-(* The statement is the expected preservation step for a matched          *)
-(* constructor and is trusted pending the substitution metatheory (1A).   *)
-Axiom match_yes_preservation : forall Γ K Delta lts Ts vs arity yes_body no_body T,
+Lemma match_yes_preservation : forall Γ K Delta lts Ts vs arity yes_body no_body T,
   eval_ctx Γ ->
   Γ ⊢ₜ term_match (term_ctor K Delta lts Ts vs) K arity yes_body no_body : T ->
   Forall value vs ->
   arity = List.length vs ->
   Γ ⊢ₜ subst_list_tm vs (subst_list_lt_in_tm lts yes_body) : T.
+Proof.
+  intros Γ K Delta lts Ts vs arity yes_body no_body T Hec Hmatch Hvals Harity_vs.
+  destruct (match_typing_inv _ _ _ _ _ _ _ Hmatch) as
+    [n_lt [n_ty [sigma [result [Ts_m [Delta_m [eta [elim_result Hinv]]]]]]]].
+  destruct Hinv as [HKne [Hscrut [Hctor_lk [Harity_sigma [Hyes [Helim [Hno HsubT]]]]]]].
+  simpl in Hscrut.
+  destruct (ctor_typing_inv _ _ _ _ _ _ _ Hscrut) as
+    [n_lt' [n_ty' [sigma' [result' Hctor_inv]]]].
+  destruct Hctor_inv as [Hctor_lk' [Hlts_len [HTs_len [HDelta [Hvs_len [Hfields Hctor_sub]]]]]].
+  rewrite Hctor_lk in Hctor_lk'. injection Hctor_lk' as Hnlt Hnty Hsigma Hresult.
+  subst n_lt' n_ty' sigma' result'.
+  destruct (sub_ctor_inv _ _ _ _ _ Hec Hctor_sub HKne) as [Delta0 [Hctor_eq HDelta_sub]].
+  injection Hctor_eq as HDelta_eq HTs_eq. subst Delta0 Ts_m.
+  assert (Harity_vs_len : List.length vs = List.length sigma) by lia.
+  destruct (ctor_lts_chain_bounded Γ lts n_lt n_ty Ts sigma vs Delta
+              Hfields Hlts_len HDelta) as [Hcb0 Hcb_shift0].
+  assert (Hcb : chain_bounded Γ lts (shift_lt n_lt 0 Delta_m)).
+  { eapply chain_bounded_mono; [exact Hcb0|]. apply shift_lt_sub. exact HDelta_sub. }
+  assert (Hcb_shift : chain_bounded Γ (shift_each_lt lts) (shift_lt n_lt 0 Delta_m)).
+  { eapply chain_bounded_mono; [exact Hcb_shift0|]. apply shift_lt_sub. exact HDelta_sub. }
+  assert (Hlt_body :
+    (fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
+       Γ (subst_list_lt_in_ty_each lts (List.map (inst_ctor_type n_lt n_ty (lt_var_list n_lt) Ts) sigma)))
+      ⊢ₜ subst_list_lt_in_tm lts yes_body : subst_list_lt_in_ty lts eta).
+  { eapply (subst_list_lt_in_tm_lemma Γ
+              (List.map (inst_ctor_type n_lt n_ty (lt_var_list n_lt) Ts) sigma)
+              n_lt Delta_m lts yes_body eta);
+      [exact Hlts_len | exact Hcb | exact Hyes]. }
+  rewrite (inst_ctor_type_subst_eq n_lt n_ty lts Ts sigma Hlts_len) in Hlt_body.
+  assert (Htm_body : Γ ⊢ₜ subst_list_tm vs (subst_list_lt_in_tm lts yes_body) : subst_list_lt_in_ty lts eta).
+  { eapply (subst_list_tm_lemma Γ vs
+              (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma)
+              (subst_list_lt_in_tm lts yes_body) (subst_list_lt_in_ty lts eta)).
+    - rewrite List.length_map. exact Hvs_len.
+    - exact Hfields.
+    - exact Hlt_body. }
+  eapply T_Sub; [exact Htm_body|].
+  rewrite subst_list_lt_in_ty_eq_iter.
+  eapply SA_Trans.
+  - apply (elim_ty_n_sound (shift_each_lt lts) n_lt (shift_lt n_lt 0 Delta_m)
+             var_pos eta elim_result Γ Helim).
+    + rewrite shift_each_lt_length. exact Hlts_len.
+    + exact Hcb_shift.
+  - exact HsubT.
+Qed.
 
 Theorem preservation : forall Γ t t' T,
   eval_ctx Γ ->
