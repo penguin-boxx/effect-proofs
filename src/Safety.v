@@ -1245,9 +1245,9 @@ Qed.
 (* monotonicity under shift / single-var lt-substitution.             *)
 (* ================================================================== *)
 
-(* Mechanical de Bruijn helpers (lt_sub_subst_lt, sub_subst_lt_at,    *)
-(* shift_subst_lt_comm, subst_lt_in_ty_ctor_eq, sub_weaken_ty) are    *)
-(* now in SubstitutionTheory.v.                                       *)
+(* Mechanical de Bruijn helpers (sub_subst_lt_at, shift_subst_lt_comm, *)
+(* subst_lt_in_ty_ctor_eq, sub_weaken_ty) are now in                  *)
+(* SubstitutionTheory.v.                                              *)
 
 (* --- Single-step elim soundness for lifetimes --- *)
 (* Frame: lvar is the var being eliminated.  Result lives after the    *)
@@ -1522,7 +1522,7 @@ Qed.
 (* The parallel-substitution preservation lemmas (subst_list_lt_in_ty_each, *)
 (* subst_list_lt_in_tm_lemma, subst_list_tm_lemma,                     *)
 (* subst_list_lt_in_ty_eq_iter, ctor_lts_chain_bounded,                *)
-(* chain_bounded_mono, shift_lt_sub, inst_ctor_type_subst_eq) are now  *)
+(* inst_ctor_type_subst_eq) are now                                    *)
 (* in SubstitutionTheory.v.                                            *)
 
 (* ------------------------------------------------------------------ *)
@@ -1624,12 +1624,8 @@ Proof.
   destruct (sub_ctor_inv _ _ _ _ _ Hec Hctor_sub HKne) as [Delta0 [Hctor_eq HDelta_sub]].
   injection Hctor_eq as HDelta_eq HTs_eq. subst Delta0 Ts_m.
   assert (Harity_vs_len : List.length vs = List.length sigma) by lia.
-  destruct (ctor_lts_chain_bounded Γ lts n_lt n_ty Ts sigma vs Delta
-              Hfields Hlts_len HDelta) as [Hcb0 Hcb_shift0].
-  assert (Hcb : chain_bounded Γ lts (shift_lt n_lt 0 Delta_m)).
-  { eapply chain_bounded_mono; [exact Hcb0|]. apply shift_lt_sub. exact HDelta_sub. }
-  assert (Hcb_shift : chain_bounded Γ (shift_each_lt lts) (shift_lt n_lt 0 Delta_m)).
-  { eapply chain_bounded_mono; [exact Hcb_shift0|]. apply shift_lt_sub. exact HDelta_sub. }
+  destruct (ctor_lts_chain_bounded Γ lts n_lt n_ty Ts sigma vs Delta Delta_m
+              Hfields Hlts_len HDelta HDelta_sub) as [Hcb Hcb_shift].
   assert (Hlt_body :
     (fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
        Γ (subst_list_lt_in_ty_each lts (List.map (inst_ctor_type n_lt n_ty (lt_var_list n_lt) Ts) sigma)))

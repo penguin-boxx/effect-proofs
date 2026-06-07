@@ -2424,20 +2424,10 @@ Proof.
   apply SubstLt_here. exact HltΔ.
 Qed.
 
-(* Subtyping is monotone in single-var lt-substitution at any depth. *)
-Axiom lt_sub_subst_lt : forall Γ x l_0 l1 l2,
-  Γ ⊢ₗ l1 <: l2 ->
-  Γ ⊢ₗ subst_lt x l_0 l1 <: subst_lt x l_0 l2.
-
 (* Type subtyping monotone in single-var lt-substitution. *)
 Axiom sub_subst_lt_at : forall Γ x l_0 T1 T2,
   Γ ⊢ T1 <:: T2 ->
   Γ ⊢ subst_lt_in_ty x l_0 T1 <:: subst_lt_in_ty x l_0 T2.
-
-(* Lifetime subtyping is preserved by `shift_lt`.                       *)
-Axiom shift_lt_sub : forall Γ n k B B',
-  Γ ⊢ₗ B <: B' ->
-  Γ ⊢ₗ shift_lt n k B <: shift_lt n k B'.
 
 (* ---- chain_bounded witnesses + iteration monotonicity ---------- *)
 
@@ -2460,30 +2450,18 @@ Proof.
   - apply IH. apply sub_subst_lt_at. assumption.
 Qed.
 
-(* Monotonicity of chain_bounded under enlarging the ambient bound.    *)
-Lemma chain_bounded_mono : forall Γ lts B B',
-  chain_bounded Γ lts B ->
-  Γ ⊢ₗ B <: B' ->
-  chain_bounded Γ lts B'.
-Proof.
-  intros Γ lts. induction lts as [|w rest IH]; intros B B' Hcb Hsub.
-  - exact I.
-  - simpl in Hcb. destruct Hcb as [Hw Hrest]. simpl. split.
-    + eapply LS_Trans; [exact Hw |]. apply lt_sub_subst_lt. exact Hsub.
-    + eapply IH; [exact Hrest |]. apply lt_sub_subst_lt. exact Hsub.
-Qed.
-
 (* From the typing of a ctor *value* `term_ctor K Delta lts Ts vs`     *)
 (* against type `type_ctor K Delta Ts`, the witnesses form both the    *)
 (* raw chain used by term substitution and the `shift_each_lt` chain   *)
 (* used by the corrected subst-list/iterated-subst bridge.             *)
-Axiom ctor_lts_chain_bounded : forall Γ lts n_lt n_ty Ts sigma vs Delta,
+Axiom ctor_lts_chain_bounded : forall Γ lts n_lt n_ty Ts sigma vs Delta Delta',
   Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs
           (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma) ->
   List.length lts = n_lt ->
   Delta = lt_of_ty_list (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma) ->
-  chain_bounded Γ lts (shift_lt n_lt 0 Delta) /\
-  chain_bounded Γ (shift_each_lt lts) (shift_lt n_lt 0 Delta).
+  Γ ⊢ₗ Delta <: Delta' ->
+  chain_bounded Γ lts (shift_lt n_lt 0 Delta') /\
+  chain_bounded Γ (shift_each_lt lts) (shift_lt n_lt 0 Delta').
 
 (* ---- Substitution preservation (typing) ------------------------ *)
 
