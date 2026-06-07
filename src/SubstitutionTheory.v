@@ -1614,6 +1614,131 @@ Proof.
   intros Γ D T1 T2 H. apply (sub_InsLt Γ T1 T2 H 0 (bind_lt D :: Γ)). apply InsLt_here.
 Qed.
 
+(* ===== InsTm: depth-general bind_tm weakening =================== *)
+
+Inductive InsTm : ctx -> ctx -> Prop :=
+| InsTm_here : forall A G, InsTm G (bind_tm A :: G)
+| InsTm_tm : forall A G G',
+    InsTm G G' -> InsTm (bind_tm A :: G) (bind_tm A :: G')
+| InsTm_ty : forall B G G',
+    InsTm G G' -> InsTm (bind_ty B :: G) (bind_ty B :: G')
+| InsTm_lt : forall D G G',
+    InsTm G G' -> InsTm (bind_lt D :: G) (bind_lt D :: G')
+| InsTm_ctor : forall K n_lt n_ty f r G G',
+    InsTm G G' -> InsTm (bind_ctor K n_lt n_ty f r :: G) (bind_ctor K n_lt n_ty f r :: G')
+| InsTm_eff : forall E n_a n_b sig ret G G',
+    InsTm G G' -> InsTm (bind_eff E n_a n_b sig ret :: G) (bind_eff E n_a n_b sig ret :: G').
+
+Lemma InsTm_length : forall G G', InsTm G G' -> List.length G' = S (List.length G).
+Proof. induction 1; simpl; lia. Qed.
+
+Lemma InsTm_lookup_ty : forall G G', InsTm G G' ->
+  forall a, ctx_lookup_ty G' a = ctx_lookup_ty G a.
+Proof.
+  intros G G' H. induction H; intro a; simpl; try apply IHInsTm.
+  - reflexivity.
+  - destruct a as [|a']; simpl.
+    + reflexivity.
+    + rewrite IHInsTm. reflexivity.
+  - rewrite IHInsTm. reflexivity.
+Qed.
+
+Lemma InsTm_lookup_lt : forall G G', InsTm G G' ->
+  forall x, ctx_lookup_lt G' x = ctx_lookup_lt G x.
+Proof.
+  intros G G' H. induction H; intro x; simpl; try apply IHInsTm.
+  - reflexivity.
+  - destruct x as [|x']; simpl.
+    + reflexivity.
+    + rewrite IHInsTm. reflexivity.
+Qed.
+
+Lemma InsTm_lookup_ctor : forall G G', InsTm G G' ->
+  forall K, ctx_lookup_ctor G' K = ctx_lookup_ctor G K.
+Proof.
+  intros G G' H. induction H; intro K0; simpl; try apply IHInsTm.
+  - reflexivity.
+  - destruct (Nat.eqb K0 K); [reflexivity|apply IHInsTm].
+Qed.
+
+Lemma InsTm_lookup_eff : forall G G', InsTm G G' ->
+  forall E, ctx_lookup_eff G' E = ctx_lookup_eff G E.
+Proof.
+  intros G G' H. induction H; intro E0; simpl; try apply IHInsTm.
+  - reflexivity.
+  - destruct (Nat.eqb E0 E); [reflexivity|apply IHInsTm].
+Qed.
+
+Lemma lt_of_ty_ctx_InsTm : forall G G', InsTm G G' ->
+  forall f T, lt_of_ty_ctx f G' T = lt_of_ty_ctx f G T.
+Proof.
+  intros G G' HIns f. revert G G' HIns.
+  induction f as [|f IH]; intros G G' HIns T.
+  - destruct T; reflexivity.
+  - revert G G' HIns. induction T using type_list_ind with
+      (Q := fun Ts => forall G G', InsTm G G' ->
+        lt_of_ty_ctx_list (S f) G' Ts = lt_of_ty_ctx_list (S f) G Ts);
+      intros G G' HIns.
+    + simpl. rewrite (InsTm_lookup_ty G G' HIns n).
+      destruct (ctx_lookup_ty G n) as [B|] eqn:HB; [apply (IH G G' HIns B)|reflexivity].
+    + reflexivity.
+    + rewrite !lt_of_ty_ctx_ctor. f_equal. apply IHT. exact HIns.
+    + reflexivity.
+    + reflexivity.
+    + rewrite !lt_of_ty_ctx_list_nil. reflexivity.
+    + rewrite !lt_of_ty_ctx_list_cons.
+      rewrite (IHT G G' HIns), (IHT0 G G' HIns). reflexivity.
+Qed.
+
+Lemma lt_of_ty_G_InsTm : forall G G', InsTm G G' ->
+  forall T, lt_of_ty_G G' T = lt_of_ty_G G T.
+Proof.
+  intros G G' HIns T. unfold lt_of_ty_G.
+  rewrite (lt_of_ty_ctx_InsTm G G' HIns (List.length G') T).
+  rewrite (lt_of_ty_ctx_fuel_irrel (List.length G') (List.length G) T G 0 (VB_0 T));
+    [reflexivity| |].
+  - pose proof (InsTm_length G G' HIns). lia.
+  - lia.
+Qed.
+
+Lemma lt_sub_InsTm : forall G l1 l2, G ⊢ₗ l1 <: l2 ->
+  forall G', InsTm G G' -> G' ⊢ₗ l1 <: l2.
+Proof.
+  intros G l1 l2 H.
+  induction H as [Γ l|Γ l|Γ x Δ Hlk|Γ l
+                 |Γ l1 l2 l3 H12 IH12 H23 IH23
+                 |Γ l1 l2 l H1 IH1 H2 IH2
+                 |Γ l l1 l2 H IH|Γ l l1 l2 H IH]; intros G' HIns.
+  - apply LS_Free.
+  - apply LS_Local.
+  - apply LS_Var. rewrite (InsTm_lookup_lt Γ G' HIns x). exact Hlk.
+  - apply LS_Refl.
+  - eapply LS_Trans; [apply IH12 | apply IH23]; exact HIns.
+  - apply LS_MinL; [apply IH1|apply IH2]; exact HIns.
+  - apply LS_MinR1. apply IH. exact HIns.
+  - apply LS_MinR2. apply IH. exact HIns.
+Qed.
+
+Lemma sub_InsTm : forall G T1 T2, G ⊢ T1 <:: T2 ->
+  forall G', InsTm G G' -> G' ⊢ T1 <:: T2.
+Proof.
+  intros G T1 T2 H.
+  induction H as [Γ T|Γ S U T H1 IH1 H2 IH2|Γ α B Hlk|Γ K l l' Ts Hls
+                 |Γ T Δ Hls|Γ A A' l l' B B' H1 IH1 Hl H2 IH2
+                 |Γ A A' H IH|Γ B B' A A' H1 IH1 H2 IH2]; intros G' HIns.
+  - apply SA_Refl.
+  - eapply SA_Trans; [apply IH1|apply IH2]; exact HIns.
+  - apply SA_VarCtx. rewrite (InsTm_lookup_ty Γ G' HIns α). exact Hlk.
+  - apply SA_Data. eapply lt_sub_InsTm; eauto.
+  - apply SA_Any. rewrite lt_of_ty_G_InsTm with (G := Γ) (G' := G') by exact HIns.
+    eapply lt_sub_InsTm; eauto.
+  - apply SA_Fun; [apply IH1|eapply lt_sub_InsTm|apply IH2]; eauto.
+  - apply SA_LtAll. apply IH. apply InsTm_lt. exact HIns.
+  - apply SA_TyAll.
+    + apply IH1. exact HIns.
+    + apply IH2. apply InsTm_ty. exact HIns.
+Qed.
+
 (* ============================================================ *)
 (* subst_lt_in_ty head-constructor rewrite equations             *)
 (* ============================================================ *)
