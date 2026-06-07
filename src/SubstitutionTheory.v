@@ -2297,6 +2297,21 @@ Proof.
   intros Γ A t T H. eapply typing_InsTmAt; [exact H|apply InsTmAt_here].
 Qed.
 
+Lemma typing_weaken_tm_shift_many : forall Γ rhos t T,
+  Γ ⊢ₜ t : T ->
+  (List.fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ rhos)
+    ⊢ₜ shift_tm (List.length rhos) 0 t : T.
+Proof.
+  intros Γ rhos. induction rhos as [|rho rhos IH]; intros t T Hty; simpl.
+  - rewrite shift_tm_zero. exact Hty.
+  - replace (shift_tm (S (List.length rhos)) 0 t)
+      with (shift_tm 1 0 (shift_tm (List.length rhos) 0 t)).
+    + apply typing_weaken_tm_shift. apply IH. exact Hty.
+    + rewrite shift_tm_fuse.
+      replace (1 + List.length rhos) with (S (List.length rhos)) by lia.
+      reflexivity.
+Qed.
+
 Lemma value_shift_tm : forall v,
   value v -> forall amount cutoff, value (shift_tm amount cutoff v).
 Proof.
@@ -3587,12 +3602,29 @@ Axiom subst_list_lt_in_tm_lemma : forall Γ rhos n_lt Delta lts t T,
 
 (* Parallel term substitution: closes a list of tm-binders against a   *)
 (* matching list of values typed in the outer Γ.                       *)
-Axiom subst_list_tm_lemma : forall Γ vs rhos t T,
+Lemma subst_list_tm_lemma : forall Γ vs rhos t T,
   List.length vs = List.length rhos ->
   Forall value vs ->
   Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rhos ->
   (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ rhos) ⊢ₜ t : T ->
   Γ ⊢ₜ subst_list_tm vs t : T.
+Proof.
+  intros Γ vs. induction vs as [|v rest IH]; intros rhos t T Hlen Hvals Htys Hbody.
+  - destruct rhos as [|rho rhos]; [exact Hbody|simpl in Hlen; discriminate].
+  - destruct rhos as [|rho rhos]; [simpl in Hlen; discriminate|].
+    simpl in Hlen. simpl subst_list_tm.
+    inversion Hvals as [|v0 rest0 Hv Hvals_rest Heq]; subst.
+    inversion Htys as [|v0 rho0 rest0 rhos0 Hvty Htys_rest Heq1 Heq2]; subst.
+    apply (IH rhos (subst_tm 0 (shift_tm (List.length rest) 0 v) t) T).
+    + lia.
+    + exact Hvals_rest.
+    + exact Htys_rest.
+    + eapply subst_tm_lemma.
+      * exact Hbody.
+      * apply value_shift_tm. exact Hv.
+      * replace (List.length rest) with (List.length rhos) by lia.
+        apply typing_weaken_tm_shift_many. exact Hvty.
+Qed.
 
 (* Substituting `lts` for bounded schema variables `lt_var_list n_lt`  *)
 (* yields direct schema instantiation.                                 *)
