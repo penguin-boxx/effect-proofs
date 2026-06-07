@@ -2424,11 +2424,6 @@ Proof.
   apply SubstLt_here. exact HltΔ.
 Qed.
 
-(* Type subtyping monotone in single-var lt-substitution. *)
-Axiom sub_subst_lt_at : forall Γ x l_0 T1 T2,
-  Γ ⊢ T1 <:: T2 ->
-  Γ ⊢ subst_lt_in_ty x l_0 T1 <:: subst_lt_in_ty x l_0 T2.
-
 (* ---- chain_bounded witnesses + iteration monotonicity ---------- *)
 
 (* Witnesses are valid w.r.t. a chain of progressively-closed bounds.   *)
@@ -2440,15 +2435,12 @@ Fixpoint chain_bounded (Γ : ctx) (ws : list lifetime) (bound : lifetime) : Prop
       chain_bounded Γ rest (subst_lt 0 lt_free bound)
   end.
 
-(* Subtyping is preserved through `iter_subst_lt_in_ty`.                *)
-Lemma iter_subst_lt_in_ty_mono : forall ws Γ T1 T2,
+(* Bounded witnesses preserve subtyping through the iterated           *)
+(* substitution sequence used by `elim_ty_n_sound`.                    *)
+Axiom iter_subst_lt_in_ty_mono : forall ws Γ bound T1 T2,
+  chain_bounded Γ ws bound ->
   Γ ⊢ T1 <:: T2 ->
   Γ ⊢ iter_subst_lt_in_ty ws T1 <:: iter_subst_lt_in_ty ws T2.
-Proof.
-  induction ws as [|w rest IH]; intros Γ T1 T2 Hsub; simpl.
-  - assumption.
-  - apply IH. apply sub_subst_lt_at. assumption.
-Qed.
 
 (* From the typing of a ctor *value* `term_ctor K Delta lts Ts vs`     *)
 (* against type `type_ctor K Delta Ts`, the witnesses form both the    *)

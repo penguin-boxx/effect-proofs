@@ -1245,7 +1245,7 @@ Qed.
 (* monotonicity under shift / single-var lt-substitution.             *)
 (* ================================================================== *)
 
-(* Mechanical de Bruijn helpers (sub_subst_lt_at, shift_subst_lt_comm, *)
+(* Mechanical de Bruijn helpers (shift_subst_lt_comm,                 *)
 (* subst_lt_in_ty_ctor_eq, sub_weaken_ty) are now in                  *)
 (* SubstitutionTheory.v.                                              *)
 
@@ -1509,12 +1509,14 @@ Proof.
     simpl. destruct p.
     + (* var_pos *)
       eapply SA_Trans.
-      * apply iter_subst_lt_in_ty_mono. exact Hstep.
+        * eapply (iter_subst_lt_in_ty_mono rest Γ (subst_lt 0 lt_free bound));
+          [exact Hchain' | exact Hstep].
       * exact IH.
     + (* var_neg *)
       eapply SA_Trans.
       * exact IH.
-      * apply iter_subst_lt_in_ty_mono. exact Hstep.
+        * eapply (iter_subst_lt_in_ty_mono rest Γ (subst_lt 0 lt_free bound));
+          [exact Hchain' | exact Hstep].
     + (* var_inv *)
       rewrite IH. rewrite Hstep. reflexivity.
 Qed.
