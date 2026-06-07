@@ -265,7 +265,8 @@ Fixpoint subst_ty (var : nat) (replacement T : type) : type :=
       else type_var n
   | type_fun A l B    => type_fun (subst_ty var replacement A) l (subst_ty var replacement B)
   | type_ctor K l Ts  => type_ctor K l (go Ts)
-  | type_lt_all A     => type_lt_all (subst_ty var replacement A)
+  (* under lt_all: free lt vars in replacement shift up (capture-avoidance) *)
+  | type_lt_all A     => type_lt_all (subst_ty var (shift_lt_in_ty 1 0 replacement) A)
   (* under ty_all: var shifts up, free ty vars in replacement shift up *)
   (* bound is NOT under the binder: substitute with current var *)
   | type_ty_all B A   => type_ty_all (subst_ty var replacement B)
