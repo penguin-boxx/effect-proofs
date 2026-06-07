@@ -2424,11 +2424,6 @@ Proof.
   apply SubstLt_here. exact HltΔ.
 Qed.
 
-(* Shifting preserves lifetime subtyping. *)
-Axiom lt_sub_shift_lt : forall Γ Δ l1 l2 cutoff,
-  Γ ⊢ₗ l1 <: l2 ->
-  (bind_lt Δ :: Γ) ⊢ₗ shift_lt 1 cutoff l1 <: shift_lt 1 cutoff l2.
-
 (* Subtyping is monotone in single-var lt-substitution at any depth. *)
 Axiom lt_sub_subst_lt : forall Γ x l_0 l1 l2,
   Γ ⊢ₗ l1 <: l2 ->

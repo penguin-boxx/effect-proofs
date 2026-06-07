@@ -1245,9 +1245,9 @@ Qed.
 (* monotonicity under shift / single-var lt-substitution.             *)
 (* ================================================================== *)
 
-(* Mechanical de Bruijn helpers (lt_sub_shift_lt, lt_sub_subst_lt,    *)
-(* sub_subst_lt_at, shift_subst_lt_comm, subst_lt_in_ty_ctor_eq,      *)
-(* sub_weaken_ty) are now in SubstitutionTheory.v.                    *)
+(* Mechanical de Bruijn helpers (lt_sub_subst_lt, sub_subst_lt_at,    *)
+(* shift_subst_lt_comm, subst_lt_in_ty_ctor_eq, sub_weaken_ty) are    *)
+(* now in SubstitutionTheory.v.                                       *)
 
 (* --- Single-step elim soundness for lifetimes --- *)
 (* Frame: lvar is the var being eliminated.  Result lives after the    *)
