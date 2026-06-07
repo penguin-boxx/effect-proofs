@@ -1869,6 +1869,265 @@ Proof.
       rewrite IH; reflexivity.
 Qed.
 
+Lemma typing_ind_forall2 :
+  forall (P : ctx -> term -> type -> Prop),
+  (forall Γ x T, ctx_lookup_tm Γ x = Some T -> P Γ (term_var x) T) ->
+  (forall Γ t T U, Γ ⊢ₜ t : T -> P Γ t T -> Γ ⊢ T <:: U -> P Γ t U) ->
+  (forall Γ body A l B,
+     (bind_tm A :: Γ) ⊢ₜ body : B -> P (bind_tm A :: Γ) body B ->
+     Γ ⊢ₗ capture_lt Γ body <: l -> no_local_ty B = true ->
+     P Γ (term_lam body A) (type_fun A l B)) ->
+  (forall Γ t1 t2 A l B,
+     Γ ⊢ₜ t1 : type_fun A l B -> P Γ t1 (type_fun A l B) ->
+     Γ ⊢ₜ t2 : A -> P Γ t2 A ->
+     P Γ (term_app t1 t2) B) ->
+  (forall Γ bound body T,
+     (bind_ty bound :: Γ) ⊢ₜ body : T -> P (bind_ty bound :: Γ) body T ->
+     P Γ (term_ty_lam bound body) (type_ty_all bound T)) ->
+  (forall Γ t B U S,
+     Γ ⊢ₜ t : type_ty_all B U -> P Γ t (type_ty_all B U) ->
+     Γ ⊢ S <:: B ->
+     P Γ (term_ty_app t S) (subst_ty 0 S U)) ->
+  (forall Γ body T,
+     (bind_lt lt_local :: Γ) ⊢ₜ body : T -> P (bind_lt lt_local :: Γ) body T ->
+     P Γ (term_lt_lam body) (type_lt_all T)) ->
+  (forall Γ t T l,
+     Γ ⊢ₜ t : type_lt_all T -> P Γ t (type_lt_all T) ->
+     P Γ (term_lt_app t l) (subst_lt_in_ty 0 l T)) ->
+  (forall Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields l vs,
+     ctx_lookup_ctor Γ K = Some (n_lt, n_ty, sigma_fields, result_ty_schema) ->
+     ctx_lookup_eff Γ K = None ->
+     List.length lts = n_lt ->
+     rho_fields = List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields ->
+     List.length Ts = n_ty ->
+     l = lt_of_ty_list rho_fields ->
+     List.length vs = List.length rho_fields ->
+     Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rho_fields ->
+     Forall2 (fun v rho => P Γ v rho) vs rho_fields ->
+     P Γ (term_ctor K l lts Ts vs) (type_ctor K l Ts)) ->
+  (forall Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
+          rho_fields Γ' yes_body eta elim_result no_body,
+     K <> any_tag ->
+     Γ ⊢ₜ scrut : type_ctor K Delta Ts -> P Γ scrut (type_ctor K Delta Ts) ->
+     ctx_lookup_ctor Γ K = Some (n_lt, n_ty, sigma_fields, result_ty_schema) ->
+     ctx_lookup_eff Γ K = None ->
+     lts = lt_var_list n_lt ->
+     rho_fields = List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields ->
+     arity = List.length rho_fields ->
+     Γ' = push_lt_vars n_lt Delta Γ ->
+     (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) ⊢ₜ yes_body : eta ->
+     P (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) yes_body eta ->
+     elim_ty_n n_lt (shift_lt n_lt 0 Delta) var_pos eta = Some elim_result ->
+     Γ ⊢ₜ no_body : elim_result -> P Γ no_body elim_result ->
+     P Γ (term_match scrut K arity yes_body no_body) elim_result) ->
+  (forall Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β,
+     ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
+     List.length Ts = n_α ->
+     sig_β = inst_ty_vars n_α Ts sig ->
+     ret_β = inst_ty_vars n_α Ts ret ->
+     (bind_tm sig_β
+        :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
+        :: push_ty_vars n_β any_at_free Γ) ⊢ₜ op_body : shift_ty n_β 0 T_R ->
+     P (bind_tm sig_β
+        :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
+        :: push_ty_vars n_β any_at_free Γ) op_body (shift_ty n_β 0 T_R) ->
+     P Γ (term_cap E_tag m Ts op_body) (type_ctor E_tag lt_local Ts)) ->
+  (forall Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β,
+     ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
+     List.length Ts = n_α ->
+     sig_β = inst_ty_vars n_α Ts sig ->
+     ret_β = inst_ty_vars n_α Ts ret ->
+     (bind_tm sig_β
+        :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
+        :: push_ty_vars n_β any_at_free Γ) ⊢ₜ op_body : shift_ty n_β 0 T_R ->
+     P (bind_tm sig_β
+        :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
+        :: push_ty_vars n_β any_at_free Γ) op_body (shift_ty n_β 0 T_R) ->
+     (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) ⊢ₜ body : T_R ->
+     P (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) body T_R ->
+     P Γ (term_handle E_tag Ts op_body body) T_R) ->
+  (forall Γ recv arg E_tag Delta Ts Ss n_α n_β sig ret sig_inst ret_inst,
+     Γ ⊢ₜ recv : type_ctor E_tag Delta Ts -> P Γ recv (type_ctor E_tag Delta Ts) ->
+     ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
+     List.length Ts = n_α ->
+     List.length Ss = n_β ->
+     sig_inst = inst_op_arg n_α Ts n_β Ss sig ->
+     ret_inst = inst_op_arg n_α Ts n_β Ss ret ->
+     Γ ⊢ₜ arg : sig_inst -> P Γ arg sig_inst ->
+     P Γ (term_perform recv Ss arg) ret_inst) ->
+  (forall Γ m t T, Γ ⊢ₜ t : T -> P Γ t T -> P Γ (term_handler_m m t) T) ->
+  (forall Γ m b A T_R,
+     (bind_tm A :: Γ) ⊢ₜ b : T_R -> P (bind_tm A :: Γ) b T_R ->
+     P Γ (term_resume m b) (type_fun A lt_local T_R)) ->
+  forall Γ t T, Γ ⊢ₜ t : T -> P Γ t T.
+Proof.
+  intros P HVar HSub HLam HApp HTyLam HTyApp HLtLam HLtApp HCtor HMatch
+         HCap HHandle HPerform HHandlerM HResume.
+  fix IH 4.
+  intros Γ t T H. destruct H.
+  - eapply HVar; (eassumption || (apply IH; eassumption)).
+  - eapply HSub; (eassumption || (apply IH; eassumption)).
+  - eapply HLam; (eassumption || (apply IH; eassumption)).
+  - eapply HApp; (eassumption || (apply IH; eassumption)).
+  - eapply HTyLam; (eassumption || (apply IH; eassumption)).
+  - eapply HTyApp; (eassumption || (apply IH; eassumption)).
+  - eapply HLtLam; (eassumption || (apply IH; eassumption)).
+  - eapply HLtApp; (eassumption || (apply IH; eassumption)).
+  - eapply HCtor; try (eassumption || (apply IH; eassumption)).
+    match goal with
+    | HF : Forall2 (fun v rho => _ ⊢ₜ v : rho) ?vs ?rf |- Forall2 _ ?vs ?rf =>
+        clear -IH HF; induction HF
+    end.
+    + constructor.
+    + constructor; [apply IH; assumption | assumption].
+  - eapply HMatch; (eassumption || (apply IH; eassumption)).
+  - eapply HCap; (eassumption || (apply IH; eassumption)).
+  - eapply HHandle; (eassumption || (apply IH; eassumption)).
+  - eapply HPerform; (eassumption || (apply IH; eassumption)).
+  - eapply HHandlerM; (eassumption || (apply IH; eassumption)).
+  - eapply HResume; (eassumption || (apply IH; eassumption)).
+Qed.
+
+Lemma InsTmAt_push_lt_vars : forall n Delta c G G',
+  InsTmAt c G G' -> InsTmAt c (push_lt_vars n Delta G) (push_lt_vars n Delta G').
+Proof.
+  induction n as [|n IH]; intros Delta c G G' H; simpl.
+  - exact H.
+  - apply IH. apply InsTmAt_lt. exact H.
+Qed.
+
+Lemma InsTmAt_push_ty_vars : forall n B c G G',
+  InsTmAt c G G' -> InsTmAt c (push_ty_vars n B G) (push_ty_vars n B G').
+Proof.
+  induction n as [|n IH]; intros B c G G' H; simpl.
+  - exact H.
+  - apply IH. apply InsTmAt_ty. exact H.
+Qed.
+
+Lemma InsTmAt_fold_bind_tm : forall rhos c G G',
+  InsTmAt c G G' ->
+  InsTmAt (c + List.length rhos)
+    (List.fold_right (fun rho G0 => bind_tm rho :: G0) G rhos)
+    (List.fold_right (fun rho G0 => bind_tm rho :: G0) G' rhos).
+Proof.
+  induction rhos as [|rho rhos IH]; intros c G G' H; simpl.
+  - replace (c + 0) with c by lia. exact H.
+  - replace (c + S (List.length rhos)) with (S (c + List.length rhos)) by lia.
+    apply InsTmAt_tm. apply IH. exact H.
+Qed.
+
+Lemma Forall2_typing_InsTmAt : forall Γ vs rhos,
+  Forall2 (fun v rho => forall c G', InsTmAt c Γ G' -> G' ⊢ₜ shift_tm 1 c v : rho) vs rhos ->
+  forall c G', InsTmAt c Γ G' ->
+  Forall2 (fun v rho => G' ⊢ₜ v : rho) (List.map (shift_tm 1 c) vs) rhos.
+Proof.
+  intros Γ vs rhos H. induction H; intros c G' HIns; simpl.
+  - constructor.
+  - constructor.
+    + apply H. exact HIns.
+    + apply IHForall2. exact HIns.
+Qed.
+
+Lemma typing_InsTmAt : forall G t T, G ⊢ₜ t : T ->
+  forall c G', InsTmAt c G G' -> G' ⊢ₜ shift_tm 1 c t : T.
+Proof.
+  apply (typing_ind_forall2 (fun G t T => forall c G', InsTmAt c G G' -> G' ⊢ₜ shift_tm 1 c t : T)).
+  - intros Γ x T Hlk c G' HIns. simpl. eapply typing_var_InsTmAt; eauto.
+  - intros Γ t T U Ht IHt Hsub c G' HIns. simpl.
+    eapply T_Sub.
+    + apply IHt. exact HIns.
+    + apply (sub_InsTm Γ T U Hsub G' (InsTmAt_to_InsTm c Γ G' HIns)).
+  - intros Γ body A l B Hbody IHbody Hcap Hnolocal c G' HIns. simpl.
+    apply T_Lam.
+    + apply IHbody. apply InsTmAt_tm. exact HIns.
+    + rewrite (capture_lt_InsTmAt c Γ G' HIns body).
+      apply (lt_sub_InsTm Γ (capture_lt Γ body) l Hcap G' (InsTmAt_to_InsTm c Γ G' HIns)).
+    + exact Hnolocal.
+  - intros Γ t1 t2 A l B Ht1 IHt1 Ht2 IHt2 c G' HIns. simpl.
+    eapply T_App; [apply IHt1|apply IHt2]; exact HIns.
+  - intros Γ bound body T Hbody IHbody c G' HIns. simpl.
+    apply T_TyLam. apply IHbody. apply InsTmAt_ty. exact HIns.
+  - intros Γ t B U S Ht IHt Hsub c G' HIns. simpl.
+    eapply T_TyApp.
+    + apply IHt. exact HIns.
+    + apply (sub_InsTm Γ S B Hsub G' (InsTmAt_to_InsTm c Γ G' HIns)).
+  - intros Γ body T Hbody IHbody c G' HIns. simpl.
+    apply T_LtLam. apply IHbody. apply InsTmAt_lt. exact HIns.
+  - intros Γ t T l Ht IHt c G' HIns. simpl.
+    eapply T_LtApp. apply IHt. exact HIns.
+  - intros Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields l vs
+           Hctor Heff Hlts Hrho HTs Hl Hlen Hargs IHargs c G' HIns.
+    simpl. rewrite shift_tm_go_eq_map.
+    eapply T_Ctor with (rho_fields := rho_fields) (result_ty_schema := result_ty_schema); eauto.
+    + rewrite (InsTm_lookup_ctor Γ G' (InsTmAt_to_InsTm c Γ G' HIns) K). exact Hctor.
+    + rewrite (InsTm_lookup_eff Γ G' (InsTmAt_to_InsTm c Γ G' HIns) K). exact Heff.
+    + rewrite List.length_map. exact Hlen.
+    + apply (Forall2_typing_InsTmAt Γ vs rho_fields IHargs c G' HIns).
+  - intros Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
+           rho_fields Γyes yes_body eta elim_result no_body
+           Hneq Hscrut IHscrut Hctor Heff Hlts Hrho Harity HΓyes Hyes IHyes Helim Hno IHno c G' HIns.
+    simpl. subst Γyes.
+    eapply T_Match with
+      (n_lt := n_lt) (n_ty := n_ty) (sigma_fields := sigma_fields)
+      (result_ty_schema := result_ty_schema) (lts := lts) (rho_fields := rho_fields)
+      (Γ' := push_lt_vars n_lt Delta G') (eta := eta).
+    + exact Hneq.
+    + apply IHscrut. exact HIns.
+    + rewrite (InsTm_lookup_ctor Γ G' (InsTmAt_to_InsTm c Γ G' HIns) K). exact Hctor.
+    + rewrite (InsTm_lookup_eff Γ G' (InsTmAt_to_InsTm c Γ G' HIns) K). exact Heff.
+    + exact Hlts.
+    + exact Hrho.
+    + exact Harity.
+    + reflexivity.
+    + apply IHyes.
+      rewrite Harity.
+      apply InsTmAt_fold_bind_tm.
+      apply InsTmAt_push_lt_vars. exact HIns.
+    + exact Helim.
+    + apply IHno. exact HIns.
+  - intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
+           Heff HTs Hsig Hret Hop IHop c G' HIns.
+    simpl.
+    eapply T_Cap with (n_α := n_α) (n_β := n_β) (sig := sig) (ret := ret)
+      (sig_β := sig_β) (ret_β := ret_β); eauto.
+    + rewrite (InsTm_lookup_eff Γ G' (InsTmAt_to_InsTm c Γ G' HIns) E_tag). exact Heff.
+    + apply IHop.
+      replace (c + 2) with (S (S c)) by lia.
+      apply InsTmAt_tm. apply InsTmAt_tm. apply InsTmAt_push_ty_vars. exact HIns.
+  - intros Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β
+           Heff HTs Hsig Hret Hop IHop Hbody IHbody c G' HIns.
+    simpl.
+    eapply T_Handle with (n_α := n_α) (n_β := n_β) (sig := sig) (ret := ret)
+      (sig_β := sig_β) (ret_β := ret_β); eauto.
+    + rewrite (InsTm_lookup_eff Γ G' (InsTmAt_to_InsTm c Γ G' HIns) E_tag). exact Heff.
+    + apply IHop.
+      replace (c + 2) with (S (S c)) by lia.
+      apply InsTmAt_tm. apply InsTmAt_tm. apply InsTmAt_push_ty_vars. exact HIns.
+    + apply IHbody. apply InsTmAt_tm. exact HIns.
+  - intros Γ recv arg E_tag Delta Ts Ss n_α n_β sig ret sig_inst ret_inst
+           Hrecv IHrecv Heff HTs HSs Hsig Hret Harg IHarg c G' HIns.
+    simpl.
+    eapply T_Perform with (n_α := n_α) (n_β := n_β) (sig := sig) (ret := ret)
+      (sig_inst := sig_inst) (ret_inst := ret_inst).
+    + apply IHrecv. exact HIns.
+    + rewrite (InsTm_lookup_eff Γ G' (InsTmAt_to_InsTm c Γ G' HIns) E_tag). exact Heff.
+    + exact HTs.
+    + exact HSs.
+    + exact Hsig.
+    + exact Hret.
+    + apply IHarg. exact HIns.
+  - intros Γ m t T Ht IHt c G' HIns. simpl.
+    apply T_HandlerM. apply IHt. exact HIns.
+  - intros Γ m b A T_R Hb IHb c G' HIns. simpl.
+    apply T_Resume. apply IHb. apply InsTmAt_tm. exact HIns.
+Qed.
+
+Lemma typing_weaken_tm_shift : forall Γ A t T,
+  Γ ⊢ₜ t : T -> (bind_tm A :: Γ) ⊢ₜ shift_tm 1 0 t : T.
+Proof.
+  intros Γ A t T H. eapply typing_InsTmAt; [exact H|apply InsTmAt_here].
+Qed.
+
 (* ============================================================ *)
 (* subst_lt_in_ty head-constructor rewrite equations             *)
 (* ============================================================ *)
