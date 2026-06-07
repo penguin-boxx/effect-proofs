@@ -183,6 +183,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - reflexivity.
+  - reflexivity.
   - apply T_Var. reflexivity.
   - reflexivity.
   - apply T_Var. reflexivity.
@@ -786,6 +787,7 @@ Proof.
     (elim_result := type_ctor any_tag `Ll []).
   - discriminate.
   - apply T_Var. reflexivity.
+  - reflexivity.
   - reflexivity.
   - reflexivity.
   - reflexivity.

@@ -755,6 +755,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       ctx_lookup_eff Γ K = None ->   (* effect-tag / data-ctor disjointness *)
       lts = lt_var_list n_lt ->
       rho_fields = List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields ->
+      List.length Ts = n_ty ->
       arity = List.length rho_fields ->
       Γ' = push_lt_vars n_lt Delta Γ ->
       (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) ⊢ₜ yes_body : eta ->

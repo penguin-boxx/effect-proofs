@@ -480,6 +480,7 @@ Lemma typing_ind2 :
      ctx_lookup_eff Γ K = None ->
      lts = lt_var_list n_lt ->
      rho_fields = List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields ->
+      List.length Ts = n_ty ->
      arity = List.length rho_fields ->
      Γ' = push_lt_vars n_lt Delta Γ ->
      (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) ⊢ₜ yes_body : eta ->
@@ -655,7 +656,7 @@ Proof.
   - (* T_Match *)
     intros Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
            rho_fields Γ' yes_body eta elim_result no_body
-           HKne Hscrut IHscrut Hlk Heff Hlts Hrho Harity HGamma' Hyes IHyes
+           HKne Hscrut IHscrut Hlk Heff Hlts Hrho HTs Harity HGamma' Hyes IHyes
            Helim Hno IHno Hec.
     specialize (IHscrut Hec).
     destruct IHscrut as [Hv | [scrut' Hs]].
@@ -670,8 +671,10 @@ Proof.
         injection Hlook as Heq1 Heq2 Heq3 Heq4.
         subst n_lt' n_ty' sig' res'.
         eexists.
-        replace (@length type (map (inst_ctor_type n_lt n_ty (lt_var_list n_lt) Ts) sigma_fields))
-          with (@length term vs) by (rewrite List.length_map; auto).
+        match goal with
+        | |- term_match _ _ ?a _ _ ==> _ => replace a with (@length term vs)
+        end.
+        2:{ rewrite List.length_map. exact Hlen. }
         apply S_MatchYes. auto.
       * eexists. eapply S_MatchNo; eauto.
     + right. eexists. eapply S_Match; eauto.
@@ -1561,15 +1564,13 @@ Proof.
     repeat split; auto. eapply SA_Trans; eauto.
   - (* T_Match *)
     injection Ht; intros; subst.
-    exists n_lt, n_ty, sigma_fields, result_ty_schema, Ts, Delta, eta, elim_result.
-    split; [assumption|].
-    split; [assumption|].
-    split; [assumption|].
-    split; [rewrite List.length_map; reflexivity|].
-    split; [assumption|].
-    split; [assumption|].
-    split; [assumption|].
-    apply SA_Refl.
+    match goal with
+    | Hlk : ctx_lookup_ctor Γ K = Some (?nlt, ?nty, ?sig, ?res) |- _ =>
+        exists nlt, nty, sig, res, Ts, Delta, eta, elim_result
+    end.
+    repeat split; eauto.
+    all: try (rewrite List.length_map; reflexivity).
+    all: try apply SA_Refl.
 Qed.
 
 Lemma ctor_typing_inv : forall Γ K l lts Ts vs T,
@@ -1762,7 +1763,7 @@ Proof.
   - (* T_Match *)
     intros Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
            rho_fields Γ' yes_body eta elim_result no_body
-           HKne Hscrut IHscrut Hlk Heff Hlts Hrho Harity HGamma' Hyes IHyes
+           HKne Hscrut IHscrut Hlk Heff Hlts Hrho HTs Harity HGamma' Hyes IHyes
            Helim Hno IHno Hec t'' Hstep.
     apply step_match_inv in Hstep.
     destruct Hstep as

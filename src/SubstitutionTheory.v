@@ -2267,6 +2267,7 @@ Lemma typing_ind_forall2 :
      ctx_lookup_eff Γ K = None ->
      lts = lt_var_list n_lt ->
      rho_fields = List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields ->
+      List.length Ts = n_ty ->
      arity = List.length rho_fields ->
      Γ' = push_lt_vars n_lt Delta Γ ->
      (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) ⊢ₜ yes_body : eta ->
@@ -2502,7 +2503,7 @@ Proof.
     + apply (Forall2_typing_InsTmAt Γ vs rho_fields IHargs c G' HIns).
   - intros Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
            rho_fields Γyes yes_body eta elim_result no_body
-           Hneq Hscrut IHscrut Hctor Heff Hlts Hrho Harity HΓyes Hyes IHyes Helim Hno IHno c G' HIns.
+           Hneq Hscrut IHscrut Hctor Heff Hlts Hrho HTs Harity HΓyes Hyes IHyes Helim Hno IHno c G' HIns.
     simpl. subst Γyes.
     eapply T_Match with
       (n_lt := n_lt) (n_ty := n_ty) (sigma_fields := sigma_fields)
@@ -2514,6 +2515,7 @@ Proof.
     + rewrite (InsTm_lookup_eff Γ G' (InsTmAt_to_InsTm c Γ G' HIns) K). exact Heff.
     + exact Hlts.
     + exact Hrho.
+    + exact HTs.
     + exact Harity.
     + reflexivity.
     + apply IHyes.
