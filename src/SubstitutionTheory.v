@@ -2297,6 +2297,108 @@ Proof.
   intros Γ A t T H. eapply typing_InsTmAt; [exact H|apply InsTmAt_here].
 Qed.
 
+Lemma value_shift_tm : forall v,
+  value v -> forall amount cutoff, value (shift_tm amount cutoff v).
+Proof.
+  fix IH 2.
+  intros v Hv amount cutoff. destruct Hv; simpl.
+  - constructor.
+  - constructor.
+  - constructor.
+  - rewrite shift_tm_go_eq_map. constructor.
+    induction H as [|v vs Hv Hvs IHvs]; simpl.
+    + constructor.
+    + constructor; [apply (IH v Hv amount cutoff)|exact IHvs].
+  - constructor.
+  - constructor.
+Qed.
+
+Lemma value_shift_ty_in_tm : forall v,
+  value v -> forall amount cutoff, value (shift_ty_in_tm amount cutoff v).
+Proof.
+  fix IH 2.
+  intros v Hv amount cutoff. destruct Hv; simpl.
+  - constructor.
+  - constructor.
+  - constructor.
+  - rewrite shift_ty_in_tm_go_eq_map. constructor.
+    induction H as [|v vs Hv Hvs IHvs]; simpl.
+    + constructor.
+    + constructor; [apply (IH v Hv amount cutoff)|exact IHvs].
+  - constructor.
+  - constructor.
+Qed.
+
+Lemma value_shift_lt_in_tm : forall v,
+  value v -> forall amount cutoff, value (shift_lt_in_tm amount cutoff v).
+Proof.
+  fix IH 2.
+  intros v Hv amount cutoff. destruct Hv; simpl.
+  - constructor.
+  - constructor.
+  - constructor.
+  - rewrite shift_lt_in_tm_go_eq_map. constructor.
+    induction H as [|v vs Hv Hvs IHvs]; simpl.
+    + constructor.
+    + constructor; [apply (IH v Hv amount cutoff)|exact IHvs].
+  - constructor.
+  - constructor.
+Qed.
+
+Lemma subst_tm_go_eq_map : forall var replacement ts,
+  (fix go ts := match ts with [] => [] | u :: rest => subst_tm var replacement u :: go rest end) ts =
+  List.map (subst_tm var replacement) ts.
+Proof.
+  intros var replacement ts. induction ts as [|t ts IH]; simpl; [reflexivity|].
+  rewrite IH. reflexivity.
+Qed.
+
+Lemma subst_tm_var_eq : forall var replacement y,
+  subst_tm var replacement (term_var y) =
+    if Nat.eqb y var then replacement else if Nat.ltb var y then term_var (pred y) else term_var y.
+Proof. reflexivity. Qed.
+
+Lemma subst_tm_shift_cancel : forall t c replacement,
+  subst_tm c replacement (shift_tm 1 c t) = t.
+Proof.
+  enough (H : forall t, forall c replacement,
+    subst_tm c replacement (shift_tm 1 c t) = t).
+  { intros; apply H. }
+  apply (term_list_ind
+    (fun t => forall c replacement, subst_tm c replacement (shift_tm 1 c t) = t)
+    (fun ts => forall c replacement,
+      List.map (subst_tm c replacement) (List.map (shift_tm 1 c) ts) = ts)).
+  - intros n c replacement. rewrite shift_tm_var_eq, subst_tm_var_eq.
+    destruct (Nat.leb c n) eqn:E.
+    + apply Nat.leb_le in E.
+      destruct (Nat.eqb_spec (n + 1) c); [lia|].
+      destruct (Nat.ltb_spec c (n + 1)); [f_equal; lia|lia].
+    + apply Nat.leb_gt in E.
+      destruct (Nat.eqb_spec n c); [lia|].
+      destruct (Nat.ltb_spec c n); [lia|reflexivity].
+  - intros t1 t2 IH1 IH2 c replacement. simpl. rewrite IH1, IH2. reflexivity.
+  - intros body T IH c replacement. simpl. rewrite IH. reflexivity.
+  - intros t T IH c replacement. simpl. rewrite IH. reflexivity.
+  - intros bound body IH c replacement. simpl. rewrite IH. reflexivity.
+  - intros t l IH c replacement. simpl. rewrite IH. reflexivity.
+  - intros body IH c replacement. simpl. rewrite IH. reflexivity.
+  - intros K l lts Ts ts IH c replacement. simpl.
+    rewrite shift_tm_go_eq_map, subst_tm_go_eq_map. rewrite IH. reflexivity.
+  - intros scrut tag arity yes_body no_body IHs IHy IHn c replacement. simpl.
+    rewrite IHs.
+    replace (c + arity) with (c + arity) by reflexivity.
+    rewrite IHy.
+    rewrite IHn. reflexivity.
+  - intros E Ts op_body body IHop IHb c replacement. simpl.
+    rewrite IHop. rewrite IHb. reflexivity.
+  - intros t Ss arg IHt IHa c replacement. simpl. rewrite IHt, IHa. reflexivity.
+  - intros E m Ts op_body IHop c replacement. simpl. rewrite IHop. reflexivity.
+  - intros m t IH c replacement. simpl. rewrite IH. reflexivity.
+  - intros m b IH c replacement. simpl. rewrite IH. reflexivity.
+  - intros c replacement. reflexivity.
+  - intros t ts IHt IHts c replacement. simpl. rewrite IHt, IHts. reflexivity.
+Qed.
+
 (* ============================================================ *)
 (* subst_lt_in_ty head-constructor rewrite equations             *)
 (* ============================================================ *)
