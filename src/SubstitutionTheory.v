@@ -1739,6 +1739,61 @@ Proof.
     + apply IH2. apply InsTm_ty. exact HIns.
 Qed.
 
+Inductive InsTmAt : nat -> ctx -> ctx -> Prop :=
+| InsTmAt_here : forall A G, InsTmAt 0 G (bind_tm A :: G)
+| InsTmAt_tm : forall c A G G',
+    InsTmAt c G G' -> InsTmAt (S c) (bind_tm A :: G) (bind_tm A :: G')
+| InsTmAt_ty : forall c B G G',
+    InsTmAt c G G' -> InsTmAt c (bind_ty B :: G) (bind_ty B :: G')
+| InsTmAt_lt : forall c D G G',
+    InsTmAt c G G' -> InsTmAt c (bind_lt D :: G) (bind_lt D :: G')
+| InsTmAt_ctor : forall c K n_lt n_ty f r G G',
+    InsTmAt c G G' -> InsTmAt c (bind_ctor K n_lt n_ty f r :: G)
+                              (bind_ctor K n_lt n_ty f r :: G')
+| InsTmAt_eff : forall c E n_a n_b sig ret G G',
+    InsTmAt c G G' -> InsTmAt c (bind_eff E n_a n_b sig ret :: G)
+                              (bind_eff E n_a n_b sig ret :: G').
+
+Lemma InsTmAt_to_InsTm : forall c G G', InsTmAt c G G' -> InsTm G G'.
+Proof.
+  intros c G G' H. induction H; constructor; exact IHInsTmAt.
+Qed.
+
+Lemma InsTmAt_lookup_tm : forall c G G', InsTmAt c G G' ->
+  forall x, ctx_lookup_tm G' (shv c x) = ctx_lookup_tm G x.
+Proof.
+  intros c G G' H. induction H; intro x.
+  - unfold shv. simpl Nat.leb. destruct x; reflexivity.
+  - destruct x as [|x'].
+    + unfold shv. simpl Nat.leb. reflexivity.
+    + simpl ctx_lookup_tm. rewrite <- (IHInsTmAt x').
+      unfold shv.
+      destruct (Nat.leb c x') eqn:E.
+      * apply Nat.leb_le in E.
+        rewrite (proj2 (Nat.leb_le (S c) (S x'))) by lia. reflexivity.
+      * apply Nat.leb_gt in E.
+        rewrite (proj2 (Nat.leb_gt (S c) (S x'))) by lia. reflexivity.
+  - simpl ctx_lookup_tm. rewrite IHInsTmAt. reflexivity.
+  - simpl ctx_lookup_tm. rewrite IHInsTmAt. reflexivity.
+  - simpl ctx_lookup_tm. apply IHInsTmAt.
+  - simpl ctx_lookup_tm. apply IHInsTmAt.
+Qed.
+
+Lemma shift_tm_var_eq : forall a c n,
+  shift_tm a c (term_var n) = term_var (if Nat.leb c n then n + a else n).
+Proof. reflexivity. Qed.
+
+Lemma typing_var_InsTmAt : forall c G G' x T,
+  InsTmAt c G G' ->
+  ctx_lookup_tm G x = Some T ->
+  G' ⊢ₜ shift_tm 1 c (term_var x) : T.
+Proof.
+  intros c G G' x T HIns Hlk.
+  rewrite shift_tm_var_eq. rewrite Nat.add_1_r.
+  apply T_Var. change (ctx_lookup_tm G' (shv c x) = Some T).
+  rewrite (InsTmAt_lookup_tm c G G' HIns x). exact Hlk.
+Qed.
+
 (* ============================================================ *)
 (* subst_lt_in_ty head-constructor rewrite equations             *)
 (* ============================================================ *)
