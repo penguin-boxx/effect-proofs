@@ -2248,26 +2248,35 @@ Lemma typing_ind_forall2 :
   (forall Γ t T l,
      Γ ⊢ₜ t : type_lt_all T -> P Γ t (type_lt_all T) ->
      P Γ (term_lt_app t l) (subst_lt_in_ty 0 l T)) ->
-  (forall Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields l vs,
+        (forall Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields
+          result_ty result_tag l vs,
      ctx_lookup_ctor Γ K = Some (n_lt, n_ty, sigma_fields, result_ty_schema) ->
      ctx_lookup_eff Γ K = None ->
      List.length lts = n_lt ->
      rho_fields = List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields ->
      List.length Ts = n_ty ->
-     l = lt_of_ty_list rho_fields ->
+      result_ty = inst_ctor_type n_lt n_ty lts Ts result_ty_schema ->
+      result_ty = type_ctor result_tag l Ts ->
+      Γ ⊢ₗ lt_of_ty_list rho_fields <: l ->
      List.length vs = List.length rho_fields ->
      Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rho_fields ->
      Forall2 (fun v rho => P Γ v rho) vs rho_fields ->
-     P Γ (term_ctor K l lts Ts vs) (type_ctor K l Ts)) ->
-  (forall Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
-          rho_fields Γ' yes_body eta elim_result no_body,
+      P Γ (term_ctor K l lts Ts vs) result_ty) ->
+      (forall Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
+        rho_fields scrut_result_ty result_tag result_l
+         Γ' yes_body eta elim_result no_body,
      K <> any_tag ->
-     Γ ⊢ₜ scrut : type_ctor K Delta Ts -> P Γ scrut (type_ctor K Delta Ts) ->
      ctx_lookup_ctor Γ K = Some (n_lt, n_ty, sigma_fields, result_ty_schema) ->
      ctx_lookup_eff Γ K = None ->
      lts = lt_var_list n_lt ->
      rho_fields = List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields ->
       List.length Ts = n_ty ->
+         scrut_result_ty = inst_ctor_type n_lt n_ty (List.repeat Delta n_lt) Ts result_ty_schema ->
+        scrut_result_ty = type_ctor result_tag result_l Ts ->
+      result_tag <> any_tag ->
+         Γ ⊢ₗ result_l <: Delta ->
+        Γ ⊢ₜ scrut : type_ctor result_tag Delta Ts ->
+        P Γ scrut (type_ctor result_tag Delta Ts) ->
      arity = List.length rho_fields ->
      Γ' = push_lt_vars n_lt Delta Γ ->
      (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) ⊢ₜ yes_body : eta ->
@@ -2493,29 +2502,43 @@ Proof.
     apply T_LtLam. apply IHbody. apply InsTmAt_lt. exact HIns.
   - intros Γ t T l Ht IHt c G' HIns. simpl.
     eapply T_LtApp. apply IHt. exact HIns.
-  - intros Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields l vs
-           Hctor Heff Hlts Hrho HTs Hl Hlen Hargs IHargs c G' HIns.
+  - intros Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields
+           result_ty result_tag l vs
+           Hctor Heff Hlts Hrho HTs Hresult Hshape Hlt Hlen Hargs IHargs c G' HIns.
     simpl. rewrite shift_tm_go_eq_map.
-    eapply T_Ctor with (rho_fields := rho_fields) (result_ty_schema := result_ty_schema); eauto.
+    eapply T_Ctor with
+      (rho_fields := rho_fields) (result_ty_schema := result_ty_schema)
+      (result_tag := result_tag); eauto.
     + rewrite (InsTm_lookup_ctor Γ G' (InsTmAt_to_InsTm c Γ G' HIns) K). exact Hctor.
     + rewrite (InsTm_lookup_eff Γ G' (InsTmAt_to_InsTm c Γ G' HIns) K). exact Heff.
+    + apply (lt_sub_InsTm Γ (lt_of_ty_list rho_fields) l Hlt
+           G' (InsTmAt_to_InsTm c Γ G' HIns)).
     + rewrite List.length_map. exact Hlen.
     + apply (Forall2_typing_InsTmAt Γ vs rho_fields IHargs c G' HIns).
   - intros Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
-           rho_fields Γyes yes_body eta elim_result no_body
-           Hneq Hscrut IHscrut Hctor Heff Hlts Hrho HTs Harity HΓyes Hyes IHyes Helim Hno IHno c G' HIns.
+           rho_fields scrut_result_ty result_tag result_l
+           Γyes yes_body eta elim_result no_body
+           Hneq Hctor Heff Hlts Hrho HTs Hscrut_result Hscrut_shape
+           Hresult_ne Hresult_l Hscrut IHscrut Harity HΓyes Hyes IHyes Helim Hno IHno c G' HIns.
     simpl. subst Γyes.
     eapply T_Match with
       (n_lt := n_lt) (n_ty := n_ty) (sigma_fields := sigma_fields)
       (result_ty_schema := result_ty_schema) (lts := lts) (rho_fields := rho_fields)
+      (scrut_result_ty := scrut_result_ty)
+      (result_tag := result_tag) (result_l := result_l)
       (Γ' := push_lt_vars n_lt Delta G') (eta := eta).
     + exact Hneq.
-    + apply IHscrut. exact HIns.
     + rewrite (InsTm_lookup_ctor Γ G' (InsTmAt_to_InsTm c Γ G' HIns) K). exact Hctor.
     + rewrite (InsTm_lookup_eff Γ G' (InsTmAt_to_InsTm c Γ G' HIns) K). exact Heff.
     + exact Hlts.
     + exact Hrho.
     + exact HTs.
+    + exact Hscrut_result.
+    + exact Hscrut_shape.
+    + exact Hresult_ne.
+    + apply (lt_sub_InsTm Γ result_l Delta Hresult_l
+           G' (InsTmAt_to_InsTm c Γ G' HIns)).
+    + apply IHscrut. exact HIns.
     + exact Harity.
     + reflexivity.
     + apply IHyes.

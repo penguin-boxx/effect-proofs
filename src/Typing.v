@@ -723,22 +723,25 @@ Inductive typing : ctx -> term -> type -> Prop :=
       Γ ⊢ₜ term_lt_app t l : subst_lt_in_ty 0 l T
 
   (* --- Constructor typing (Figure 7 — Ctor) ----------------------- *)
-  (* K[l, l̄, T̄](v̄) : type_ctor K l T̄                                  *)
-  (*   Look up K's signature ∀ l̄(n_lt) ᾱ(n_ty). σ̄ → T@(+lt_∅(σ̄)).     *)
-  (*   Instantiate field types σ̄ with the supplied T̄ and the fresh    *)
-  (*   lt-vars [lt_var(n_lt-1)..lt_var 0] to obtain ρ̄.                *)
-  (*   vs[i] : ρ[i]; result lifetime l = lt_of_ty_list ρ̄.             *)
+  (* K[l, l̄, T̄](v̄) : instantiated result schema                      *)
+  (*   Look up K's signature ∀ l̄(n_lt) ᾱ(n_ty). σ̄ → R.                *)
+  (*   Instantiate field types σ̄ and result type R with the supplied  *)
+  (*   l̄/T̄.  The runtime lifetime carried by the constructor is the   *)
+  (*   top-level lifetime of the instantiated result type.  Field      *)
+  (*   lifetimes must fit under it, preserving local-escape safety.    *)
   | T_Ctor  : forall Γ K n_lt n_ty sigma_fields result_ty_schema
-                     lts Ts rho_fields l vs,
+                     lts Ts rho_fields result_ty result_tag l vs,
       ctx_lookup_ctor Γ K = Some (n_lt, n_ty, sigma_fields, result_ty_schema) ->
       ctx_lookup_eff Γ K = None ->   (* effect-tag / data-ctor disjointness *)
       List.length lts = n_lt ->
       rho_fields = List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields ->
       List.length Ts = n_ty ->
-      l = lt_of_ty_list rho_fields ->
+      result_ty = inst_ctor_type n_lt n_ty lts Ts result_ty_schema ->
+      result_ty = type_ctor result_tag l Ts ->
+      Γ ⊢ₗ lt_of_ty_list rho_fields <: l ->
       List.length vs = List.length rho_fields ->
       Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rho_fields ->
-      Γ ⊢ₜ term_ctor K l lts Ts vs : type_ctor K l Ts
+      Γ ⊢ₜ term_ctor K l lts Ts vs : result_ty
 
   (* --- Pattern match typing (Figure 7 — Match) -------------------- *)
   (* match scrut { K arity yes | _ => no } : elim_result              *)
@@ -747,15 +750,20 @@ Inductive typing : ctx -> term -> type -> Prop :=
   (*   term-binders on top of Γ'. Eliminate the fresh lt-vars (elim⁺) *)
   (*   from the branch result type η to get elim_result.              *)
   | T_Match : forall Γ scrut K n_lt n_ty sigma_fields result_ty_schema
-                     Ts Delta arity lts rho_fields
+             Ts Delta arity lts rho_fields scrut_result_ty
+         result_tag result_l
                      Γ' yes_body eta elim_result no_body,
       K <> any_tag ->
-      Γ ⊢ₜ scrut : type_ctor K Delta Ts ->
       ctx_lookup_ctor Γ K = Some (n_lt, n_ty, sigma_fields, result_ty_schema) ->
       ctx_lookup_eff Γ K = None ->   (* effect-tag / data-ctor disjointness *)
       lts = lt_var_list n_lt ->
       rho_fields = List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields ->
       List.length Ts = n_ty ->
+      scrut_result_ty = inst_ctor_type n_lt n_ty (List.repeat Delta n_lt) Ts result_ty_schema ->
+      scrut_result_ty = type_ctor result_tag result_l Ts ->
+      result_tag <> any_tag ->
+      Γ ⊢ₗ result_l <: Delta ->
+      Γ ⊢ₜ scrut : type_ctor result_tag Delta Ts ->
       arity = List.length rho_fields ->
       Γ' = push_lt_vars n_lt Delta Γ ->
       (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) ⊢ₜ yes_body : eta ->

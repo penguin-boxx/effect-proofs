@@ -126,13 +126,17 @@ Proof.
   eapply T_Ctor with
     (n_lt := 0) (n_ty := 0) (lts := [])
     (sigma_fields := [ty_A; ty_B])
-    (rho_fields := [ty_A; ty_B]).
+    (rho_fields := [ty_A; ty_B])
+    (result_ty := type_ctor 1 pair_lt_free [])
+    (result_tag := 1).
   - reflexivity.
   - reflexivity.
   - reflexivity.
   - reflexivity.
   - reflexivity.
   - unfold pair_lt_free. reflexivity.
+  - reflexivity.
+  - apply LS_Refl.
   - reflexivity.
   - repeat constructor; apply T_Var; reflexivity.
 Qed.
@@ -148,13 +152,17 @@ Proof.
   eapply T_Ctor with
     (n_lt := 0) (n_ty := 0) (lts := [])
     (sigma_fields := [ty_A_local; ty_B])
-    (rho_fields := [ty_A_local; ty_B]).
+    (rho_fields := [ty_A_local; ty_B])
+    (result_ty := type_ctor 1 pair_lt_local [])
+    (result_tag := 1).
   - reflexivity.
   - reflexivity.
   - reflexivity.
   - reflexivity.
   - reflexivity.
   - unfold pair_lt_local. reflexivity.
+  - reflexivity.
+  - apply LS_Refl.
   - reflexivity.
   - repeat constructor; apply T_Var; reflexivity.
 Qed.
@@ -171,22 +179,43 @@ Proof.
     (sigma_fields := [ty_A; ty_B])
     (rho_fields := [ty_A; ty_B])
     (Delta := pair_lt_free) (arity := 2)
+    (scrut_result_ty := type_ctor 1 pair_lt_free [])
+    (result_tag := 1) (result_l := pair_lt_free)
     (Γ' := [ bind_ctor 1 0 0 [ty_A; ty_B] (type_ctor 1 pair_lt_free [])
            ; bind_tm ty_A
            ; bind_tm (type_ctor 1 pair_lt_free []) ])
     (eta := ty_A) (elim_result := ty_A).
   - discriminate.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - discriminate.
+  - apply LS_Refl.
   - apply T_Var. reflexivity.
   - reflexivity.
   - reflexivity.
-  - reflexivity.
-  - reflexivity.
-  - reflexivity.
-  - reflexivity.
-  - reflexivity.
   - apply T_Var. reflexivity.
   - reflexivity.
   - apply T_Var. reflexivity.
+Qed.
+
+Lemma repo_fields_lt_sub : forall Γ,
+  Γ ⊢ₗ lt_of_ty_list [T_FileT (`L 1); T_ConnT (`L 0)] <: (`L 1 ⊓ `L 0).
+Proof.
+  intros Γ. cbn.
+  apply LS_MinL.
+  - apply LS_MinL.
+    + apply LS_MinR1. apply LS_Refl.
+    + apply LS_Free.
+  - apply LS_MinL.
+    + apply LS_MinL.
+      * apply LS_MinR2. apply LS_Refl.
+      * apply LS_Free.
+    + apply LS_Free.
 Qed.
 
 (* Example 9: Repository — existential lifetime constructor           *)
@@ -196,14 +225,100 @@ Example ex_repository :
   ; bind_ctor 7 1 0
       [type_ctor any_tag (`L 0) []]
       (type_ctor 7 (`L 0) []) ] ⊢ₜ
-    term_ctor 7 (lt_of_ty_list [AnyAtLocal]) [`Ll] [] [$$ 0]
+    term_ctor 7 `Ll [`Ll] [] [$$ 0]
     : type_ctor 7 `Ll [].
 Proof.
   intros AnyAtLocal.
-  eapply T_Sub.
-  - eapply T_Ctor with (lts := [`Ll]) (Ts := []); try reflexivity.
-    repeat constructor.
-  - apply SA_Data. cbn. apply LS_MinL; apply LS_Local.
+  eapply T_Ctor with (lts := [`Ll]) (Ts := []); try reflexivity.
+  - apply LS_Local.
+  - repeat constructor.
+Qed.
+
+(* Example 10: Distinct constructor tags with shared data result tags. *)
+Lemma nat_field_lt_free : forall Γ,
+  Γ ⊢ₗ lt_of_ty_list [T_NatT] <: `Lf.
+Proof.
+  intros Γ. cbn.
+  apply LS_MinL.
+  - apply LS_MinL; apply LS_Free.
+  - apply LS_Free.
+Qed.
+
+Example ex_zero_nat :
+  nat_ctx ⊢ₜ zero_v : T_NatT.
+Proof.
+  unfold zero_v.
+  eapply T_Ctor with (lts := []) (Ts := []); try reflexivity.
+  - apply LS_Refl.
+  - constructor.
+Qed.
+
+Example ex_one_nat :
+  nat_ctx ⊢ₜ one_v : T_NatT.
+Proof.
+  unfold one_v, suc_v.
+  eapply T_Ctor with (lts := []) (Ts := []); try reflexivity.
+  - apply nat_field_lt_free.
+  - apply Forall2_cons; [apply ex_zero_nat | apply Forall2_nil].
+Qed.
+
+Example ex_get_cmd :
+  cmd_ctx ⊢ₜ get_v : T_CmdT.
+Proof.
+  unfold get_v.
+  eapply T_Ctor with (lts := []) (Ts := []); try reflexivity.
+  - apply LS_Refl.
+  - constructor.
+Qed.
+
+Example ex_one_nat_in_cmd_nat_ctx :
+  (cmd_ctx ++ nat_ctx) ⊢ₜ one_v : T_NatT.
+Proof.
+  unfold one_v, suc_v, zero_v.
+  eapply T_Ctor with (lts := []) (Ts := []); try reflexivity.
+  - apply nat_field_lt_free.
+  - apply Forall2_cons; [| apply Forall2_nil].
+    eapply T_Ctor with (lts := []) (Ts := []); try reflexivity.
+    + apply LS_Refl.
+    + constructor.
+Qed.
+
+Example ex_put_cmd :
+  (cmd_ctx ++ nat_ctx) ⊢ₜ put_v one_v : T_CmdT.
+Proof.
+  unfold put_v.
+  eapply T_Ctor with (lts := []) (Ts := []); try reflexivity.
+  - apply nat_field_lt_free.
+  - apply Forall2_cons; [apply ex_one_nat_in_cmd_nat_ctx | apply Forall2_nil].
+Qed.
+
+Example ex_match_zero_nat :
+  nat_ctx ⊢ₜ term_match zero_v zero_tag 0 zero_v zero_v : T_NatT.
+Proof.
+  eapply T_Match with
+    (n_lt := 0) (n_ty := 0) (lts := []) (Ts := [])
+    (sigma_fields := []) (rho_fields := [])
+    (Delta := `Lf) (arity := 0)
+    (scrut_result_ty := T_NatT)
+    (result_tag := nat_tag) (result_l := `Lf)
+    (Γ' := nat_ctx)
+    (eta := T_NatT) (elim_result := T_NatT).
+  - discriminate.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - discriminate.
+  - apply LS_Refl.
+  - apply ex_zero_nat.
+  - reflexivity.
+  - reflexivity.
+  - apply ex_zero_nat.
+  - reflexivity.
+  - apply ex_zero_nat.
 Qed.
 
 (* ================================================================== *)
@@ -213,26 +328,32 @@ Qed.
 Example ex_paper_unit :
   data_ctx ⊢ₜ term_ctor unit_tag `Lf [] [] [] : T_UnitT.
 Proof.
-  eapply T_Ctor with (lts := []) (Ts := []); try reflexivity. constructor.
+  eapply T_Ctor with (lts := []) (Ts := []); try reflexivity.
+  - apply LS_Refl.
+  - constructor.
 Qed.
 
 Example ex_paper_file :
   data_ctx ⊢ₜ term_ctor file_tag `Lf [] [] [] : T_FileT `Lf.
 Proof.
-  eapply T_Ctor with (lts := []) (Ts := []); try reflexivity. constructor.
+  eapply T_Ctor with (lts := []) (Ts := []); try reflexivity.
+  - apply LS_Refl.
+  - constructor.
 Qed.
 
 Example ex_paper_connection :
   data_ctx ⊢ₜ term_ctor connection_tag `Lf [] [] [] : T_ConnT `Lf.
 Proof.
-  eapply T_Ctor with (lts := []) (Ts := []); try reflexivity. constructor.
+  eapply T_Ctor with (lts := []) (Ts := []); try reflexivity.
+  - apply LS_Refl.
+  - constructor.
 Qed.
 
 Example ex_paper_repo_intro :
   let lts := [`L 0; `L 1] in
   let rho := List.map (inst_ctor_type 2 0 lts [])
               [ T_FileT (`L 1) ; T_ConnT (`L 0) ] in
-  let lr  := lt_of_ty_list rho in
+  let lr  := `L 1 ⊓ `L 0 in
   ( bind_tm (T_ConnT (`L 0))
    :: bind_tm (T_FileT (`L 1))
    :: bind_lt `Ll
@@ -243,15 +364,15 @@ Example ex_paper_repo_intro :
 Proof.
   intros lts rho lr.
   eapply T_Ctor with (lts := lts) (Ts := []); try reflexivity.
-  cbn.
-  apply Forall2_cons; [| apply Forall2_cons; [| apply Forall2_nil]];
-    apply T_Var; reflexivity.
+  - apply repo_fields_lt_sub.
+  - cbn.
+    apply Forall2_cons; [| apply Forall2_cons; [| apply Forall2_nil]];
+      apply T_Var; reflexivity.
 Qed.
 
 Example ex_paper_makeRepository :
   let inner_lt := `L 1 in
-  let result_lt := lt_of_ty_list (List.map (inst_ctor_type 2 0 [`L 0; `L 1] [])
-                                    [ T_FileT (`L 1) ; T_ConnT (`L 0) ]) in
+  let result_lt := `L 1 ⊓ `L 0 in
   data_ctx ⊢ₜ makeRepository
     : ∀'l. ∀'l. ((T_FileT (`L 1)) -{ `Lf }->
                   (T_ConnT (`L 0)) -{ inner_lt }-> T_RepoT result_lt).
@@ -262,8 +383,9 @@ Proof.
   - apply T_Lam.
     + eapply T_Ctor with (lts := [`L 0; `L 1]) (Ts := []);
         try reflexivity.
-      apply Forall2_cons; [| apply Forall2_cons; [| apply Forall2_nil]];
-        apply T_Var; reflexivity.
+      * apply repo_fields_lt_sub.
+      * apply Forall2_cons; [| apply Forall2_cons; [| apply Forall2_nil]];
+          apply T_Var; reflexivity.
     + cbn. apply LS_MinL; [apply LS_MinL; [apply LS_Refl | apply LS_Free] | apply LS_Free].
     + reflexivity.
   - cbn. apply LS_Free.
@@ -276,7 +398,9 @@ Example ex_paper_print :
 Proof.
   apply T_Lam.
   - apply T_Lam.
-    + eapply T_Ctor with (lts := []) (Ts := []); try reflexivity. constructor.
+    + eapply T_Ctor with (lts := []) (Ts := []); try reflexivity.
+      * apply LS_Refl.
+      * constructor.
     + cbn. apply LS_Free.
     + reflexivity.
   - cbn. apply LS_Free.
@@ -465,7 +589,9 @@ Proof.
   - reflexivity.
   - eapply T_App.
     + apply T_Var. reflexivity.
-    + eapply T_Ctor with (lts := []) (Ts := []); try reflexivity; constructor.
+    + eapply T_Ctor with (lts := []) (Ts := []); try reflexivity.
+      * apply LS_Refl.
+      * constructor.
   - eapply T_Perform with (n_α := 1) (n_β := 0) (sig := T_UnitT) (ret := `T 0)
                           (Ts := [T_UnitT]) (Ss := []) (Δ := `Ll).
     + apply T_Var. reflexivity.
@@ -474,7 +600,9 @@ Proof.
     + reflexivity.
     + reflexivity.
     + reflexivity.
-    + eapply T_Ctor with (lts := []) (Ts := []); try reflexivity; constructor.
+    + eapply T_Ctor with (lts := []) (Ts := []); try reflexivity.
+      * apply LS_Refl.
+      * constructor.
 Qed.
 
 (* Exception<Unit>: the program has type Unit in effect_ctx.           *)
@@ -487,7 +615,9 @@ Proof.
   - reflexivity.
   - reflexivity.
   - reflexivity.
-  - eapply T_Ctor with (lts := []) (Ts := []); try reflexivity; constructor.
+  - eapply T_Ctor with (lts := []) (Ts := []); try reflexivity.
+    + apply LS_Refl.
+    + constructor.
   - eapply T_Perform with (n_α := 1) (n_β := 0) (sig := `T 0) (ret := T_UnitT)
                           (Ts := [T_UnitT]) (Ss := []) (Δ := `Ll).
     + apply T_Var. reflexivity.
@@ -496,7 +626,9 @@ Proof.
     + reflexivity.
     + reflexivity.
     + reflexivity.
-    + eapply T_Ctor with (lts := []) (Ts := []); try reflexivity; constructor.
+    + eapply T_Ctor with (lts := []) (Ts := []); try reflexivity.
+      * apply LS_Refl.
+      * constructor.
 Qed.
 
 (* Choice (per-op β): the program has type Unit in effect_ctx.         *)
@@ -750,7 +882,9 @@ Proof.
   apply T_Lam.
   - eapply T_App with (A := T_FileT `Ll) (l := `Lf) (B := T_UnitT).
     + apply T_Lam.
-      * eapply T_Ctor with (lts := []) (Ts := []); try reflexivity. constructor.
+      * eapply T_Ctor with (lts := []) (Ts := []); try reflexivity.
+        -- apply LS_Refl.
+        -- constructor.
       * cbn. apply LS_Free.
       * reflexivity.
     + apply T_Var. reflexivity.
@@ -778,20 +912,26 @@ Example ex_match_existential_lt :
 Proof.
   intro G.
   eapply T_Match with
-    (n_lt := 1) (n_ty := 0) (Ts := [])
+    (n_lt := 1) (n_ty := 0) (lts := [`L 0]) (Ts := [])
     (sigma_fields := [type_ctor any_tag (`L 0) []])
     (rho_fields := [type_ctor any_tag (`L 0) []])
     (Delta := `Ll) (arity := 1)
+    (scrut_result_ty := type_ctor 7 `Ll [])
+    (result_tag := 7) (result_l := `Ll)
     (Γ' := bind_lt `Ll :: G)
     (eta := type_ctor any_tag (`L 0) [])
     (elim_result := type_ctor any_tag `Ll []).
   - discriminate.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - discriminate.
+  - apply LS_Refl.
   - apply T_Var. reflexivity.
-  - reflexivity.
-  - reflexivity.
-  - reflexivity.
-  - reflexivity.
-  - reflexivity.
   - reflexivity.
   - reflexivity.
   - apply T_Var. reflexivity.

@@ -71,7 +71,7 @@ Qed.
 (* ------------------------------------------------------------------ *)
 (* 4. Operational non-escape (headline corollary of preservation +    *)
 (*    the lattice): whatever a closed program returns at a *free*     *)
-(*    File type is a File constructor whose own annotation carries no  *)
+(*    File type is a constructor whose own annotation carries no       *)
 (*    top-level `local`.  A `local`-confined datum is never the value  *)
 (*    handed back at a `free` (escapable) type.                       *)
 (* ------------------------------------------------------------------ *)
@@ -80,8 +80,8 @@ Example ex_free_result_is_local_free :
     data_ctx ⊢ₜ t : T_FileT `Lf ->
     Examples.multi_step t v ->
     value v ->
-    exists l' lts' vs,
-      v = term_ctor file_tag l' lts' [] vs /\ no_local_lt l' = true.
+    exists K' l' lts' vs,
+      v = term_ctor K' l' lts' [] vs /\ no_local_lt l' = true.
 Proof.
   intros t v Hty Hms Hval.
   eapply (local_value_does_not_escape data_ctx t file_tag [] v).
@@ -104,7 +104,9 @@ Proof.
     + apply T_Var. reflexivity.
     + cbn. apply LS_Free.
     + reflexivity.
-  - eapply T_Ctor with (lts := []) (Ts := []); try reflexivity. constructor.
+  - eapply T_Ctor with (lts := []) (Ts := []); try reflexivity.
+    + apply LS_Refl.
+    + constructor.
 Qed.
 
 (* The reduct never gets stuck — neither a value nor any reachable    *)

@@ -7,7 +7,7 @@ Require Import Semantics.
 Require Import Typing.
 
 (* ================================================================== *)
-(* CoreΔ — example DEFINITIONS                                         *)
+(* CoreΔ — example DEFINITIONS                                        *)
 (*                                                                    *)
 (* This file collects the surface notations, the programs, the types  *)
 (* and the typing/reduction contexts used by the example suite.       *)
@@ -148,15 +148,14 @@ Definition data_ctx : ctx :=
        Λ lf. Λ lc.
          λ (f : File@lf).
          λ (c : Conn@lc).
-           Repository[lc, lf]() (f, c)
+           Repository[lc, lf](f, c)
    (the result lifetime is the meet of the two field lifetimes)        *)
 Definition makeRepository : term :=
   Λl \\ Λl \\
     λ: (T_FileT (`L 1)) \\
     λ: (T_ConnT (`L 0)) \\
       term_ctor repo_tag
-        (lt_of_ty_list (List.map (inst_ctor_type 2 0 [`L 0; `L 1] [])
-                          [ T_FileT (`L 1) ; T_ConnT (`L 0) ]))
+        (`L 1 ⊓ `L 0)
         [`L 0; `L 1] []
         [$$ 1; $$ 0].
 
@@ -193,7 +192,7 @@ Definition compose_fn : term :=
 (* ================================================================== *)
 (* 3. Effect declarations (Reader / Exception / Choice)               *)
 (*                                                                    *)
-(* The op-body conventions (see Typing.v T_Cap):                       *)
+(* The op-body conventions (see Typing.v T_Cap):                      *)
 (*   · op-body lives under n_β type-binders, then 2 term-binders.     *)
 (*   · #0 = the operation argument (single)                           *)
 (*   · #1 = the resumption k : ret -local-> T_R                       *)
