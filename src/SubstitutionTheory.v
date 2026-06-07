@@ -1177,6 +1177,20 @@ Lemma shift_ty_swap_0 : forall T c,
   shift_ty 1 0 (shift_ty 1 c T) = shift_ty 1 (S c) (shift_ty 1 0 T).
 Proof. intros T c. apply shift_ty_swap. lia. Qed.
 
+Lemma shift_ty_lift_shift : forall a c T,
+  shift_ty a 0 (shift_ty 1 c T) = shift_ty 1 (a + c) (shift_ty a 0 T).
+Proof.
+  induction a as [|a IH]; intros c T.
+  - rewrite !shift_ty_zero. reflexivity.
+  - replace (shift_ty (S a) 0 (shift_ty 1 c T))
+      with (shift_ty 1 0 (shift_ty a 0 (shift_ty 1 c T))).
+    2:{ rewrite shift_ty_fuse. replace (1 + a) with (S a) by lia. reflexivity. }
+    rewrite IH.
+    rewrite shift_ty_swap_0.
+    replace (S (a + c)) with (S a + c) by lia.
+    rewrite shift_ty_fuse. replace (1 + a) with (S a) by lia. reflexivity.
+Qed.
+
 Lemma shift_ty_ctor_sig_swap_0 : forall sig c,
   shift_ty_ctor_sig 1 0 (shift_ty_ctor_sig 1 c sig) =
   shift_ty_ctor_sig 1 (S c) (shift_ty_ctor_sig 1 0 sig).
@@ -3135,6 +3149,140 @@ Qed.
 Lemma shift_ty_subst_ty_comm0 : forall T n Sb,
   shift_ty 1 0 (subst_ty n Sb T) = subst_ty (S n) (shift_ty 1 0 Sb) (shift_ty 1 0 T).
 Proof. intros. apply shift_ty_subst_ty_comm. lia. Qed.
+
+Lemma shift_ty_subst_ty_comm_ge : forall T c n Sb,
+  n <= c ->
+  shift_ty 1 c (subst_ty n Sb T) =
+  subst_ty n (shift_ty 1 c Sb) (shift_ty 1 (S c) T).
+Proof.
+  intros T. apply (type_list_ind
+    (fun T => forall c n Sb, n <= c ->
+       shift_ty 1 c (subst_ty n Sb T) =
+       subst_ty n (shift_ty 1 c Sb) (shift_ty 1 (S c) T))
+    (fun Ts => forall c n Sb, n <= c ->
+       List.map (shift_ty 1 c) (List.map (subst_ty n Sb) Ts) =
+       List.map (subst_ty n (shift_ty 1 c Sb)) (List.map (shift_ty 1 (S c)) Ts))).
+  - intros m c n Sb Hle. rewrite subst_ty_var_eq.
+    destruct (Nat.eqb_spec m n) as [Heq|Hneq].
+    + subst m. rewrite !shift_ty_var_eq.
+      rewrite (proj2 (Nat.leb_gt (S c) n)) by lia.
+      rewrite subst_ty_var_eq, Nat.eqb_refl. reflexivity.
+    + destruct (Nat.ltb_spec n m) as [Hlt|Hge].
+      * destruct (Nat.leb (S c) m) eqn:Em.
+        -- apply Nat.leb_le in Em. rewrite !shift_ty_var_eq.
+           rewrite (proj2 (Nat.leb_le c (pred m))) by lia.
+           rewrite (proj2 (Nat.leb_le (S c) m)) by lia.
+           rewrite subst_ty_var_eq.
+           destruct (Nat.eqb_spec (m + 1) n); [lia|].
+           destruct (Nat.ltb_spec n (m + 1)); [f_equal; lia|lia].
+        -- apply Nat.leb_gt in Em. rewrite !shift_ty_var_eq.
+           rewrite (proj2 (Nat.leb_gt c (pred m))) by lia.
+           rewrite (proj2 (Nat.leb_gt (S c) m)) by lia.
+           rewrite subst_ty_var_eq.
+           destruct (Nat.eqb_spec m n); [lia|].
+           destruct (Nat.ltb_spec n m); [reflexivity|lia].
+      * rewrite !shift_ty_var_eq.
+        rewrite (proj2 (Nat.leb_gt c m)) by lia.
+        rewrite (proj2 (Nat.leb_gt (S c) m)) by lia.
+        rewrite subst_ty_var_eq.
+        destruct (Nat.eqb_spec m n); [lia|].
+        destruct (Nat.ltb_spec n m); [lia|reflexivity].
+  - intros A l B HA HB c n Sb Hle.
+    rewrite subst_ty_fun_eq, shift_ty_fun_eq, shift_ty_fun_eq, subst_ty_fun_eq.
+    rewrite HA by lia. rewrite HB by lia. reflexivity.
+  - intros K l Ts HTs c n Sb Hle.
+    rewrite subst_ty_ctor_eq, shift_ty_ctor_eq, shift_ty_ctor_eq, subst_ty_ctor_eq.
+    f_equal. apply HTs. lia.
+  - intros A HA c n Sb Hle.
+    rewrite subst_ty_ltall_eq, shift_ty_ltall_eq, shift_ty_ltall_eq, subst_ty_ltall_eq.
+    f_equal. rewrite HA by lia. f_equal.
+    apply shift_ty_shift_lt_in_ty_commute.
+  - intros B A HB HA c n Sb Hle.
+    rewrite subst_ty_tyall_eq, shift_ty_tyall_eq, shift_ty_tyall_eq, subst_ty_tyall_eq.
+    rewrite HB by lia. f_equal.
+    rewrite HA by lia. f_equal.
+    symmetry. apply shift_ty_swap_0.
+  - intros c n Sb Hle. reflexivity.
+  - intros A Ts HA HTs c n Sb Hle.
+    cbn [List.map]. rewrite HA by lia. f_equal. apply HTs. lia.
+Qed.
+
+Lemma shift_ty_subst_ty_comm_ge0 : forall T c Sb,
+  shift_ty 1 c (subst_ty 0 Sb T) =
+  subst_ty 0 (shift_ty 1 c Sb) (shift_ty 1 (S c) T).
+Proof. intros. apply shift_ty_subst_ty_comm_ge. lia. Qed.
+
+Lemma inst_ty_vars_shift_ty : forall n Ts T c,
+  List.length Ts = n ->
+  inst_ty_vars n (List.map (shift_ty 1 c) Ts) (shift_ty 1 (n + c) T) =
+  shift_ty 1 c (inst_ty_vars n Ts T).
+Proof.
+  induction n as [|n IH]; intros Ts T c Hlen.
+  - destruct Ts as [|U rest]; [|simpl in Hlen; discriminate].
+    simpl. replace (0 + c) with c by lia. reflexivity.
+  - destruct Ts as [|U rest]; [simpl in Hlen; discriminate|].
+    simpl in Hlen. injection Hlen as Hlen.
+    simpl. rewrite shift_ty_lift_shift.
+    replace (S n + c) with (S (n + c)) by lia.
+    rewrite <- shift_ty_subst_ty_comm_ge0.
+    rewrite IH by exact Hlen. reflexivity.
+Qed.
+
+Lemma multi_subst_lt_in_ty_shift_ty : forall T cutoff lts c,
+  multi_subst_lt_in_ty cutoff lts (shift_ty 1 c T) =
+  shift_ty 1 c (multi_subst_lt_in_ty cutoff lts T).
+Proof.
+  intros T. apply (type_list_ind
+    (fun T => forall cutoff lts c,
+      multi_subst_lt_in_ty cutoff lts (shift_ty 1 c T) =
+      shift_ty 1 c (multi_subst_lt_in_ty cutoff lts T))
+    (fun Ts => forall cutoff lts c,
+      List.map (multi_subst_lt_in_ty cutoff lts) (List.map (shift_ty 1 c) Ts) =
+      List.map (shift_ty 1 c) (List.map (multi_subst_lt_in_ty cutoff lts) Ts))).
+  - intros n cutoff lts c. reflexivity.
+  - intros A l B HA HB cutoff lts c. simpl. rewrite HA, HB. reflexivity.
+  - intros K l Ts HTs cutoff lts c.
+    simpl. f_equal. apply HTs.
+  - intros A HA cutoff lts c. simpl. rewrite HA. reflexivity.
+  - intros B A HB HA cutoff lts c. simpl. rewrite HB, HA. reflexivity.
+  - intros cutoff lts c. reflexivity.
+  - intros A Ts HA HTs cutoff lts c. cbn [List.map]. rewrite HA. f_equal. apply HTs.
+Qed.
+
+Lemma inst_ctor_type_shift_ty : forall n_lt n_ty lts Ts T c,
+  List.length Ts = n_ty ->
+  inst_ctor_type n_lt n_ty lts (List.map (shift_ty 1 c) Ts) (shift_ty 1 (n_ty + c) T) =
+  shift_ty 1 c (inst_ctor_type n_lt n_ty lts Ts T).
+Proof.
+  intros n_lt n_ty lts Ts T c Hlen.
+  unfold inst_ctor_type, inst_lt_vars.
+  rewrite inst_ty_vars_shift_ty by exact Hlen.
+  apply multi_subst_lt_in_ty_shift_ty.
+Qed.
+
+Lemma lt_of_ty_shift_ty : forall T c,
+  lt_of_ty (shift_ty 1 c T) = lt_of_ty T.
+Proof.
+  apply (type_list_ind
+    (fun T => forall c, lt_of_ty (shift_ty 1 c T) = lt_of_ty T)
+    (fun Ts => forall c,
+      lt_of_ty_list (List.map (shift_ty 1 c) Ts) = lt_of_ty_list Ts)).
+  - reflexivity.
+  - intros A l B HA HB c. simpl. reflexivity.
+  - intros K l Ts HTs c. rewrite shift_ty_ctor_eq. simpl. f_equal. apply HTs.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - intros A Ts HA HTs c. cbn [List.map]. unfold lt_of_ty_list in *. simpl.
+    rewrite HA, HTs. reflexivity.
+Qed.
+
+Lemma lt_of_ty_list_shift_ty : forall Ts c,
+  lt_of_ty_list (List.map (shift_ty 1 c) Ts) = lt_of_ty_list Ts.
+Proof.
+  intros Ts c. induction Ts as [|T Ts IH]; simpl; [reflexivity|].
+  rewrite lt_of_ty_shift_ty, IH. reflexivity.
+Qed.
 
 Lemma shift_lt_in_ty_subst_ty_comm : forall T c n Sb,
   shift_lt_in_ty 1 c (subst_ty n Sb T)

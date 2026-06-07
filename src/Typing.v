@@ -535,11 +535,13 @@ Hint Constructors sub : core.
 (* them as proper inductive constructors rather than Axioms.          *)
 (* ================================================================== *)
 
-(* Instantiate n_ty type-binders (outermost-first) by substituting Ts. *)
+(* Instantiate n_ty type-binders (outermost-first) by substituting Ts.
+   Each head argument is lifted over the remaining schema binders so
+   later substitutions cannot capture its free type variables. *)
 Fixpoint inst_ty_vars (n : nat) (Ts : list type) (T : type) : type :=
   match n, Ts with
   | O, _            => T
-  | S n', U :: rest => inst_ty_vars n' rest (subst_ty 0 U T)
+  | S n', U :: rest => inst_ty_vars n' rest (subst_ty 0 (shift_ty n' 0 U) T)
   | S _, []         => T
   end.
 
