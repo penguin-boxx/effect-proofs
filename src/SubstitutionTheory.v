@@ -1239,6 +1239,24 @@ Proof.
     + rewrite IHInsTy. reflexivity.
 Qed.
 
+Lemma InsTy_lookup_tm : forall c G G', InsTy c G G' ->
+  forall x, ctx_lookup_tm G' x = option_map (shift_ty 1 c) (ctx_lookup_tm G x).
+Proof.
+  intros c G G' H. induction H; intro x.
+  - simpl ctx_lookup_tm. reflexivity.
+  - simpl ctx_lookup_tm. rewrite IHInsTy.
+    destruct (ctx_lookup_tm G x) as [T|]; simpl;
+      [rewrite shift_ty_swap_0|]; reflexivity.
+  - simpl ctx_lookup_tm. rewrite IHInsTy.
+    destruct (ctx_lookup_tm G x) as [T|]; simpl;
+      [rewrite shift_ty_shift_lt_in_ty_commute|]; reflexivity.
+  - destruct x as [|x']; simpl ctx_lookup_tm.
+    + reflexivity.
+    + apply IHInsTy.
+  - simpl ctx_lookup_tm. apply IHInsTy.
+  - simpl ctx_lookup_tm. apply IHInsTy.
+Qed.
+
 Lemma shift_ty_fun_eq : forall a c A l B,
   shift_ty a c (type_fun A l B) = type_fun (shift_ty a c A) l (shift_ty a c B).
 Proof. reflexivity. Qed.
@@ -1496,6 +1514,24 @@ Proof.
   - specialize (IHInsLt a). simpl ctx_lookup_ty. apply IHInsLt.
   - specialize (IHInsLt a). simpl ctx_lookup_ty. apply IHInsLt.
   - specialize (IHInsLt a). simpl ctx_lookup_ty. apply IHInsLt.
+Qed.
+
+Lemma InsLt_lookup_tm : forall c G G', InsLt c G G' ->
+  forall x, ctx_lookup_tm G' x = option_map (shift_lt_in_ty 1 c) (ctx_lookup_tm G x).
+Proof.
+  intros c G G' H. induction H; intro x.
+  - simpl ctx_lookup_tm. reflexivity.
+  - simpl ctx_lookup_tm. rewrite IHInsLt.
+    destruct (ctx_lookup_tm G x) as [T|]; simpl;
+      [rewrite shift_lt_in_ty_swap_0|]; reflexivity.
+  - simpl ctx_lookup_tm. rewrite IHInsLt.
+    destruct (ctx_lookup_tm G x) as [T|]; simpl;
+      [rewrite shift_ty_shift_lt_in_ty_commute|]; reflexivity.
+  - destruct x as [|x']; simpl ctx_lookup_tm.
+    + reflexivity.
+    + apply IHInsLt.
+  - simpl ctx_lookup_tm. apply IHInsLt.
+  - simpl ctx_lookup_tm. apply IHInsLt.
 Qed.
 
 Lemma shv_shift_lt : forall c n, shift_lt 1 c (lt_var n) = lt_var (shv c n).
@@ -1802,6 +1838,113 @@ Proof.
   rewrite IH. reflexivity.
 Qed.
 
+Lemma free_tm_vars_shift_ty_in_tm : forall t cutoff c,
+  free_tm_vars cutoff (shift_ty_in_tm 1 c t) = free_tm_vars cutoff t.
+Proof.
+  apply (term_list_ind
+    (fun t => forall cutoff c, free_tm_vars cutoff (shift_ty_in_tm 1 c t) = free_tm_vars cutoff t)
+    (fun ts => forall cutoff c,
+      List.concat (List.map (free_tm_vars cutoff) (List.map (shift_ty_in_tm 1 c) ts)) =
+      List.concat (List.map (free_tm_vars cutoff) ts))).
+  - reflexivity.
+  - intros t1 t2 IH1 IH2 cutoff c. simpl. rewrite IH1, IH2. reflexivity.
+  - intros body T IH cutoff c. simpl. apply IH.
+  - intros t T IH cutoff c. simpl. apply IH.
+  - intros bound body IH cutoff c. simpl. apply IH.
+  - intros t l IH cutoff c. simpl. apply IH.
+  - intros body IH cutoff c. simpl. apply IH.
+  - intros K l lts Ts ts IH cutoff c. simpl. rewrite shift_ty_in_tm_go_eq_map.
+    rewrite !free_tm_vars_go_eq_concat. apply IH.
+  - intros scrut tag arity yes_body no_body IHs IHy IHn cutoff c. simpl.
+    rewrite IHs, IHy, IHn. reflexivity.
+  - intros E Ts op_body body IHop IHb cutoff c. simpl. rewrite IHop, IHb. reflexivity.
+  - intros t Ss arg IHt IHa cutoff c. simpl. rewrite IHt, IHa. reflexivity.
+  - intros E m Ts op_body IHop cutoff c. simpl. apply IHop.
+  - intros m t IH cutoff c. simpl. apply IH.
+  - intros m b IH cutoff c. simpl. apply IH.
+  - reflexivity.
+  - intros t ts IHt IHts cutoff c. simpl. rewrite IHt, IHts. reflexivity.
+Qed.
+
+Lemma free_tm_vars_shift_lt_in_tm : forall t cutoff c,
+  free_tm_vars cutoff (shift_lt_in_tm 1 c t) = free_tm_vars cutoff t.
+Proof.
+  apply (term_list_ind
+    (fun t => forall cutoff c, free_tm_vars cutoff (shift_lt_in_tm 1 c t) = free_tm_vars cutoff t)
+    (fun ts => forall cutoff c,
+      List.concat (List.map (free_tm_vars cutoff) (List.map (shift_lt_in_tm 1 c) ts)) =
+      List.concat (List.map (free_tm_vars cutoff) ts))).
+  - reflexivity.
+  - intros t1 t2 IH1 IH2 cutoff c. simpl. rewrite IH1, IH2. reflexivity.
+  - intros body T IH cutoff c. simpl. apply IH.
+  - intros t T IH cutoff c. simpl. apply IH.
+  - intros bound body IH cutoff c. simpl. apply IH.
+  - intros t l IH cutoff c. simpl. apply IH.
+  - intros body IH cutoff c. simpl. apply IH.
+  - intros K l lts Ts ts IH cutoff c. simpl. rewrite shift_lt_in_tm_go_eq_map.
+    rewrite !free_tm_vars_go_eq_concat. apply IH.
+  - intros scrut tag arity yes_body no_body IHs IHy IHn cutoff c. simpl.
+    rewrite IHs, IHy, IHn. reflexivity.
+  - intros E Ts op_body body IHop IHb cutoff c. simpl. rewrite IHop, IHb. reflexivity.
+  - intros t Ss arg IHt IHa cutoff c. simpl. rewrite IHt, IHa. reflexivity.
+  - intros E m Ts op_body IHop cutoff c. simpl. apply IHop.
+  - intros m t IH cutoff c. simpl. apply IH.
+  - intros m b IH cutoff c. simpl. apply IH.
+  - reflexivity.
+  - intros t ts IHt IHts cutoff c. simpl. rewrite IHt, IHts. reflexivity.
+Qed.
+
+Lemma no_local_lt_shift : forall l c,
+  no_local_lt (shift_lt 1 c l) = no_local_lt l.
+Proof.
+  induction l as [n| | |l1 IH1 l2 IH2]; intro c; simpl; try reflexivity.
+  rewrite IH1, IH2. reflexivity.
+Qed.
+
+Lemma no_local_ty_go_eq_fold : forall Ts,
+  (fix go Ts := match Ts with [] => true | A :: rest => andb (no_local_ty A) (go rest) end) Ts =
+  fold_right (fun A acc => andb (no_local_ty A) acc) true Ts.
+Proof.
+  induction Ts as [|A Ts IH]; simpl; [reflexivity|].
+  rewrite IH. reflexivity.
+Qed.
+
+Lemma no_local_ty_shift_ty : forall T c,
+  no_local_ty (shift_ty 1 c T) = no_local_ty T.
+Proof.
+  apply (type_list_ind
+    (fun T => forall c, no_local_ty (shift_ty 1 c T) = no_local_ty T)
+    (fun Ts => forall c,
+      fold_right (fun A acc => andb (no_local_ty A) acc) true (List.map (shift_ty 1 c) Ts) =
+      fold_right (fun A acc => andb (no_local_ty A) acc) true Ts)).
+  - reflexivity.
+  - intros A l B IHA IHB c. simpl. rewrite IHA, IHB. reflexivity.
+  - intros K l Ts IHTs c. rewrite shift_ty_ctor_eq. simpl.
+    rewrite !no_local_ty_go_eq_fold. rewrite IHTs. reflexivity.
+  - intros A IHA c. simpl. apply IHA.
+  - intros B A IHB IHA c. simpl. rewrite IHB, IHA. reflexivity.
+  - reflexivity.
+  - intros A Ts IHA IHTs c. simpl. rewrite IHA, IHTs. reflexivity.
+Qed.
+
+Lemma no_local_ty_shift_lt : forall T c,
+  no_local_ty (shift_lt_in_ty 1 c T) = no_local_ty T.
+Proof.
+  apply (type_list_ind
+    (fun T => forall c, no_local_ty (shift_lt_in_ty 1 c T) = no_local_ty T)
+    (fun Ts => forall c,
+      fold_right (fun A acc => andb (no_local_ty A) acc) true (List.map (shift_lt_in_ty 1 c) Ts) =
+      fold_right (fun A acc => andb (no_local_ty A) acc) true Ts)).
+  - reflexivity.
+  - intros A l B IHA IHB c. simpl. rewrite IHA, IHB, no_local_lt_shift. reflexivity.
+  - intros K l Ts IHTs c. rewrite shift_lt_in_ty_ctor_eq. simpl.
+    rewrite no_local_lt_shift. rewrite !no_local_ty_go_eq_fold. rewrite IHTs. reflexivity.
+  - intros A IHA c. simpl. apply IHA.
+  - intros B A IHB IHA c. simpl. rewrite IHB, IHA. reflexivity.
+  - reflexivity.
+  - intros A Ts IHA IHTs c. simpl. rewrite IHA, IHTs. reflexivity.
+Qed.
+
 Lemma free_tm_vars_shift_tm_1 : forall t cutoff c,
   free_tm_vars cutoff (shift_tm 1 (cutoff + c) t) =
   List.map (shv c) (free_tm_vars cutoff t).
@@ -1867,6 +2010,32 @@ Proof.
     destruct (ctx_lookup_tm G x) as [T|] eqn:Hlk;
       [rewrite (lt_of_ty_G_InsTm G G' (InsTmAt_to_InsTm c G G' HIns) T)|];
       rewrite IH; reflexivity.
+Qed.
+
+Lemma capture_lt_InsTy : forall c G G', InsTy c G G' ->
+  forall body, capture_lt G' (shift_ty_in_tm 1 c body) = capture_lt G body.
+Proof.
+  intros c G G' HIns body. unfold capture_lt.
+  rewrite free_tm_vars_shift_ty_in_tm.
+  induction (free_tm_vars 1 body) as [|x xs IH]; simpl.
+  - reflexivity.
+  - rewrite (InsTy_lookup_tm c G G' HIns x).
+    destruct (ctx_lookup_tm G x) as [T|] eqn:Hlk; simpl.
+    + rewrite (lt_of_ty_G_InsTy c G G' HIns T). rewrite IH. reflexivity.
+    + rewrite IH. reflexivity.
+Qed.
+
+Lemma capture_lt_InsLt : forall c G G', InsLt c G G' ->
+  forall body, capture_lt G' (shift_lt_in_tm 1 c body) = shift_lt 1 c (capture_lt G body).
+Proof.
+  intros c G G' HIns body. unfold capture_lt.
+  rewrite free_tm_vars_shift_lt_in_tm.
+  induction (free_tm_vars 1 body) as [|x xs IH]; simpl.
+  - reflexivity.
+  - rewrite (InsLt_lookup_tm c G G' HIns x).
+    destruct (ctx_lookup_tm G x) as [T|] eqn:Hlk; simpl.
+    + rewrite (lt_of_ty_G_InsLt c G G' HIns T). rewrite IH. reflexivity.
+    + rewrite IH. reflexivity.
 Qed.
 
 Lemma typing_ind_forall2 :
