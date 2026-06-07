@@ -1321,12 +1321,46 @@ Section TypeInd.
     end.
 End TypeInd.
 
+Fixpoint elim_ty_list (lvar : nat) (bound : lifetime) (p : variance) (Ts : list type)
+    : option (list type) :=
+  match Ts with
+  | [] => Some []
+  | A :: rest =>
+      match elim_ty lvar bound p A, elim_ty_list lvar bound p rest with
+      | Some A', Some rest' => Some (A' :: rest')
+      | _, _ => None
+      end
+  end.
+
+Lemma elim_ty_list_eq_worker : forall lvar bound p Ts,
+  (fix go_list (p' : variance) (Ts0 : list type) {struct Ts0} : option (list type) :=
+     match Ts0 with
+     | [] => Some []
+     | A :: rest =>
+         match elim_ty lvar bound p' A, go_list p' rest with
+         | Some A', Some rest' => Some (A' :: rest')
+         | _, _ => None
+         end
+     end) p Ts = elim_ty_list lvar bound p Ts.
+Proof.
+  intros lvar bound p Ts. induction Ts as [|A rest IH]; simpl.
+  - reflexivity.
+  - destruct (elim_ty lvar bound p A); simpl; [rewrite IH |]; reflexivity.
+Qed.
+
+Lemma elim_ty_ctor_eq : forall lvar bound p K l Ts,
+  elim_ty lvar bound p (type_ctor K l Ts)
+  = match elim_lt lvar bound p l, elim_ty_list lvar bound var_inv Ts with
+    | Some l', Some Ts' => Some (type_ctor K l' Ts')
+    | _, _ => None
+    end.
+Proof.
+  intros lvar bound p K l Ts. simpl.
+  rewrite elim_ty_list_eq_worker. reflexivity.
+Qed.
+
 (* --- Single-step elim soundness for types --- *)
-(* Honest axiom (1B): the `type_ty_all` case of the prior proof crossed  *)
-(* a `bind_ty` binder via the unsound no-shift `sub_weaken_ty`.  The      *)
-(* statement is the expected single-step soundness of lifetime           *)
-(* elimination and is trusted pending the shifting metatheory (1A).      *)
-Axiom elim_ty_step_sound : forall T lvar bound p T',
+Lemma elim_ty_step_sound : forall T lvar bound p T',
   elim_ty lvar bound p T = Some T' ->
   forall Γ l_0,
     Γ ⊢ₗ l_0 <: subst_lt lvar lt_free bound ->
@@ -1335,6 +1369,110 @@ Axiom elim_ty_step_sound : forall T lvar bound p T',
     | var_neg => Γ ⊢ subst_lt_in_ty lvar lt_free T' <:: subst_lt_in_ty lvar l_0 T
     | var_inv => subst_lt_in_ty lvar lt_free T' = subst_lt_in_ty lvar l_0 T
     end.
+Proof.
+  apply (type_ind'
+    (fun T => forall lvar bound p T',
+      elim_ty lvar bound p T = Some T' ->
+      forall Γ l_0,
+        Γ ⊢ₗ l_0 <: subst_lt lvar lt_free bound ->
+        match p with
+        | var_pos => Γ ⊢ subst_lt_in_ty lvar l_0 T <:: subst_lt_in_ty lvar lt_free T'
+        | var_neg => Γ ⊢ subst_lt_in_ty lvar lt_free T' <:: subst_lt_in_ty lvar l_0 T
+        | var_inv => subst_lt_in_ty lvar lt_free T' = subst_lt_in_ty lvar l_0 T
+        end)); intros.
+  - simpl in H. injection H; intros; subst T'. destruct p; simpl; try apply SA_Refl; reflexivity.
+  - simpl in H1.
+    destruct (elim_ty lvar bound (flip_var p) A) as [A'|] eqn:HA; try discriminate.
+    destruct (elim_lt lvar bound p l) as [l'|] eqn:Hl; try discriminate.
+    destruct (elim_ty lvar bound p B) as [B'|] eqn:HB; try discriminate.
+    injection H1; intros; subst T'.
+    match goal with
+    | Hsub0 : Γ ⊢ₗ l_0 <: subst_lt lvar lt_free bound |- _ => pose proof Hsub0 as Hsub
+    end.
+    destruct p; simpl.
+    + apply SA_Fun.
+      * exact (H lvar bound var_neg A' HA Γ l_0 Hsub).
+      * pose proof (elim_lt_step_sound l lvar bound var_pos l' Hl Γ l_0 Hsub) as Hlt.
+        simpl in Hlt. exact Hlt.
+      * exact (H0 lvar bound var_pos B' HB Γ l_0 Hsub).
+    + apply SA_Fun.
+      * exact (H lvar bound var_pos A' HA Γ l_0 Hsub).
+      * pose proof (elim_lt_step_sound l lvar bound var_neg l' Hl Γ l_0 Hsub) as Hlt.
+        simpl in Hlt. exact Hlt.
+      * exact (H0 lvar bound var_neg B' HB Γ l_0 Hsub).
+    + f_equal.
+      * exact (H lvar bound var_inv A' HA Γ l_0 Hsub).
+      * pose proof (elim_lt_step_sound l lvar bound var_inv l' Hl Γ l_0 Hsub) as Hlt.
+        simpl in Hlt. exact Hlt.
+      * exact (H0 lvar bound var_inv B' HB Γ l_0 Hsub).
+  - rewrite elim_ty_ctor_eq in H0.
+    destruct (elim_lt lvar bound p l) as [l'|] eqn:Hl; try discriminate.
+    destruct (elim_ty_list lvar bound var_inv Ts) as [Ts'|] eqn:HTs; try discriminate.
+    injection H0; intros; subst T'.
+    match goal with
+    | Hsub0 : Γ ⊢ₗ l_0 <: subst_lt lvar lt_free bound |- _ => pose proof Hsub0 as Hsub
+    end.
+    assert (Hlist : List.map (subst_lt_in_ty lvar lt_free) Ts' =
+                    List.map (subst_lt_in_ty lvar l_0) Ts).
+    { clear Hl l' p H0.
+      revert Ts' HTs.
+      induction H as [|A rest HPA HForall IHForall]; intros Ts' HTs; simpl in HTs.
+      - injection HTs; intros; subst Ts'. reflexivity.
+      - destruct (elim_ty lvar bound var_inv A) as [A'|] eqn:HAelim; try discriminate.
+        destruct (elim_ty_list lvar bound var_inv rest) as [rest'|] eqn:HRest; try discriminate.
+        injection HTs; intros; subst Ts'. simpl. f_equal.
+        + exact (HPA lvar bound var_inv A' HAelim Γ l_0 Hsub).
+        + apply IHForall. reflexivity.
+    }
+    destruct p; rewrite !subst_lt_in_ty_ctor_eq; simpl.
+    + rewrite Hlist. apply SA_Data.
+      pose proof (elim_lt_step_sound l lvar bound var_pos l' Hl Γ l_0 Hsub) as Hlt.
+      simpl in Hlt. exact Hlt.
+    + rewrite Hlist. apply SA_Data.
+      pose proof (elim_lt_step_sound l lvar bound var_neg l' Hl Γ l_0 Hsub) as Hlt.
+      simpl in Hlt. exact Hlt.
+    + pose proof (elim_lt_step_sound l lvar bound var_inv l' Hl Γ l_0 Hsub) as Hlt.
+      simpl in Hlt. f_equal; assumption.
+  - simpl in H0.
+    destruct (elim_ty (S lvar) (shift_lt 1 0 bound) p A) as [A'|] eqn:HA; try discriminate.
+    injection H0; intros; subst T'.
+    match goal with
+    | Hsub0 : Γ ⊢ₗ l_0 <: subst_lt lvar lt_free bound |- _ => pose proof Hsub0 as Hsub
+    end.
+    assert (Hsub' : (bind_lt lt_local :: Γ) ⊢ₗ shift_lt 1 0 l_0
+                    <: subst_lt (S lvar) lt_free (shift_lt 1 0 bound)).
+    { rewrite <- shift_subst_lt_comm.
+      apply (lt_sub_InsLt Γ l_0 (subst_lt lvar lt_free bound) Hsub
+               0 (bind_lt lt_local :: Γ) (InsLt_here _ _)). }
+    destruct p; simpl.
+    + apply SA_LtAll. exact (H (S lvar) (shift_lt 1 0 bound) var_pos A' HA
+                              (bind_lt lt_local :: Γ) (shift_lt 1 0 l_0) Hsub').
+    + apply SA_LtAll. exact (H (S lvar) (shift_lt 1 0 bound) var_neg A' HA
+                              (bind_lt lt_local :: Γ) (shift_lt 1 0 l_0) Hsub').
+    + f_equal. exact (H (S lvar) (shift_lt 1 0 bound) var_inv A' HA
+                        (bind_lt lt_local :: Γ) (shift_lt 1 0 l_0) Hsub').
+  - simpl in H1.
+    destruct (elim_ty lvar bound (flip_var p) B) as [B'|] eqn:HB; try discriminate.
+    destruct (elim_ty lvar bound p A) as [A'|] eqn:HA; try discriminate.
+    injection H1; intros; subst T'.
+    match goal with
+    | Hsub0 : Γ ⊢ₗ l_0 <: subst_lt lvar lt_free bound |- _ => pose proof Hsub0 as Hsub
+    end.
+    destruct p; simpl.
+    + apply SA_TyAll.
+      * exact (H lvar bound var_neg B' HB Γ l_0 Hsub).
+      * apply (H0 lvar bound var_pos A' HA (bind_ty (subst_lt_in_ty lvar lt_free B') :: Γ) l_0).
+        apply (lt_sub_InsTy Γ l_0 (subst_lt lvar lt_free bound) Hsub
+                 0 (bind_ty (subst_lt_in_ty lvar lt_free B') :: Γ) (InsTy_here _ _)).
+    + apply SA_TyAll.
+      * exact (H lvar bound var_pos B' HB Γ l_0 Hsub).
+      * apply (H0 lvar bound var_neg A' HA (bind_ty (subst_lt_in_ty lvar l_0 B) :: Γ) l_0).
+        apply (lt_sub_InsTy Γ l_0 (subst_lt lvar lt_free bound) Hsub
+                 0 (bind_ty (subst_lt_in_ty lvar l_0 B) :: Γ) (InsTy_here _ _)).
+    + f_equal.
+      * exact (H lvar bound var_inv B' HB Γ l_0 Hsub).
+      * exact (H0 lvar bound var_inv A' HA Γ l_0 Hsub).
+Qed.
 
 (* --- Iterated elim soundness --- *)
 
