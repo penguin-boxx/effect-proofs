@@ -527,8 +527,8 @@ Lemma typing_ind2 :
   (forall Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β,
      ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
      List.length Ts = n_α ->
-     sig_β = inst_ty_vars n_α Ts sig ->
-     ret_β = inst_ty_vars n_α Ts ret ->
+      sig_β = inst_op_alpha n_α Ts n_β sig ->
+      ret_β = inst_op_alpha n_α Ts n_β ret ->
      (bind_tm sig_β
         :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
         :: push_ty_vars n_β any_at_free Γ) ⊢ₜ op_body : shift_ty n_β 0 T_R ->
@@ -539,8 +539,8 @@ Lemma typing_ind2 :
   (forall Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β,
      ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
      List.length Ts = n_α ->
-     sig_β = inst_ty_vars n_α Ts sig ->
-     ret_β = inst_ty_vars n_α Ts ret ->
+      sig_β = inst_op_alpha n_α Ts n_β sig ->
+      ret_β = inst_op_alpha n_α Ts n_β ret ->
      (bind_tm sig_β
         :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
         :: push_ty_vars n_β any_at_free Γ) ⊢ₜ op_body : shift_ty n_β 0 T_R ->
@@ -1518,51 +1518,367 @@ Proof.
       * exact (H0 lvar bound var_inv A' HA Γ l_0 Hsub).
 Qed.
 
+(* ================================================================== *)
+(* Sound iterated-elim soundness (binder-removal reformulation).      *)
+(*                                                                    *)
+(* The old `elim_ty_n_sound` relied on `iter_subst_lt_in_ty_mono`,    *)
+(* which is FALSE (lifetime-variable substitution is not monotone in  *)
+(* the subtyping order under LS_Var).  We replace it with an          *)
+(* over-approximate-in-context + peel construction that never needs   *)
+(* monotonicity:                                                      *)
+(*   1. `elim_in_ctx_sound`: over-approximate eta entirely in a       *)
+(*      context with n fresh lt-binders (no witnesses), giving        *)
+(*      eta <:: shift_lt_in_ty n 0 elim_result.                       *)
+(*   2. `sub_peel_push_corr`: peel all n binders at once via SubstLt, *)
+(*      sound because the context shrinks together with the shift.    *)
+(* ================================================================== *)
+
+(* Over-approximation context: n fresh lt-binders, each storing the   *)
+(* bound shifted to live at its level (uniform lookup = shift_lt n).  *)
+Fixpoint push_corr (n : nat) (Delta : lifetime) (G : ctx) : ctx :=
+  match n with
+  | O    => G
+  | S n' => bind_lt (shift_lt n' 0 Delta) :: push_corr n' Delta G
+  end.
+
+Lemma push_corr_lookup0 : forall n' Delta G,
+  ctx_lookup_lt (push_corr (S n') Delta G) 0 = Some (shift_lt (S n') 0 Delta).
+Proof.
+  intros n' Delta G. simpl. f_equal.
+  rewrite shift_lt_fuse. reflexivity.
+Qed.
+
+(* --- In-context single-step elim soundness (no substitution) ------ *)
+(* Mirrors elim_lt_step_sound/elim_ty_step_sound but keeps the        *)
+(* eliminated variable in the context and discharges via LS_Var.      *)
+Lemma elim_lt_step_ctx : forall l lvar bound p l' G,
+  elim_lt lvar bound p l = Some l' ->
+  ctx_lookup_lt G lvar = Some bound ->
+  match p with
+  | var_pos => G ⊢ₗ l <: l'
+  | var_neg => G ⊢ₗ l' <: l
+  | var_inv => l = l'
+  end.
+Proof.
+  induction l as [n | | | l1 IHl1 l2 IHl2]; intros lvar bound p l' G Helim Hlk; simpl in Helim.
+  - (* lt_var n *)
+    destruct (Nat.eqb n lvar) eqn:Heq.
+    + apply Nat.eqb_eq in Heq; subst n.
+      destruct p; try discriminate Helim.
+      * injection Helim; intros; subst l'. apply LS_Var. exact Hlk.
+      * injection Helim; intros; subst l'. apply LS_Free.
+    + injection Helim; intros; subst l'.
+      destruct p; simpl; try apply LS_Refl. reflexivity.
+  - injection Helim; intros; subst l'. destruct p; simpl; try apply LS_Refl. reflexivity.
+  - injection Helim; intros; subst l'. destruct p; simpl; try apply LS_Refl. reflexivity.
+  - destruct (elim_lt lvar bound p l1) as [l1'|] eqn:E1; try discriminate.
+    destruct (elim_lt lvar bound p l2) as [l2'|] eqn:E2; try discriminate.
+    injection Helim; intros; subst l'.
+    specialize (IHl1 _ _ _ _ _ E1 Hlk).
+    specialize (IHl2 _ _ _ _ _ E2 Hlk).
+    destruct p; simpl.
+    + apply LS_MinL; [apply LS_MinR1 | apply LS_MinR2]; assumption.
+    + apply LS_MinL; [apply LS_MinR1 | apply LS_MinR2]; assumption.
+    + f_equal; assumption.
+Qed.
+
+Lemma elim_ty_step_ctx : forall T lvar bound p T' G,
+  elim_ty lvar bound p T = Some T' ->
+  ctx_lookup_lt G lvar = Some bound ->
+  match p with
+  | var_pos => G ⊢ T <:: T'
+  | var_neg => G ⊢ T' <:: T
+  | var_inv => T = T'
+  end.
+Proof.
+  apply (type_ind'
+    (fun T => forall lvar bound p T' G,
+      elim_ty lvar bound p T = Some T' ->
+      ctx_lookup_lt G lvar = Some bound ->
+      match p with
+      | var_pos => G ⊢ T <:: T'
+      | var_neg => G ⊢ T' <:: T
+      | var_inv => T = T'
+      end)).
+  - (* type_var *)
+    intros n lvar bound p T' G Helim Hlk. simpl in Helim.
+    injection Helim; intros; subst T'. destruct p; simpl; try apply SA_Refl. reflexivity.
+  - (* type_fun A l B *)
+    intros A l B IHA IHB lvar bound p T' G Helim Hlk. simpl in Helim.
+    destruct (elim_ty lvar bound (flip_var p) A) as [A'|] eqn:HA; try discriminate.
+    destruct (elim_lt lvar bound p l) as [l'|] eqn:Hl; try discriminate.
+    destruct (elim_ty lvar bound p B) as [B'|] eqn:HB; try discriminate.
+    injection Helim; intros; subst T'.
+    destruct p; simpl.
+    + apply SA_Fun.
+      * exact (IHA lvar bound var_neg A' G HA Hlk).
+      * exact (elim_lt_step_ctx l lvar bound var_pos l' G Hl Hlk).
+      * exact (IHB lvar bound var_pos B' G HB Hlk).
+    + apply SA_Fun.
+      * exact (IHA lvar bound var_pos A' G HA Hlk).
+      * exact (elim_lt_step_ctx l lvar bound var_neg l' G Hl Hlk).
+      * exact (IHB lvar bound var_neg B' G HB Hlk).
+    + f_equal.
+      * exact (IHA lvar bound var_inv A' G HA Hlk).
+      * exact (elim_lt_step_ctx l lvar bound var_inv l' G Hl Hlk).
+      * exact (IHB lvar bound var_inv B' G HB Hlk).
+  - (* type_ctor K l Ts *)
+    intros K l Ts IHTs lvar bound p T' G Helim Hlk.
+    rewrite elim_ty_ctor_eq in Helim.
+    destruct (elim_lt lvar bound p l) as [l'|] eqn:Hl; try discriminate.
+    destruct (elim_ty_list lvar bound var_inv Ts) as [Ts'|] eqn:HTs; try discriminate.
+    injection Helim; intros; subst T'.
+    assert (Hlist : Ts' = Ts).
+    { clear Helim Hl. revert Ts' HTs.
+      induction IHTs as [|A rest HPA HFor IHFor]; intros Ts' HTs; simpl in HTs.
+      - injection HTs; intros; subst Ts'. reflexivity.
+      - destruct (elim_ty lvar bound var_inv A) as [A'|] eqn:HAe; try discriminate.
+        destruct (elim_ty_list lvar bound var_inv rest) as [rest'|] eqn:HRe; try discriminate.
+        injection HTs; intros; subst Ts'. f_equal.
+        + symmetry. exact (HPA lvar bound var_inv A' G HAe Hlk).
+        + apply IHFor; reflexivity. }
+    subst Ts'.
+    destruct p; simpl.
+    + apply SA_Data. exact (elim_lt_step_ctx l lvar bound var_pos l' G Hl Hlk).
+    + apply SA_Data. exact (elim_lt_step_ctx l lvar bound var_neg l' G Hl Hlk).
+    + f_equal. exact (elim_lt_step_ctx l lvar bound var_inv l' G Hl Hlk).
+  - (* type_lt_all A *)
+    intros A IHA lvar bound p T' G Helim Hlk. simpl in Helim.
+    destruct (elim_ty (S lvar) (shift_lt 1 0 bound) p A) as [A'|] eqn:HA; try discriminate.
+    injection Helim; intros; subst T'.
+    assert (Hlk' : ctx_lookup_lt (bind_lt lt_local :: G) (S lvar) = Some (shift_lt 1 0 bound)).
+    { simpl. rewrite Hlk. reflexivity. }
+    destruct p; simpl.
+    + apply SA_LtAll. exact (IHA (S lvar) (shift_lt 1 0 bound) var_pos A' (bind_lt lt_local :: G) HA Hlk').
+    + apply SA_LtAll. exact (IHA (S lvar) (shift_lt 1 0 bound) var_neg A' (bind_lt lt_local :: G) HA Hlk').
+    + f_equal. exact (IHA (S lvar) (shift_lt 1 0 bound) var_inv A' (bind_lt lt_local :: G) HA Hlk').
+  - (* type_ty_all B A *)
+    intros B A IHB IHA lvar bound p T' G Helim Hlk. simpl in Helim.
+    destruct (elim_ty lvar bound (flip_var p) B) as [B'|] eqn:HB; try discriminate.
+    destruct (elim_ty lvar bound p A) as [A'|] eqn:HA; try discriminate.
+    injection Helim; intros; subst T'.
+    assert (HlkB : forall Bb, ctx_lookup_lt (bind_ty Bb :: G) lvar = Some bound).
+    { intro Bb. simpl. exact Hlk. }
+    destruct p; simpl.
+    + apply SA_TyAll.
+      * exact (IHB lvar bound var_neg B' G HB Hlk).
+      * exact (IHA lvar bound var_pos A' (bind_ty B' :: G) HA (HlkB B')).
+    + apply SA_TyAll.
+      * exact (IHB lvar bound var_pos B' G HB Hlk).
+      * exact (IHA lvar bound var_neg A' (bind_ty B :: G) HA (HlkB B)).
+    + f_equal.
+      * exact (IHB lvar bound var_inv B' G HB Hlk).
+      * exact (IHA lvar bound var_inv A' G HA Hlk).
+Qed.
+
+(* --- Freshness: elim output has no free occurrence of the          *)
+(*     eliminated variable.  Encoded via the self-referential         *)
+(*     identity shift_lt 1 v (subst_lt v lt_free X) = X.              *)
+Lemma elim_lt_closes : forall l lvar bound p l',
+  elim_lt lvar bound p l = Some l' ->
+  shift_lt 1 lvar (subst_lt lvar lt_free bound) = bound ->
+  shift_lt 1 lvar (subst_lt lvar lt_free l') = l'.
+Proof.
+  induction l as [n | | | l1 IH1 l2 IH2]; intros lvar bound p l' Helim Hb; simpl in Helim.
+  - destruct (Nat.eqb n lvar) eqn:Heq.
+    + apply Nat.eqb_eq in Heq; subst n.
+      destruct p; try discriminate Helim.
+      * injection Helim; intros; subst l'. exact Hb.
+      * injection Helim; intros; subst l'. reflexivity.
+    + injection Helim; intros; subst l'. simpl. rewrite Heq.
+      destruct (Nat.ltb lvar n) eqn:Hlt.
+      * simpl. apply Nat.ltb_lt in Hlt.
+        assert (Nat.leb lvar (Nat.pred n) = true) as Hle by (apply Nat.leb_le; lia).
+        rewrite Hle. f_equal. lia.
+      * simpl. apply Nat.ltb_ge in Hlt. apply Nat.eqb_neq in Heq.
+        assert (Nat.leb lvar n = false) as Hle by (apply Nat.leb_gt; lia).
+        rewrite Hle. reflexivity.
+  - injection Helim; intros; subst l'. reflexivity.
+  - injection Helim; intros; subst l'. reflexivity.
+  - destruct (elim_lt lvar bound p l1) as [l1'|] eqn:E1; try discriminate.
+    destruct (elim_lt lvar bound p l2) as [l2'|] eqn:E2; try discriminate.
+    injection Helim; intros; subst l'. simpl. f_equal.
+    + exact (IH1 lvar bound p l1' E1 Hb).
+    + exact (IH2 lvar bound p l2' E2 Hb).
+Qed.
+
+Lemma elim_ty_closes : forall T lvar bound p T',
+  elim_ty lvar bound p T = Some T' ->
+  shift_lt 1 lvar (subst_lt lvar lt_free bound) = bound ->
+  shift_lt_in_ty 1 lvar (subst_lt_in_ty lvar lt_free T') = T'.
+Proof.
+  apply (type_ind'
+    (fun T => forall lvar bound p T',
+      elim_ty lvar bound p T = Some T' ->
+      shift_lt 1 lvar (subst_lt lvar lt_free bound) = bound ->
+      shift_lt_in_ty 1 lvar (subst_lt_in_ty lvar lt_free T') = T')).
+  - (* type_var *)
+    intros n lvar bound p T' Helim Hb. simpl in Helim.
+    injection Helim; intros; subst T'. reflexivity.
+  - (* type_fun *)
+    intros A l B IHA IHB lvar bound p T' Helim Hb. simpl in Helim.
+    destruct (elim_ty lvar bound (flip_var p) A) as [A'|] eqn:HA; try discriminate.
+    destruct (elim_lt lvar bound p l) as [l'|] eqn:Hl; try discriminate.
+    destruct (elim_ty lvar bound p B) as [B'|] eqn:HB; try discriminate.
+    injection Helim; intros; subst T'.
+    rewrite subst_lt_in_ty_fun_eq, shift_lt_in_ty_fun_eq. f_equal.
+    + exact (IHA lvar bound (flip_var p) A' HA Hb).
+    + exact (elim_lt_closes l lvar bound p l' Hl Hb).
+    + exact (IHB lvar bound p B' HB Hb).
+  - (* type_ctor *)
+    intros K l Ts IHTs lvar bound p T' Helim Hb.
+    rewrite elim_ty_ctor_eq in Helim.
+    destruct (elim_lt lvar bound p l) as [l'|] eqn:Hl; try discriminate.
+    destruct (elim_ty_list lvar bound var_inv Ts) as [Ts'|] eqn:HTs; try discriminate.
+    injection Helim; intros; subst T'.
+    rewrite subst_lt_in_ty_ctor_eq, shift_lt_in_ty_ctor_eq. f_equal.
+    + exact (elim_lt_closes l lvar bound p l' Hl Hb).
+    + clear Helim Hl. rewrite List.map_map. revert Ts' HTs.
+      induction IHTs as [|A rest HPA HFor IHFor]; intros Ts' HTs; simpl in HTs.
+      * injection HTs; intros; subst Ts'. reflexivity.
+      * destruct (elim_ty lvar bound var_inv A) as [A'|] eqn:HAe; try discriminate.
+        destruct (elim_ty_list lvar bound var_inv rest) as [rest'|] eqn:HRe; try discriminate.
+        injection HTs; intros; subst Ts'. simpl. f_equal.
+        -- exact (HPA lvar bound var_inv A' HAe Hb).
+        -- apply IHFor; reflexivity.
+  - (* type_lt_all *)
+    intros A IHA lvar bound p T' Helim Hb. simpl in Helim.
+    destruct (elim_ty (S lvar) (shift_lt 1 0 bound) p A) as [A'|] eqn:HA; try discriminate.
+    injection Helim; intros; subst T'.
+    rewrite subst_lt_in_ty_ltall_eq, shift_lt_in_ty_ltall_eq. f_equal.
+    apply (IHA (S lvar) (shift_lt 1 0 bound) p A' HA).
+    rewrite <- shift_subst_lt_comm. rewrite <- shift_lt_swap_0. rewrite Hb. reflexivity.
+  - (* type_ty_all *)
+    intros B A IHB IHA lvar bound p T' Helim Hb. simpl in Helim.
+    destruct (elim_ty lvar bound (flip_var p) B) as [B'|] eqn:HB; try discriminate.
+    destruct (elim_ty lvar bound p A) as [A'|] eqn:HA; try discriminate.
+    injection Helim; intros; subst T'.
+    rewrite subst_lt_in_ty_tyall_eq, shift_lt_in_ty_tyall_eq. f_equal.
+    + exact (IHB lvar bound (flip_var p) B' HB Hb).
+    + exact (IHA lvar bound p A' HA Hb).
+Qed.
+
 (* --- Iterated elim soundness --- *)
 
 (* iter_subst_lt_in_ty, chain_bounded and iter_subst_lt_in_ty_mono are *)
 (* now in SubstitutionTheory.v.                                        *)
 
-(* Iterated elim soundness.  Proven by induction on the witness list.   *)
-Lemma elim_ty_n_sound : forall ws n bound p T T' Γ,
-  elim_ty_n n bound p T = Some T' ->
-  List.length ws = n ->
-  chain_bounded Γ ws bound ->
-  match p with
-  | var_pos => Γ ⊢ iter_subst_lt_in_ty ws T <:: T'
-  | var_neg => Γ ⊢ T' <:: iter_subst_lt_in_ty ws T
-  | var_inv => T' = iter_subst_lt_in_ty ws T
-  end.
+(* ================================================================== *)
+(* Piece 5: over-approximate-in-context soundness.                    *)
+(* Eliminating n positive binders, then over-approximating the        *)
+(* eliminated variables by a context of n fresh lt-binders, yields    *)
+(*   push_corr n Delta G ⊢ eta <:: shift_lt_in_ty n 0 elim_result.    *)
+(* No witnesses (and hence no monotonicity) are required.             *)
+(* ================================================================== *)
+Lemma elim_in_ctx_sound : forall n Delta eta elim_result G,
+  elim_ty_n n (shift_lt n 0 Delta) var_pos eta = Some elim_result ->
+  push_corr n Delta G ⊢ eta <:: shift_lt_in_ty n 0 elim_result.
 Proof.
-  induction ws as [|w rest IH]; intros n bound p T T' Γ Helim Hlen Hchain.
-  - (* ws = [], so n = 0, elim_ty_n 0 ... = Some T *)
-    destruct n; simpl in Hlen; try discriminate.
-    simpl in Helim. injection Helim; intros; subst T'.
-    simpl. destruct p; try apply SA_Refl. reflexivity.
-  - (* ws = w :: rest, n = S n' *)
-    destruct n as [|n']; simpl in Hlen; try discriminate.
-    injection Hlen; intros Hlen'.
-    simpl in Hchain. destruct Hchain as [Hwb Hchain'].
+  induction n as [|n' IH]; intros Delta eta elim_result G Helim.
+  - (* n = 0 *)
+    simpl in Helim. injection Helim; intros He; subst elim_result.
+    simpl. rewrite shift_lt_in_ty_zero. apply SA_Refl.
+  - (* n = S n' *)
     simpl in Helim.
-    destruct (elim_ty 0 bound p T) as [T1|] eqn:Eet; try discriminate.
-    pose proof (elim_ty_step_sound _ _ _ _ _ Eet Γ _ Hwb) as Hstep.
+    destruct (elim_ty 0 (shift_lt (S n') 0 Delta) var_pos eta) as [T1|] eqn:ET1;
+      try discriminate.
+    assert (Hb : subst_lt 0 lt_free (shift_lt (S n') 0 Delta) = shift_lt n' 0 Delta).
+    { replace (shift_lt (S n') 0 Delta) with (shift_lt 1 0 (shift_lt n' 0 Delta))
+        by (rewrite shift_lt_fuse; reflexivity).
+      rewrite subst_lt_shift_cancel. reflexivity. }
+    rewrite Hb in Helim.
+    specialize (IH Delta (subst_lt_in_ty 0 lt_free T1) elim_result G Helim).
+    pose proof (elim_ty_step_ctx eta 0 (shift_lt (S n') 0 Delta) var_pos T1
+                  (push_corr (S n') Delta G) ET1 (push_corr_lookup0 n' Delta G)) as Hstep.
     simpl in Hstep.
-    specialize (IH n' (subst_lt 0 lt_free bound) p
-                    (subst_lt_in_ty 0 lt_free T1) T' Γ Helim Hlen' Hchain').
-    simpl. destruct p.
-    + (* var_pos *)
-      eapply SA_Trans.
-        * eapply (iter_subst_lt_in_ty_mono rest Γ (subst_lt 0 lt_free bound));
-          [exact Hchain' | exact Hstep].
-      * exact IH.
-    + (* var_neg *)
-      eapply SA_Trans.
-      * exact IH.
-        * eapply (iter_subst_lt_in_ty_mono rest Γ (subst_lt 0 lt_free bound));
-          [exact Hchain' | exact Hstep].
-    + (* var_inv *)
-      rewrite IH. rewrite Hstep. reflexivity.
+    pose proof (sub_weaken_lt_shift (push_corr n' Delta G) (shift_lt n' 0 Delta)
+                  (subst_lt_in_ty 0 lt_free T1) (shift_lt_in_ty n' 0 elim_result) IH) as Hweak.
+    assert (Hfresh : shift_lt_in_ty 1 0 (subst_lt_in_ty 0 lt_free T1) = T1).
+    { apply (elim_ty_closes eta 0 (shift_lt (S n') 0 Delta) var_pos T1 ET1).
+      rewrite Hb. rewrite shift_lt_fuse. reflexivity. }
+    rewrite Hfresh in Hweak.
+    rewrite shift_lt_in_ty_fuse in Hweak.
+    eapply SA_Trans; [exact Hstep | exact Hweak].
 Qed.
+
+(* ================================================================== *)
+(* Piece 6: peel all n over-approximation binders at once.            *)
+(* ================================================================== *)
+
+(* 6a: weakening lifetime subtyping through the push_corr context.    *)
+Lemma lt_sub_push_corr_weaken : forall n Delta Γ l1 l2,
+  Γ ⊢ₗ l1 <: l2 ->
+  push_corr n Delta Γ ⊢ₗ shift_lt n 0 l1 <: shift_lt n 0 l2.
+Proof.
+  induction n as [|n' IH]; intros Delta Γ l1 l2 Hsub.
+  - cbn [push_corr]. rewrite !shift_lt_zero. exact Hsub.
+  - cbn [push_corr].
+    specialize (IH Delta Γ l1 l2 Hsub).
+    pose proof (lt_sub_InsLt (push_corr n' Delta Γ) (shift_lt n' 0 l1) (shift_lt n' 0 l2) IH
+                  0 (bind_lt (shift_lt n' 0 Delta) :: push_corr n' Delta Γ)
+                  (InsLt_here (shift_lt n' 0 Delta) (push_corr n' Delta Γ))) as Hins.
+    rewrite !shift_lt_fuse in Hins.
+    exact Hins.
+Qed.
+
+(* 6b: peel all binders via SubstLt, sound because the context        *)
+(*     shrinks together with each substitution.                       *)
+Lemma sub_peel_push_corr : forall lts Delta A B Γ,
+  Forall (fun l => Γ ⊢ₗ l <: Delta) lts ->
+  push_corr (List.length lts) Delta Γ ⊢ A <:: B ->
+  Γ ⊢ subst_list_lt_in_ty lts A <:: subst_list_lt_in_ty lts B.
+Proof.
+  induction lts as [|l0 rest IH]; intros Delta A B Γ Hfor Hsub.
+  - cbn [subst_list_lt_in_ty]. cbn [List.length push_corr] in Hsub. exact Hsub.
+  - pose proof (Forall_inv Hfor) as Hhead.
+    pose proof (Forall_inv_tail Hfor) as Htail.
+    cbn [List.length push_corr] in Hsub.
+    cbn [subst_list_lt_in_ty].
+    apply (IH Delta (subst_lt_in_ty 0 (shift_lt (List.length rest) 0 l0) A)
+                    (subst_lt_in_ty 0 (shift_lt (List.length rest) 0 l0) B) Γ Htail).
+    eapply sub_SubstLt.
+    2: { apply SubstLt_here.
+         exact (lt_sub_push_corr_weaken (List.length rest) Delta Γ l0 Delta Hhead). }
+    exact Hsub.
+Qed.
+
+(* 6c: the over-approximation target shift-cancels under the peel.    *)
+Lemma subst_list_lt_in_ty_shift_cancel : forall lts X,
+  subst_list_lt_in_ty lts (shift_lt_in_ty (List.length lts) 0 X) = X.
+Proof.
+  induction lts as [|l0 rest IH]; intro X.
+  - cbn [List.length subst_list_lt_in_ty]. rewrite shift_lt_in_ty_zero. reflexivity.
+  - cbn [List.length subst_list_lt_in_ty].
+    replace (shift_lt_in_ty (S (List.length rest)) 0 X)
+      with (shift_lt_in_ty 1 0 (shift_lt_in_ty (List.length rest) 0 X))
+      by (rewrite shift_lt_in_ty_fuse; reflexivity).
+    rewrite subst_lt_in_ty_shift_cancel.
+    apply IH.
+Qed.
+
+(* ================================================================== *)
+(* Piece 7: sound positive iterated-elim soundness (assembly).        *)
+(* Replaces the old `elim_ty_n_sound` (which depended on the FALSE    *)
+(* `iter_subst_lt_in_ty_mono`).                                       *)
+(* ================================================================== *)
+Lemma elim_ty_n_sound_pos : forall n Delta lts eta elim_result Γ,
+  elim_ty_n n (shift_lt n 0 Delta) var_pos eta = Some elim_result ->
+  List.length lts = n ->
+  Forall (fun l => Γ ⊢ₗ l <: Delta) lts ->
+  Γ ⊢ subst_list_lt_in_ty lts eta <:: elim_result.
+Proof.
+  intros n Delta lts eta elim_result Γ Helim Hlen Hfor.
+  subst n.
+  pose proof (elim_in_ctx_sound (List.length lts) Delta eta elim_result Γ Helim) as Hctx.
+  pose proof (sub_peel_push_corr lts Delta eta
+                (shift_lt_in_ty (List.length lts) 0 elim_result) Γ Hfor Hctx) as Hpeel.
+  rewrite subst_list_lt_in_ty_shift_cancel in Hpeel.
+  exact Hpeel.
+Qed.
+
+(* The old `elim_ty_n_sound` (induction on the witness list, depending  *)
+(* on the FALSE `iter_subst_lt_in_ty_mono`) has been removed and        *)
+(* replaced by the sound `elim_ty_n_sound_pos` above.                   *)
 
 (* The parallel-substitution preservation lemmas (subst_list_lt_in_ty_each, *)
 (* subst_list_lt_in_tm_lemma, subst_list_tm_lemma,                     *)
@@ -1689,7 +2005,7 @@ Proof.
               (lt_of_ty_list (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma)) Delta_m
               Hfields Hlts_len eq_refl
               (LS_Trans _ _ _ _ Hactual_lifetime HDelta_sub)) as
-    [Hcb [Hcb_shift Hbounded_fields]].
+    [Hcb [Hcb_shift [Hbounded_fields Hforall]]].
   assert (Hlt_body :
     (fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
        Γ (subst_list_lt_in_ty_each lts (List.map (inst_ctor_type n_lt n_ty (lt_var_list n_lt) Ts) sigma)))
@@ -1708,12 +2024,8 @@ Proof.
     - exact Hfields.
     - exact Hlt_body. }
   eapply T_Sub; [exact Htm_body|].
-  rewrite subst_list_lt_in_ty_eq_iter.
   eapply SA_Trans.
-  - apply (elim_ty_n_sound (shift_each_lt lts) n_lt (shift_lt n_lt 0 Delta_m)
-             var_pos eta elim_result Γ Helim).
-    + rewrite shift_each_lt_length. exact Hlts_len.
-    + exact Hcb_shift.
+  - exact (elim_ty_n_sound_pos n_lt Delta_m lts eta elim_result Γ Helim Hlts_len Hforall).
   - exact HsubT.
 Qed.
 

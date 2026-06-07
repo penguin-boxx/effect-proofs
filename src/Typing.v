@@ -33,8 +33,8 @@ Inductive binding : Type :=
   (* Effect declaration (single-op, single-argument):                  *)
   (*   effect E<n_α type-params> { op : ∀n_β betas. sig → ret }        *)
   (* sig is the (single) parameter type, ret is the return type;       *)
-  (* both live under (n_α + n_β) type-binders, with the n_β β-binders  *)
-  (* INNERMOST (i.e. β-vars are de Bruijn 0..n_β-1, α-vars are above). *)
+  (* both live under (n_α + n_β) type-binders, with α-vars innermost   *)
+  (* (indices 0..n_α-1) and β-vars above them.                         *)
   | bind_eff : eff_tag -> nat -> nat -> type -> type -> binding
   .
 
@@ -627,13 +627,20 @@ Fixpoint push_ty_vars (n : nat) (bound : type) (Γ : ctx) : ctx :=
 (* values, ensuring escape-analysis safety.                            *)
 Definition any_at_free : type := type_ctor any_tag lt_free [].
 
+(* Instantiate the α part of an op schema while β-vars remain bound.  *)
+(* α arguments must be lifted over the remaining β binders so ambient *)
+(* type variables in Ts cannot be captured by β instantiation later.  *)
+Definition inst_op_alpha (n_α : nat) (Ts : list type)
+                         (n_β : nat) (T : type) : type :=
+  inst_ty_vars n_α (List.map (shift_ty n_β 0) Ts) T.
+
 (* Instantiate an op schema: substitute α-vars first, then β-vars.    *)
 (* Convention: in the schema, α-vars are innermost (indices 0..n_α-1) *)
 (* and β-vars are outermost (indices n_α..n_α+n_β-1).                  *)
 Definition inst_op_arg (n_α : nat) (Ts : list type)
                        (n_β : nat) (Ss : list type)
                        (T : type) : type :=
-  inst_ty_vars n_β Ss (inst_ty_vars n_α Ts T).
+  inst_ty_vars n_β Ss (inst_op_alpha n_α Ts n_β T).
 
 (* [lt_var 0; lt_var 1; ...; lt_var (n-1)] — de Bruijn indices of the *)
 (* n freshly pushed lt-vars in the order matching `inst_lt_vars`:      *)
@@ -783,13 +790,13 @@ Inductive typing : ctx -> term -> type -> Prop :=
   (* term-binders (the operation argument and the resumption).         *)
   (* Convention in op-schema: α-vars are innermost (0..n_α-1) and      *)
   (* β-vars are outermost (n_α..n_α+n_β-1). After instantiating α      *)
-  (* with Ts at handle-time, the schema's β-vars become 0..n_β-1,      *)
-  (* matching the n_β type-binders of op_body.                         *)
+  (* with lifted Ts at handle-time, the schema's β-vars become         *)
+  (* 0..n_β-1, matching the n_β type-binders of op_body.               *)
   | T_Cap : forall Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β,
       ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
       List.length Ts = n_α ->
-      sig_β = inst_ty_vars n_α Ts sig ->
-      ret_β = inst_ty_vars n_α Ts ret ->
+      sig_β = inst_op_alpha n_α Ts n_β sig ->
+      ret_β = inst_op_alpha n_α Ts n_β ret ->
       (bind_tm sig_β
         :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
         :: push_ty_vars n_β any_at_free Γ)
@@ -809,8 +816,8 @@ Inductive typing : ctx -> term -> type -> Prop :=
   | T_Handle : forall Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β,
       ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
       List.length Ts = n_α ->
-      sig_β = inst_ty_vars n_α Ts sig ->
-      ret_β = inst_ty_vars n_α Ts ret ->
+      sig_β = inst_op_alpha n_α Ts n_β sig ->
+      ret_β = inst_op_alpha n_α Ts n_β ret ->
       (bind_tm sig_β
         :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
         :: push_ty_vars n_β any_at_free Γ)

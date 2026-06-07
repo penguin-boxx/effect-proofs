@@ -2287,8 +2287,8 @@ Lemma typing_ind_forall2 :
   (forall Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β,
      ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
      List.length Ts = n_α ->
-     sig_β = inst_ty_vars n_α Ts sig ->
-     ret_β = inst_ty_vars n_α Ts ret ->
+      sig_β = inst_op_alpha n_α Ts n_β sig ->
+      ret_β = inst_op_alpha n_α Ts n_β ret ->
      (bind_tm sig_β
         :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
         :: push_ty_vars n_β any_at_free Γ) ⊢ₜ op_body : shift_ty n_β 0 T_R ->
@@ -2299,8 +2299,8 @@ Lemma typing_ind_forall2 :
   (forall Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β,
      ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
      List.length Ts = n_α ->
-     sig_β = inst_ty_vars n_α Ts sig ->
-     ret_β = inst_ty_vars n_α Ts ret ->
+      sig_β = inst_op_alpha n_α Ts n_β sig ->
+      ret_β = inst_op_alpha n_α Ts n_β ret ->
      (bind_tm sig_β
         :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
         :: push_ty_vars n_β any_at_free Γ) ⊢ₜ op_body : shift_ty n_β 0 T_R ->
@@ -4053,17 +4053,13 @@ Fixpoint chain_bounded (Γ : ctx) (ws : list lifetime) (bound : lifetime) : Prop
       chain_bounded Γ rest (subst_lt 0 lt_free bound)
   end.
 
-(* Bounded witnesses preserve subtyping through the iterated           *)
-(* substitution sequence used by `elim_ty_n_sound`.                    *)
-Axiom iter_subst_lt_in_ty_mono : forall ws Γ bound T1 T2,
-  chain_bounded Γ ws bound ->
-  Γ ⊢ T1 <:: T2 ->
-  Γ ⊢ iter_subst_lt_in_ty ws T1 <:: iter_subst_lt_in_ty ws T2.
-
 (* From the typing of a ctor *value* `term_ctor K Delta lts Ts vs`     *)
 (* against type `type_ctor K Delta Ts`, the witnesses form both the    *)
 (* raw chain used by term substitution and the `shift_each_lt` chain   *)
-(* used by the corrected subst-list/iterated-subst bridge.             *)
+(* used by the corrected subst-list/iterated-subst bridge.  The final  *)
+(* `Forall` conjunct records the raw covariance fact each witness      *)
+(* lifetime is bounded by Delta' which the sound elim-soundness        *)
+(* proof (`elim_ty_n_sound_pos`) consumes when peeling binders.        *)
 Axiom ctor_lts_chain_bounded : forall Γ lts n_lt n_ty Ts sigma vs Delta Delta',
   Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs
           (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma) ->
@@ -4073,7 +4069,8 @@ Axiom ctor_lts_chain_bounded : forall Γ lts n_lt n_ty Ts sigma vs Delta Delta',
   chain_bounded Γ lts (shift_lt n_lt 0 Delta') /\
   chain_bounded Γ (shift_each_lt lts) (shift_lt n_lt 0 Delta') /\
   Forall (ctor_field_bounded_ty n_lt)
-         (List.map (inst_ty_vars n_ty Ts) sigma).
+         (List.map (inst_ty_vars n_ty Ts) sigma) /\
+  Forall (fun l => Γ ⊢ₗ l <: Delta') lts.
 
 (* ---- Substitution preservation (typing) ------------------------ *)
 
