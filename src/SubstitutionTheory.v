@@ -2424,6 +2424,199 @@ Proof.
   apply SubstLt_here. exact HltΔ.
 Qed.
 
+Fixpoint subst_list_lt (lts : list lifetime) (l : lifetime) : lifetime :=
+  match lts with
+  | [] => l
+  | w :: rest => subst_list_lt rest (subst_lt 0 (shift_lt (List.length rest) 0 w) l)
+  end.
+
+Lemma subst_list_lt_shift_cancel : forall lts l,
+  subst_list_lt lts (shift_lt (List.length lts) 0 l) = l.
+Proof.
+  induction lts as [|w rest IH]; intros l; simpl.
+  - rewrite shift_lt_zero. reflexivity.
+  - replace (S (List.length rest)) with (1 + List.length rest) by lia.
+    rewrite <- shift_lt_fuse.
+    rewrite subst_lt_shift_cancel.
+    apply IH.
+Qed.
+
+Lemma subst_list_lt_var_nth : forall lts x,
+  x < List.length lts ->
+  subst_list_lt lts (lt_var x) = List.nth x lts lt_free.
+Proof.
+  induction lts as [|w rest IH]; intros x Hx; simpl in *; [lia|].
+  destruct x as [|x'].
+  - simpl. apply subst_list_lt_shift_cancel.
+  - simpl subst_lt. destruct (Nat.eqb_spec (S x') 0) as [E|E]; [lia|].
+    destruct (Nat.ltb_spec 0 (S x')) as [_|Hbad]; [|lia].
+    apply IH. lia.
+Qed.
+
+Lemma subst_list_lt_free : forall lts,
+  subst_list_lt lts lt_free = lt_free.
+Proof. induction lts as [|w rest IH]; simpl; [reflexivity|exact IH]. Qed.
+
+Lemma subst_list_lt_local : forall lts,
+  subst_list_lt lts lt_local = lt_local.
+Proof. induction lts as [|w rest IH]; simpl; [reflexivity|exact IH]. Qed.
+
+Lemma subst_list_lt_min : forall lts l1 l2,
+  subst_list_lt lts (lt_min l1 l2) =
+  lt_min (subst_list_lt lts l1) (subst_list_lt lts l2).
+Proof.
+  induction lts as [|w rest IH]; intros l1 l2; simpl; [reflexivity|].
+  apply IH.
+Qed.
+
+Fixpoint lt_bounded_lt (k : nat) (l : lifetime) : Prop :=
+  match l with
+  | lt_var x => x < k
+  | lt_min l1 l2 => lt_bounded_lt k l1 /\ lt_bounded_lt k l2
+  | _ => True
+  end.
+
+Lemma lt_var_list_length : forall n,
+  List.length (lt_var_list n) = n.
+Proof.
+  intros n. unfold lt_var_list. rewrite List.length_map, List.length_seq. reflexivity.
+Qed.
+
+Lemma nth_lt_var_list : forall n x,
+  x < n ->
+  List.nth x (lt_var_list n) lt_free = lt_var x.
+Proof.
+  intros n x Hx.
+  apply List.nth_error_nth with (d := lt_free).
+  unfold lt_var_list.
+  rewrite List.nth_error_map.
+  rewrite List.nth_error_seq.
+  destruct (Nat.ltb_spec x n) as [Hlt|Hge]; [|lia].
+  replace (0 + x) with x by lia.
+  reflexivity.
+Qed.
+
+Lemma subst_list_lt_multi_var_list : forall k lts l,
+  List.length lts = k ->
+  lt_bounded_lt k l ->
+  subst_list_lt lts (multi_subst_lt 0 (lt_var_list k) l) = multi_subst_lt 0 lts l.
+Proof.
+  intros k lts l. revert k lts.
+  induction l as [x| | |l1 IH1 l2 IH2]; intros k lts Hlen Hb; simpl in *.
+  - rewrite lt_var_list_length.
+    destruct (Nat.ltb x k) eqn:Hxk.
+    + apply Nat.ltb_lt in Hxk.
+      replace (x - 0) with x by lia.
+      rewrite nth_lt_var_list by exact Hxk.
+      rewrite shift_lt_zero.
+      rewrite (proj2 (Nat.ltb_lt x k) Hxk).
+      rewrite subst_list_lt_var_nth by lia.
+      rewrite Hlen, (proj2 (Nat.ltb_lt x k) Hxk). rewrite shift_lt_zero. reflexivity.
+    + apply Nat.ltb_ge in Hxk. lia.
+  - apply subst_list_lt_free.
+  - apply subst_list_lt_local.
+  - destruct Hb as [Hb1 Hb2].
+    pose proof (IH1 k lts Hlen Hb1) as H1.
+    pose proof (IH2 k lts Hlen Hb2) as H2.
+    rewrite subst_list_lt_min. rewrite H1, H2. reflexivity.
+Qed.
+
+Fixpoint ctor_field_bounded_ty (k : nat) (T : type) : Prop :=
+  let fix all (Ts : list type) : Prop :=
+    match Ts with
+    | [] => True
+    | A :: rest => ctor_field_bounded_ty k A /\ all rest
+    end
+  in
+  match T with
+  | type_var _ => True
+  | type_fun A l B => ctor_field_bounded_ty k A /\ lt_bounded_lt k l /\ ctor_field_bounded_ty k B
+  | type_ctor _ l Ts => lt_bounded_lt k l /\ all Ts
+  | type_lt_all _ => False
+  | type_ty_all B A => ctor_field_bounded_ty k B /\ ctor_field_bounded_ty k A
+  end.
+
+Definition ctor_field_bounded_tys (k : nat) (Ts : list type) : Prop :=
+  fold_right (fun A acc => ctor_field_bounded_ty k A /\ acc) True Ts.
+
+Lemma subst_list_lt_in_ty_fun_flat : forall lts A l B,
+  subst_list_lt_in_ty lts (type_fun A l B) =
+  type_fun (subst_list_lt_in_ty lts A) (subst_list_lt lts l) (subst_list_lt_in_ty lts B).
+Proof.
+  induction lts as [|w rest IH]; intros A l B; simpl; [reflexivity|].
+  rewrite IH. reflexivity.
+Qed.
+
+Lemma subst_list_lt_in_ty_var_flat : forall lts n,
+  subst_list_lt_in_ty lts (type_var n) = type_var n.
+Proof. induction lts as [|w rest IH]; intros n; simpl; [reflexivity|apply IH]. Qed.
+
+Lemma subst_list_lt_in_ty_tyall_flat : forall lts B A,
+  subst_list_lt_in_ty lts (type_ty_all B A) =
+  type_ty_all (subst_list_lt_in_ty lts B) (subst_list_lt_in_ty lts A).
+Proof.
+  induction lts as [|w rest IH]; intros B A; simpl; [reflexivity|].
+  rewrite IH. reflexivity.
+Qed.
+
+Lemma subst_list_lt_in_ty_ctor_flat : forall lts K l Ts,
+  subst_list_lt_in_ty lts (type_ctor K l Ts) =
+  type_ctor K (subst_list_lt lts l) (List.map (subst_list_lt_in_ty lts) Ts).
+Proof.
+  induction lts as [|w rest IH]; intros K l Ts.
+  - simpl. rewrite List.map_id. reflexivity.
+  - cbn [subst_list_lt subst_list_lt_in_ty].
+    rewrite subst_lt_in_ty_ctor_eq. rewrite IH. rewrite List.map_map. reflexivity.
+Qed.
+
+Lemma multi_subst_lt_in_ty_go_eq_map : forall cutoff lts Ts,
+  (fix go Ts := match Ts with [] => [] | A :: rest => multi_subst_lt_in_ty cutoff lts A :: go rest end) Ts =
+  List.map (multi_subst_lt_in_ty cutoff lts) Ts.
+Proof.
+  intros cutoff lts Ts. induction Ts as [|A rest IH]; simpl; [reflexivity|].
+  rewrite IH. reflexivity.
+Qed.
+
+Lemma bounded_ctor_inst_type_core : forall k lts T,
+  List.length lts = k ->
+  ctor_field_bounded_ty k T ->
+  subst_list_lt_in_ty lts (multi_subst_lt_in_ty 0 (lt_var_list k) T) =
+  multi_subst_lt_in_ty 0 lts T.
+Proof.
+  intros k lts T. revert k lts.
+  induction T using type_list_ind with
+    (Q := fun Ts => forall k lts,
+       List.length lts = k ->
+       ctor_field_bounded_tys k Ts ->
+       List.map (subst_list_lt_in_ty lts)
+         (List.map (multi_subst_lt_in_ty 0 (lt_var_list k)) Ts) =
+       List.map (multi_subst_lt_in_ty 0 lts) Ts);
+    intros k lts Hlen Hb; simpl in *.
+  - apply subst_list_lt_in_ty_var_flat.
+  - destruct Hb as [HBA [Hbl HBB]].
+    rewrite subst_list_lt_in_ty_fun_flat.
+    rewrite IHT1 by assumption.
+    rewrite IHT2 by assumption.
+    rewrite subst_list_lt_multi_var_list with (k := k) by assumption.
+    reflexivity.
+  - destruct Hb as [Hbl HBTs].
+    rewrite subst_list_lt_in_ty_ctor_flat.
+    rewrite !multi_subst_lt_in_ty_go_eq_map.
+    rewrite IHT by assumption.
+    rewrite subst_list_lt_multi_var_list with (k := k) by assumption.
+    reflexivity.
+  - contradiction.
+  - destruct Hb as [HBB HBA].
+    rewrite subst_list_lt_in_ty_tyall_flat.
+    rewrite IHT1 by assumption.
+    rewrite IHT2 by assumption.
+    reflexivity.
+  - reflexivity.
+  - destruct Hb as [HBA HBTs]. simpl.
+    rewrite IHT by assumption.
+    f_equal. apply IHT0; assumption.
+Qed.
+
 (* ---- chain_bounded witnesses + iteration monotonicity ---------- *)
 
 (* Witnesses are valid w.r.t. a chain of progressively-closed bounds.   *)
@@ -2453,7 +2646,9 @@ Axiom ctor_lts_chain_bounded : forall Γ lts n_lt n_ty Ts sigma vs Delta Delta',
   Delta = lt_of_ty_list (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma) ->
   Γ ⊢ₗ Delta <: Delta' ->
   chain_bounded Γ lts (shift_lt n_lt 0 Delta') /\
-  chain_bounded Γ (shift_each_lt lts) (shift_lt n_lt 0 Delta').
+  chain_bounded Γ (shift_each_lt lts) (shift_lt n_lt 0 Delta') /\
+  Forall (ctor_field_bounded_ty n_lt)
+         (List.map (inst_ty_vars n_ty Ts) sigma).
 
 (* ---- Substitution preservation (typing) ------------------------ *)
 
@@ -2494,10 +2689,24 @@ Axiom subst_list_tm_lemma : forall Γ vs rhos t T,
   (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ rhos) ⊢ₜ t : T ->
   Γ ⊢ₜ subst_list_tm vs t : T.
 
-(* Substituting `lts` for the schema variables `lt_var_list n_lt`      *)
+(* Substituting `lts` for bounded schema variables `lt_var_list n_lt`  *)
 (* yields direct schema instantiation.                                 *)
-Axiom inst_ctor_type_subst_eq : forall n_lt n_ty lts Ts sigma_fields,
+Lemma inst_ctor_type_subst_eq : forall n_lt n_ty lts Ts sigma_fields,
   List.length lts = n_lt ->
+  Forall (ctor_field_bounded_ty n_lt)
+         (List.map (inst_ty_vars n_ty Ts) sigma_fields) ->
   subst_list_lt_in_ty_each lts
     (List.map (inst_ctor_type n_lt n_ty (lt_var_list n_lt) Ts) sigma_fields)
   = List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields.
+Proof.
+  intros n_lt n_ty lts Ts sigma_fields Hlen Hbounded.
+  unfold subst_list_lt_in_ty_each.
+  induction sigma_fields as [|sigma rest IH]; simpl in *.
+  - reflexivity.
+  - pose proof Hlen as Hlen0.
+    inversion Hbounded as [|T Ts' Hhead Htail Heq]; subst.
+    simpl. f_equal.
+    + unfold inst_ctor_type, inst_lt_vars.
+      apply bounded_ctor_inst_type_core; [exact Hlen0 | exact Hhead].
+    + apply IH. exact Htail.
+Qed.

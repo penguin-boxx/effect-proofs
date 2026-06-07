@@ -1627,7 +1627,7 @@ Proof.
   injection Hctor_eq as HDelta_eq HTs_eq. subst Delta0 Ts_m.
   assert (Harity_vs_len : List.length vs = List.length sigma) by lia.
   destruct (ctor_lts_chain_bounded Γ lts n_lt n_ty Ts sigma vs Delta Delta_m
-              Hfields Hlts_len HDelta HDelta_sub) as [Hcb Hcb_shift].
+              Hfields Hlts_len HDelta HDelta_sub) as [Hcb [Hcb_shift Hbounded_fields]].
   assert (Hlt_body :
     (fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
        Γ (subst_list_lt_in_ty_each lts (List.map (inst_ctor_type n_lt n_ty (lt_var_list n_lt) Ts) sigma)))
@@ -1636,7 +1636,7 @@ Proof.
               (List.map (inst_ctor_type n_lt n_ty (lt_var_list n_lt) Ts) sigma)
               n_lt Delta_m lts yes_body eta);
       [exact Hlts_len | exact Hcb | exact Hyes]. }
-  rewrite (inst_ctor_type_subst_eq n_lt n_ty lts Ts sigma Hlts_len) in Hlt_body.
+  rewrite (inst_ctor_type_subst_eq n_lt n_ty lts Ts sigma Hlts_len Hbounded_fields) in Hlt_body.
   assert (Htm_body : Γ ⊢ₜ subst_list_tm vs (subst_list_lt_in_tm lts yes_body) : subst_list_lt_in_ty lts eta).
   { eapply (subst_list_tm_lemma Γ vs
               (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma)
