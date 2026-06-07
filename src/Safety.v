@@ -1642,6 +1642,7 @@ Proof.
               (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma)
               (subst_list_lt_in_tm lts yes_body) (subst_list_lt_in_ty lts eta)).
     - rewrite List.length_map. exact Hvs_len.
+    - exact Hvals.
     - exact Hfields.
     - exact Hlt_body. }
   eapply T_Sub; [exact Htm_body|].
@@ -1688,7 +1689,7 @@ Proof.
         as [A'' [l'' [B'' [HeqT [HAsub [Hlsub HBsub]]]]]].
       injection HeqT; intros; subst.
       eapply T_Sub; [| exact HBsub].
-      eapply subst_tm_lemma; [exact Hbody|].
+      eapply subst_tm_lemma; [exact Hbody| exact Hv0 |].
       eapply T_Sub; [exact Ht2 | exact HAsub].
     + (* S_Resume *)
       subst t1 t2 t''.
@@ -1699,7 +1700,7 @@ Proof.
       injection HeqT; intros; subst.
       apply T_HandlerM.
       eapply T_Sub; [| exact HBsub].
-      eapply subst_tm_lemma; [exact Hbody|].
+      eapply subst_tm_lemma; [exact Hbody| exact Hv0 |].
       eapply T_Sub; [exact Ht2 | exact HAsub].
     + subst t''. eapply T_App; eauto.
     + subst t''. eapply T_App; eauto.

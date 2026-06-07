@@ -2459,6 +2459,7 @@ Axiom ctor_lts_chain_bounded : forall Γ lts n_lt n_ty Ts sigma vs Delta Delta',
 
 Axiom subst_tm_lemma : forall Γ T1 t T2 v,
   (bind_tm T1 :: Γ) ⊢ₜ t : T2 ->
+  value v ->
   Γ ⊢ₜ v : T1 ->
   Γ ⊢ₜ subst_tm 0 v t : T2.
 
@@ -2488,6 +2489,7 @@ Axiom subst_list_lt_in_tm_lemma : forall Γ rhos n_lt Delta lts t T,
 (* matching list of values typed in the outer Γ.                       *)
 Axiom subst_list_tm_lemma : forall Γ vs rhos t T,
   List.length vs = List.length rhos ->
+  Forall value vs ->
   Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rhos ->
   (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ rhos) ⊢ₜ t : T ->
   Γ ⊢ₜ subst_list_tm vs t : T.
