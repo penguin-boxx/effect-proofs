@@ -23,37 +23,11 @@ Require Import SubstitutionTheory.
 (* contribution.                                                      *)
 (* ================================================================== *)
 
-Inductive eval_ctx : ctx -> Prop :=
-  | ec_nil   : eval_ctx []
-  | ec_lt    : forall Δ Γ, eval_ctx Γ -> eval_ctx (bind_lt Δ :: Γ)
-  | ec_ctor  : forall K n_lt n_ty f r Γ,
-      eval_ctx Γ -> eval_ctx (bind_ctor K n_lt n_ty f r :: Γ).
-
-Lemma eval_ctx_no_tm : forall Γ x,
-  eval_ctx Γ -> ctx_lookup_tm Γ x = None.
-Proof.
-  intros Γ x H; revert x; induction H; intros x; simpl; try reflexivity;
-    match goal with
-    | [ IH : forall _, _ = None |- _ ] => rewrite IH; reflexivity
-    end.
-Qed.
-
-Lemma eval_ctx_no_ty : forall Γ α,
-  eval_ctx Γ -> ctx_lookup_ty Γ α = None.
-Proof.
-  intros Γ α H; revert α; induction H; intros α; simpl; try reflexivity;
-    match goal with
-    | [ IH : forall _, _ = None |- _ ] => rewrite IH; reflexivity
-    end.
-Qed.
-
-Lemma eval_ctx_no_eff : forall Γ E,
-  eval_ctx Γ -> ctx_lookup_eff Γ E = None.
-Proof.
-  intros Γ E H; revert E; induction H; intros E; simpl; try reflexivity.
-  - rewrite IHeval_ctx. reflexivity.
-  - rewrite IHeval_ctx. reflexivity.
-Qed.
+(* `eval_ctx` and the `eval_ctx_no_tm/ty/eff` lookup lemmas are now    *)
+(* defined in `SubstitutionTheory.v` (so that `subst_tm_lemma` can be   *)
+(* stated directly against the program-level invariant).  The `ec_lt`  *)
+(* constructor has been removed: an `eval_ctx` now contains only        *)
+(* constructor bindings, so terms typed under it are fully closed.      *)
 
 (* ------------------------------------------------------------------ *)
 (* Effect-handler invariant                                           *)
@@ -1974,6 +1948,218 @@ Proof.
 Qed.
 
 (* ------------------------------------------------------------------ *)
+(* Well-scopedness: a well-typed term's free term variables are all   *)
+(* bound by its typing context.  Specialized to an `eval_ctx` (which  *)
+(* has no `bind_tm` entries) this gives term-closedness, discharging   *)
+(* the closedness side-condition of `subst_tm_lemma`.                  *)
+(* ------------------------------------------------------------------ *)
+
+(* Shifting the cutoff of `free_tm_vars` by one shifts membership.     *)
+Lemma fv_succ : forall t c y,
+  In y (free_tm_vars (S c) t) -> In (S y) (free_tm_vars c t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall c y, In y (free_tm_vars (S c) t) -> In (S y) (free_tm_vars c t))
+    (fun ts => forall c y,
+       In y (List.concat (List.map (free_tm_vars (S c)) ts)) ->
+       In (S y) (List.concat (List.map (free_tm_vars c) ts)))).
+  - (* var *)
+    intros x c y. simpl.
+    destruct (Nat.ltb x (S c)) eqn:E1.
+    + intros [].
+    + apply Nat.ltb_ge in E1.
+      assert (E2 : Nat.ltb x c = false) by (apply Nat.ltb_ge; lia).
+      rewrite E2. simpl. intros [Hy | []]. subst y. left. lia.
+  - (* app *)
+    intros t1 t2 IH1 IH2 c y. simpl. rewrite !List.in_app_iff.
+    intros [H|H]; [left; apply IH1; exact H | right; apply IH2; exact H].
+  - (* lam *)
+    intros body T IH c y. simpl. apply IH.
+  - (* ty_app *)
+    intros t T IH c y. simpl. apply IH.
+  - (* ty_lam *)
+    intros bound body IH c y. simpl. apply IH.
+  - (* lt_app *)
+    intros t l IH c y. simpl. apply IH.
+  - (* lt_lam *)
+    intros body IH c y. simpl. apply IH.
+  - (* ctor *)
+    intros K l lts Ts ts IH c y. simpl.
+    rewrite !free_tm_vars_go_eq_concat. apply IH.
+  - (* match *)
+    intros scrut tag arity yes_body no_body IHs IHy IHn c y. simpl.
+    rewrite !List.in_app_iff. intros [H|[H|H]].
+    + left. apply IHs; exact H.
+    + right; left. apply IHy; exact H.
+    + right; right. apply IHn; exact H.
+  - (* handle *)
+    intros E Ts op_body body IHop IHb c y. simpl.
+    rewrite !List.in_app_iff. intros [H|H].
+    + left. apply IHop; exact H.
+    + right. apply IHb; exact H.
+  - (* perform *)
+    intros t Ss arg IHt IHa c y. simpl.
+    rewrite !List.in_app_iff. intros [H|H]; [left; apply IHt; exact H | right; apply IHa; exact H].
+  - (* cap *)
+    intros E m Ts op_body IHop c y. simpl. apply IHop.
+  - (* handler_m *)
+    intros m t IH c y. simpl. apply IH.
+  - (* resume *)
+    intros m b IH c y. simpl. apply IH.
+  - (* nil *)
+    intros c y. simpl. intros [].
+  - (* cons *)
+    intros t ts IHt IHts c y. simpl.
+    rewrite !List.in_app_iff. intros [H|H]; [left; apply IHt; exact H | right; apply IHts; exact H].
+Qed.
+
+(* Iterated version of `fv_succ`. *)
+Lemma fv_add : forall k t c y,
+  In y (free_tm_vars (c + k) t) -> In (y + k) (free_tm_vars c t).
+Proof.
+  induction k as [|k IH]; intros t c y Hin.
+  - rewrite Nat.add_0_r in Hin. rewrite Nat.add_0_r. exact Hin.
+  - replace (c + S k) with (S (c + k)) in Hin by lia.
+    apply fv_succ in Hin.
+    apply IH in Hin.
+    replace (y + S k) with (S y + k) by lia.
+    exact Hin.
+Qed.
+
+(* Looking up a term variable past `n` pushed lifetime binders.        *)
+Lemma lookup_tm_push_lt_None : forall n bound Γ x,
+  ctx_lookup_tm Γ x = None ->
+  ctx_lookup_tm (push_lt_vars n bound Γ) x = None.
+Proof.
+  induction n as [|n IH]; intros bound Γ x H; simpl.
+  - exact H.
+  - apply IH. simpl. rewrite H. reflexivity.
+Qed.
+
+(* Looking up a term variable past `n` pushed type binders.            *)
+Lemma lookup_tm_push_ty_None : forall n bound Γ x,
+  ctx_lookup_tm Γ x = None ->
+  ctx_lookup_tm (push_ty_vars n bound Γ) x = None.
+Proof.
+  induction n as [|n IH]; intros bound Γ x H; simpl.
+  - exact H.
+  - apply IH. simpl. rewrite H. reflexivity.
+Qed.
+
+(* Looking up a term variable past a block of `bind_tm` binders.       *)
+Lemma lookup_tm_skip_bind_tm_many : forall rhos Γ x,
+  ctx_lookup_tm (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ rhos)
+                (x + List.length rhos)
+  = ctx_lookup_tm Γ x.
+Proof.
+  induction rhos as [|rho rhos IH]; intros Γ x.
+  - simpl. rewrite Nat.add_0_r. reflexivity.
+  - cbn [fold_right List.length].
+    replace (x + S (List.length rhos)) with (S (x + List.length rhos)) by lia.
+    cbn [ctx_lookup_tm]. apply IH.
+Qed.
+
+(* Every free term variable of a well-typed term is bound in Γ.        *)
+Lemma typing_fv_bound : forall Γ t T,
+  Γ ⊢ₜ t : T ->
+  forall x, In x (free_tm_vars 0 t) -> ctx_lookup_tm Γ x <> None.
+Proof.
+  apply (typing_ind2
+    (fun Γ t T => forall x, In x (free_tm_vars 0 t) -> ctx_lookup_tm Γ x <> None)).
+  - (* T_Var *)
+    intros Γ x T Hlk y Hin. simpl in Hin. rewrite Nat.sub_0_r in Hin.
+    destruct Hin as [Hy | []].
+    subst y. rewrite Hlk. discriminate.
+  - (* T_Sub *)
+    intros Γ t T U Ht IH Hsub x Hin. apply IH; exact Hin.
+  - (* T_Lam *)
+    intros Γ body A l B Hbody IH Hcap Hnl x Hin.
+    simpl in Hin. apply fv_succ in Hin. specialize (IH (S x) Hin).
+    simpl in IH. exact IH.
+  - (* T_App *)
+    intros Γ t1 t2 A l B Ht1 IH1 Ht2 IH2 x Hin.
+    simpl in Hin. rewrite List.in_app_iff in Hin.
+    destruct Hin as [H|H]; [apply IH1 | apply IH2]; exact H.
+  - (* T_TyLam *)
+    intros Γ bound body T Hbody IH x Hin.
+    simpl in Hin. specialize (IH x Hin).
+    intros Hnone. apply IH. simpl. rewrite Hnone. reflexivity.
+  - (* T_TyApp *)
+    intros Γ t B U S Ht IH Hsub x Hin. apply IH; exact Hin.
+  - (* T_LtLam *)
+    intros Γ body T Hbody IH x Hin.
+    simpl in Hin. specialize (IH x Hin).
+    intros Hnone. apply IH. simpl. rewrite Hnone. reflexivity.
+  - (* T_LtApp *)
+    intros Γ t T l Ht IH x Hin. apply IH; exact Hin.
+  - (* T_Ctor *)
+    intros Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields
+           result_ty result_tag l vs
+           Hlk Heff Hlts Hrho HTs Hres Hshape Hltsub Hvslen Hf2ty Hf2P x Hin.
+    simpl in Hin. rewrite free_tm_vars_go_eq_concat in Hin.
+    clear - Hf2P Hin.
+    revert Hin. induction Hf2P as [|v rho vs0 rhos0 Hp Hf2P' IH]; intros Hin.
+    + simpl in Hin. contradiction.
+    + simpl in Hin. rewrite List.in_app_iff in Hin.
+      destruct Hin as [H|H]; [apply Hp; exact H | apply IH; exact H].
+  - (* T_Match *)
+    intros Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
+           rho_fields scrut_result_ty result_tag result_l Γ' yes_body eta
+           elim_result no_body
+           HKne Hlk Heff Hlts Hrho HTs Hsrt Hshape Hrtne Hrl Hscrut IHscrut
+           Harity HΓ' Hyes IHyes Helim Hno IHno x Hin.
+    simpl in Hin. rewrite !List.in_app_iff in Hin.
+    destruct Hin as [Hs | [Hy | Hn]].
+    + apply IHscrut; exact Hs.
+    + apply (fv_add arity yes_body 0 x) in Hy.
+      specialize (IHyes (x + arity) Hy). subst Γ'.
+      rewrite Harity in IHyes.
+      rewrite lookup_tm_skip_bind_tm_many in IHyes.
+      intros Hnone. apply IHyes. apply lookup_tm_push_lt_None. exact Hnone.
+    + apply IHno; exact Hn.
+  - (* T_Cap *)
+    intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
+           H1 H2 H3 H4 H5 IHop x Hin.
+    simpl in Hin. apply (fv_add 2 op_body 0 x) in Hin.
+    specialize (IHop (x + 2) Hin).
+    replace (x + 2) with (S (S x)) in IHop by lia. simpl in IHop.
+    intros Hnone. apply IHop. apply lookup_tm_push_ty_None. exact Hnone.
+  - (* T_Handle *)
+    intros Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β
+           H1 H2 H3 H4 H5 IHop H7 IHbody x Hin.
+    simpl in Hin. rewrite List.in_app_iff in Hin. destruct Hin as [Hop | Hb].
+    + apply (fv_add 2 op_body 0 x) in Hop. specialize (IHop (x + 2) Hop).
+      replace (x + 2) with (S (S x)) in IHop by lia. simpl in IHop.
+      intros Hnone. apply IHop. apply lookup_tm_push_ty_None. exact Hnone.
+    + apply fv_succ in Hb. specialize (IHbody (S x) Hb).
+      simpl in IHbody. exact IHbody.
+  - (* T_Perform *)
+    intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
+           H1 IHrecv H3 H4 H5 H6 H7 H8 IHarg x Hin.
+    simpl in Hin. rewrite List.in_app_iff in Hin.
+    destruct Hin as [H|H]; [apply IHrecv | apply IHarg]; exact H.
+  - (* T_HandlerM *)
+    intros Γ m t T Ht IH x Hin. apply IH; exact Hin.
+  - (* T_Resume *)
+    intros Γ m b A T_R Hb IH x Hin.
+    simpl in Hin. apply fv_succ in Hin. specialize (IH (S x) Hin).
+    simpl in IH. exact IH.
+Qed.
+
+(* A well-typed term under an `eval_ctx` is term-closed.               *)
+Lemma typing_closed : forall Γ t T,
+  eval_ctx Γ -> Γ ⊢ₜ t : T -> free_tm_vars 0 t = [].
+Proof.
+  intros Γ t T Hec Hty.
+  destruct (free_tm_vars 0 t) as [|x xs] eqn:E.
+  - reflexivity.
+  - exfalso.
+    assert (Hin : In x (free_tm_vars 0 t)) by (rewrite E; left; reflexivity).
+    apply (typing_fv_bound Γ t T Hty x) in Hin.
+    apply Hin. apply eval_ctx_no_tm. exact Hec.
+Qed.
+
+(* ------------------------------------------------------------------ *)
 (* Match-yes preservation                                             *)
 (* ------------------------------------------------------------------ *)
 
@@ -2016,11 +2202,17 @@ Proof.
       [exact Hlts_len | exact Hcb | exact Hyes]. }
   rewrite (inst_ctor_type_subst_eq n_lt n_ty lts Ts sigma Hlts_len Hbounded_fields) in Hlt_body.
   assert (Htm_body : Γ ⊢ₜ subst_list_tm vs (subst_list_lt_in_tm lts yes_body) : subst_list_lt_in_ty lts eta).
-  { eapply (subst_list_tm_lemma Γ vs
+  { assert (Hclosed_vs : Forall (fun v => free_tm_vars 0 v = []) vs).
+    { clear - Hfields Hec.
+      induction Hfields as [|v rho vs0 rhos0 Hvty Hfields' IH]; constructor.
+      - eapply typing_closed; [exact Hec | exact Hvty].
+      - exact IH. }
+    eapply (subst_list_tm_lemma Γ vs
               (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma)
               (subst_list_lt_in_tm lts yes_body) (subst_list_lt_in_ty lts eta)).
     - rewrite List.length_map. exact Hvs_len.
     - exact Hvals.
+    - exact Hclosed_vs.
     - exact Hfields.
     - exact Hlt_body. }
   eapply T_Sub; [exact Htm_body|].
@@ -2063,8 +2255,11 @@ Proof.
         as [A'' [l'' [B'' [HeqT [HAsub [Hlsub HBsub]]]]]].
       injection HeqT; intros; subst.
       eapply T_Sub; [| exact HBsub].
-      eapply subst_tm_lemma; [exact Hbody| exact Hv0 |].
-      eapply T_Sub; [exact Ht2 | exact HAsub].
+      eapply subst_tm_lemma.
+      * eapply typing_closed; [exact Hec | exact Ht2].
+      * exact Hbody.
+      * exact Hv0.
+      * eapply T_Sub; [exact Ht2 | exact HAsub].
     + (* S_Resume *)
       subst t1 t2 t''.
       apply resume_typing_inv in Ht1.
@@ -2074,8 +2269,11 @@ Proof.
       injection HeqT; intros; subst.
       apply T_HandlerM.
       eapply T_Sub; [| exact HBsub].
-      eapply subst_tm_lemma; [exact Hbody| exact Hv0 |].
-      eapply T_Sub; [exact Ht2 | exact HAsub].
+      eapply subst_tm_lemma.
+      * eapply typing_closed; [exact Hec | exact Ht2].
+      * exact Hbody.
+      * exact Hv0.
+      * eapply T_Sub; [exact Ht2 | exact HAsub].
     + subst t''. eapply T_App; eauto.
     + subst t''. eapply T_App; eauto.
   - (* T_TyLam *)

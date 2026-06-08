@@ -4074,7 +4074,78 @@ Axiom ctor_lts_chain_bounded : forall Γ lts n_lt n_ty Ts sigma vs Delta Delta',
 
 (* ---- Substitution preservation (typing) ------------------------ *)
 
+(* Shifting a term-closed value leaves it term-closed.  Used to keep   *)
+(* the closedness side-condition of `subst_tm_lemma` available across   *)
+(* the shifts performed by parallel term substitution.                  *)
+Lemma free_tm_vars_closed_shift : forall a v,
+  free_tm_vars 0 v = [] ->
+  free_tm_vars 0 (shift_tm a 0 v) = [].
+Proof.
+  induction a as [|n IH]; intros v Hcl.
+  - rewrite shift_tm_zero. exact Hcl.
+  - replace (S n) with (1 + n) by lia.
+    rewrite <- shift_tm_fuse.
+    pose proof (free_tm_vars_shift_tm_1 (shift_tm n 0 v) 0 0) as H1.
+    cbn [Nat.add] in H1.
+    rewrite (IH v Hcl) in H1.
+    cbn [List.map] in H1.
+    exact H1.
+Qed.
+
+(* ================================================================== *)
+(* Evaluation contexts (program-level typing contexts).               *)
+(*                                                                    *)
+(* An `eval_ctx` contains ONLY constructor bindings: no `bind_tm`,    *)
+(* `bind_ty`, `bind_lt`, or `bind_eff`.  Consequently a term typed    *)
+(* under an `eval_ctx` has no free term, type, or lifetime variables  *)
+(* (it is fully closed).  This is exactly the invariant the term      *)
+(* substitution lemma needs: the value being inlined is fully closed, *)
+(* so the cross-binder shifts performed by `subst_tm` (which does NOT *)
+(* re-shift the value across the lifetime/type binders introduced by  *)
+(* `term_match` / `term_cap` / `term_handle`) act as the identity and *)
+(* the statement is sound.                                            *)
+(*                                                                    *)
+(* `eval_ctx` lives here (rather than in `Safety.v`) so that          *)
+(* `subst_tm_lemma` can be stated directly in terms of the real       *)
+(* program-level invariant.                                           *)
+(* ================================================================== *)
+Inductive eval_ctx : ctx -> Prop :=
+  | ec_nil   : eval_ctx []
+  | ec_ctor  : forall K n_lt n_ty f r Γ,
+      eval_ctx Γ -> eval_ctx (bind_ctor K n_lt n_ty f r :: Γ).
+
+Lemma eval_ctx_no_tm : forall Γ x,
+  eval_ctx Γ -> ctx_lookup_tm Γ x = None.
+Proof.
+  intros Γ x H; revert x; induction H; intros x; simpl; try reflexivity.
+  rewrite IHeval_ctx; reflexivity.
+Qed.
+
+Lemma eval_ctx_no_ty : forall Γ α,
+  eval_ctx Γ -> ctx_lookup_ty Γ α = None.
+Proof.
+  intros Γ α H; revert α; induction H; intros α; simpl; try reflexivity.
+  rewrite IHeval_ctx; reflexivity.
+Qed.
+
+Lemma eval_ctx_no_eff : forall Γ E,
+  eval_ctx Γ -> ctx_lookup_eff Γ E = None.
+Proof.
+  intros Γ E H; revert E; induction H; intros E; simpl; try reflexivity.
+  rewrite IHeval_ctx; reflexivity.
+Qed.
+
+(* The substitution lemma for term variables.  The extra premise         *)
+(* `free_tm_vars 0 v = []` (the substituted value is term-closed) makes  *)
+(* the statement SOUND: without it the lemma is false (see               *)
+(* CounterexampleTmSubst.v — a value capturing a `local` capability via  *)
+(* a free term variable un-hides that local when inlined, breaking the   *)
+(* closure-lifetime / `no_local` side conditions).  At every use site in *)
+(* Safety.v the value is typed under an `eval_ctx` (which has no         *)
+(* `bind_tm` entries), hence term-closed, so the premise is discharged   *)
+(* by `typing_closed`.                                                   *)
 Axiom subst_tm_lemma : forall Γ T1 t T2 v,
+  free_tm_vars 0 v = [] ->
   (bind_tm T1 :: Γ) ⊢ₜ t : T2 ->
   value v ->
   Γ ⊢ₜ v : T1 ->
@@ -4107,21 +4178,25 @@ Axiom subst_list_lt_in_tm_lemma : forall Γ rhos n_lt Delta lts t T,
 Lemma subst_list_tm_lemma : forall Γ vs rhos t T,
   List.length vs = List.length rhos ->
   Forall value vs ->
+  Forall (fun v => free_tm_vars 0 v = []) vs ->
   Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rhos ->
   (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ rhos) ⊢ₜ t : T ->
   Γ ⊢ₜ subst_list_tm vs t : T.
 Proof.
-  intros Γ vs. induction vs as [|v rest IH]; intros rhos t T Hlen Hvals Htys Hbody.
+  intros Γ vs. induction vs as [|v rest IH]; intros rhos t T Hlen Hvals Hclosed Htys Hbody.
   - destruct rhos as [|rho rhos]; [exact Hbody|simpl in Hlen; discriminate].
   - destruct rhos as [|rho rhos]; [simpl in Hlen; discriminate|].
     simpl in Hlen. simpl subst_list_tm.
     inversion Hvals as [|v0 rest0 Hv Hvals_rest Heq]; subst.
+    inversion Hclosed as [|v0 rest0 Hcl Hclosed_rest Heq]; subst.
     inversion Htys as [|v0 rho0 rest0 rhos0 Hvty Htys_rest Heq1 Heq2]; subst.
     apply (IH rhos (subst_tm 0 (shift_tm (List.length rest) 0 v) t) T).
     + lia.
     + exact Hvals_rest.
+    + exact Hclosed_rest.
     + exact Htys_rest.
     + eapply subst_tm_lemma.
+      * apply free_tm_vars_closed_shift. exact Hcl.
       * exact Hbody.
       * apply value_shift_tm. exact Hv.
       * replace (List.length rest) with (List.length rhos) by lia.
