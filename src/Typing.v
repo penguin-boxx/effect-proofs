@@ -159,19 +159,73 @@ Fixpoint ctx_lookup_eff (Γ : ctx) (E : eff_tag)
 
 Reserved Notation "G '⊢ₗ' l1 '<:' l2" (at level 40, l1 at next level).
 
+Inductive lt_wf : ctx -> lifetime -> Prop :=
+  | LWF_Var : forall Γ x Δ,
+      ctx_lookup_lt Γ x = Some Δ ->
+      lt_wf Γ (lt_var x)
+  | LWF_Free : forall Γ,
+      lt_wf Γ lt_free
+  | LWF_Local : forall Γ,
+      lt_wf Γ lt_local
+  | LWF_Min : forall Γ l1 l2,
+      lt_wf Γ l1 ->
+      lt_wf Γ l2 ->
+      lt_wf Γ (lt_min l1 l2).
+
+Inductive lifetimes_wf : ctx -> list lifetime -> Prop :=
+  | LWFs_nil : forall Γ,
+      lifetimes_wf Γ []
+  | LWFs_cons : forall Γ l lts,
+      lt_wf Γ l ->
+      lifetimes_wf Γ lts ->
+      lifetimes_wf Γ (l :: lts).
+
+Inductive ty_wf : ctx -> type -> Prop :=
+  | TWF_Var : forall Γ α B,
+      ctx_lookup_ty Γ α = Some B ->
+      ty_wf Γ B ->
+      ty_wf Γ (type_var α)
+  | TWF_Fun : forall Γ A l B,
+      ty_wf Γ A ->
+      lt_wf Γ l ->
+      ty_wf Γ B ->
+      ty_wf Γ (type_fun A l B)
+  | TWF_Ctor : forall Γ K l Ts,
+      lt_wf Γ l ->
+      types_wf Γ Ts ->
+      ty_wf Γ (type_ctor K l Ts)
+  | TWF_LtAll : forall Γ A,
+      ty_wf (bind_lt lt_local :: Γ) A ->
+      ty_wf Γ (type_lt_all A)
+  | TWF_TyAll : forall Γ B A,
+      ty_wf Γ B ->
+      ty_wf (bind_ty B :: Γ) A ->
+      ty_wf Γ (type_ty_all B A)
+with types_wf : ctx -> list type -> Prop :=
+  | TWFs_nil : forall Γ,
+      types_wf Γ []
+  | TWFs_cons : forall Γ T Ts,
+      ty_wf Γ T ->
+      types_wf Γ Ts ->
+      types_wf Γ (T :: Ts).
+
 Inductive lt_sub : ctx -> lifetime -> lifetime -> Prop :=
 
   | LS_Free  : forall Γ l,
+      lt_wf Γ l ->
       Γ ⊢ₗ lt_free <: l
 
   | LS_Local : forall Γ l,
+      lt_wf Γ l ->
       Γ ⊢ₗ l <: lt_local
 
   | LS_Var   : forall Γ x Δ,
       ctx_lookup_lt Γ x = Some Δ ->
+      lt_wf Γ Δ ->
       Γ ⊢ₗ lt_var x <: Δ
 
   | LS_Refl  : forall Γ l,
+      lt_wf Γ l ->
       Γ ⊢ₗ l <: l
 
   | LS_Trans : forall Γ l1 l2 l3,
@@ -189,10 +243,12 @@ Inductive lt_sub : ctx -> lifetime -> lifetime -> Prop :=
 
   | LS_MinR1 : forall Γ l l1 l2,
       Γ ⊢ₗ l <: l1 ->
+      lt_wf Γ l2 ->
       Γ ⊢ₗ l <: lt_min l1 l2
 
   | LS_MinR2 : forall Γ l l1 l2,
       Γ ⊢ₗ l <: l2 ->
+      lt_wf Γ l1 ->
       Γ ⊢ₗ l <: lt_min l1 l2
 
 where "G '⊢ₗ' l1 '<:' l2" := (lt_sub G l1 l2).
@@ -477,6 +533,7 @@ Reserved Notation "G '⊢' S '<::' T" (at level 40, S at next level).
 Inductive sub : ctx -> type -> type -> Prop :=
 
   | SA_Refl   : forall Γ T,
+      ty_wf Γ T ->
       Γ ⊢ T <:: T
 
   | SA_Trans  : forall Γ S U T,
@@ -487,16 +544,20 @@ Inductive sub : ctx -> type -> type -> Prop :=
   (* SubCtx: use the bound stored in the context for a type variable *)
   | SA_VarCtx : forall Γ α B,
       ctx_lookup_ty Γ α = Some B ->
+      ty_wf Γ B ->
       Γ ⊢ type_var α <:: B
 
   (* SubData: covariant in the lifetime annotation, invariant in Ts *)
   | SA_Data   : forall Γ K l l' Ts,
       Γ ⊢ₗ l <: l' ->
+      types_wf Γ Ts ->
       Γ ⊢ type_ctor K l Ts <:: type_ctor K l' Ts
 
   (* SubAny (paper Fig. core-subtyping): τ <: Any@Δ when all lifetime  *)
   (* restrictions in τ outlive Δ.                                      *)
   | SA_Any    : forall Γ T Δ,
+      ty_wf Γ T ->
+      lt_wf Γ Δ ->
       Γ ⊢ₗ lt_of_ty_G Γ T <: Δ ->
       Γ ⊢ T <:: type_ctor any_tag Δ []
 
@@ -520,6 +581,8 @@ Inductive sub : ctx -> type -> type -> Prop :=
   (* ∀(α<:B).A <: ∀(α<:B').A' when B'<:B (contra) and                  *)
   (* A <: A' under the tighter bound B'.                               *)
   | SA_TyAll  : forall Γ B B' A A',
+      ty_wf (bind_ty B :: Γ) A ->
+      ty_wf (bind_ty B' :: Γ) A' ->
       Γ ⊢ B' <:: B ->
       (bind_ty B' :: Γ) ⊢ A <:: A' ->
       Γ ⊢ type_ty_all B A <:: type_ty_all B' A'
@@ -678,6 +741,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
   (* --- Var --------------------------------------------------------- *)
   | T_Var   : forall Γ x T,
       ctx_lookup_tm Γ x = Some T ->
+      ty_wf Γ T ->
       Γ ⊢ₜ term_var x : T
 
   (* --- Subsumption ------------------------------------------------- *)
@@ -688,13 +752,12 @@ Inductive typing : ctx -> term -> type -> Prop :=
 
   (* --- Term abstraction and application ---------------------------- *)
 
-  (* Paper Lam rule: closure lifetime ≥ capture lifetime, and `local`  *)
-  (* must not appear in the return type (preventing tracked-value      *)
-  (* leakage through function returns).                                *)
+    (* Paper Lam rule: closure lifetime ≥ capture lifetime.              *)
   | T_Lam   : forall Γ body A l B,
+      ty_wf Γ A ->
+      ty_wf Γ B ->
       (bind_tm A :: Γ) ⊢ₜ body : B ->
       Γ ⊢ₗ capture_lt Γ body <: l ->
-      no_local_ty B = true ->
       Γ ⊢ₜ term_lam body A : type_fun A l B
 
   | T_App   : forall Γ t1 t2 A l B,
@@ -707,6 +770,8 @@ Inductive typing : ctx -> term -> type -> Prop :=
   (* Introduce a type variable α bounded by `bound`.                  *)
   (* Body is typed with α in scope as the innermost bind_ty entry.    *)
   | T_TyLam : forall Γ bound body T,
+      ty_wf Γ bound ->
+      ty_wf (bind_ty bound :: Γ) T ->
       (bind_ty bound :: Γ) ⊢ₜ body : T ->
       Γ ⊢ₜ term_ty_lam bound body : type_ty_all bound T
 
@@ -714,6 +779,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
   (* Result type is U with α substituted by S (de Bruijn: var 0).    *)
   | T_TyApp : forall Γ t B U S,
       Γ ⊢ₜ t : type_ty_all B U ->
+      ty_wf Γ S ->
       Γ ⊢ S <:: B ->
       Γ ⊢ₜ term_ty_app t S : subst_ty 0 S U
 
@@ -721,12 +787,14 @@ Inductive typing : ctx -> term -> type -> Prop :=
 
   (* Fresh lifetime variable with no constraint (bound lt_local = ⊤). *)
   | T_LtLam : forall Γ body T,
+      ty_wf (bind_lt lt_local :: Γ) T ->
       (bind_lt lt_local :: Γ) ⊢ₜ body : T ->
       Γ ⊢ₜ term_lt_lam body : type_lt_all T
 
   (* Apply ∀l.T to a concrete lifetime Δ; substitute l 0 ↦ Δ.       *)
   | T_LtApp : forall Γ t T l,
       Γ ⊢ₜ t : type_lt_all T ->
+      lt_wf Γ l ->
       Γ ⊢ₜ term_lt_app t l : subst_lt_in_ty 0 l T
 
   (* --- Constructor typing (Figure 7 — Ctor) ----------------------- *)
@@ -741,11 +809,15 @@ Inductive typing : ctx -> term -> type -> Prop :=
       ctx_lookup_ctor Γ K = Some (n_lt, n_ty, sigma_fields, result_ty_schema) ->
       ctx_lookup_eff Γ K = None ->   (* effect-tag / data-ctor disjointness *)
       List.length lts = n_lt ->
+      lifetimes_wf Γ lts ->
       rho_fields = List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields ->
       List.length Ts = n_ty ->
+      types_wf Γ Ts ->
       result_ty = inst_ctor_type n_lt n_ty lts Ts result_ty_schema ->
       result_ty = type_ctor result_tag l Ts ->
+      lt_wf Γ l ->
       Γ ⊢ₗ lt_of_ty_list rho_fields <: l ->
+      Forall (fun l0 => Γ ⊢ₗ l0 <: l) lts ->
       List.length vs = List.length rho_fields ->
       Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rho_fields ->
       Γ ⊢ₜ term_ctor K l lts Ts vs : result_ty
@@ -766,9 +838,11 @@ Inductive typing : ctx -> term -> type -> Prop :=
       lts = lt_var_list n_lt ->
       rho_fields = List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields ->
       List.length Ts = n_ty ->
+      types_wf Γ Ts ->
       scrut_result_ty = inst_ctor_type n_lt n_ty (List.repeat Delta n_lt) Ts result_ty_schema ->
       scrut_result_ty = type_ctor result_tag result_l Ts ->
       result_tag <> any_tag ->
+      lt_wf Γ Delta ->
       Γ ⊢ₗ result_l <: Delta ->
       Γ ⊢ₜ scrut : type_ctor result_tag Delta Ts ->
       arity = List.length rho_fields ->
@@ -795,6 +869,8 @@ Inductive typing : ctx -> term -> type -> Prop :=
   | T_Cap : forall Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β,
       ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
       List.length Ts = n_α ->
+      types_wf Γ Ts ->
+      ty_wf Γ T_R ->
       sig_β = inst_op_alpha n_α Ts n_β sig ->
       ret_β = inst_op_alpha n_α Ts n_β ret ->
       (bind_tm sig_β
@@ -816,6 +892,9 @@ Inductive typing : ctx -> term -> type -> Prop :=
   | T_Handle : forall Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β,
       ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
       List.length Ts = n_α ->
+      types_wf Γ Ts ->
+      ty_wf Γ T_R ->
+      no_local_ty T_R = true ->
       sig_β = inst_op_alpha n_α Ts n_β sig ->
       ret_β = inst_op_alpha n_α Ts n_β ret ->
       (bind_tm sig_β
@@ -833,6 +912,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
       List.length Ts = n_α ->
       List.length Ss = n_β ->
+      types_wf Γ Ss ->
       sig_inst = inst_op_arg n_α Ts n_β Ss sig ->
       ret_inst = inst_op_arg n_α Ts n_β Ss ret ->
       Γ ⊢ₜ arg : sig_inst ->
@@ -846,6 +926,8 @@ Inductive typing : ctx -> term -> type -> Prop :=
   (* (Resume, runtime): a reified resumption is a function value.     *)
   (* Applying it (later) re-installs a delimiter around its body.     *)
   | T_Resume : forall Γ m b A T_R,
+      ty_wf Γ A ->
+      ty_wf Γ T_R ->
       (bind_tm A :: Γ) ⊢ₜ b : T_R ->
       Γ ⊢ₜ term_resume m b : type_fun A lt_local T_R
 
