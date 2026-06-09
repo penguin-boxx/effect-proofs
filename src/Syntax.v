@@ -68,18 +68,18 @@ Inductive term : Type :=
   (* binders.                                                          *)
   | term_match : term -> ctor_tag -> nat -> nat -> term -> term -> term
   (* ----- effect handlers -----                                       *)
-  (* handle cap : E Ts { op_body } in body                             *)
+  (* handle cap : E n_β Ts { op_body } in body                         *)
   (* The body has 1 extra term-binder for the cap value (variable 0).  *)
   (* op_body has n_β type-binders (outermost) followed by 2 term-      *)
   (* binders:                                                          *)
   (*   index 0 = the (single) op argument                              *)
   (*   index 1 = the resumption k                                      *)
-  | term_handle : eff_tag -> list type -> term -> term -> term
+  | term_handle : eff_tag -> nat -> list type -> term -> term -> term
   (* perform x Ss arg — Ss instantiates the operation's β-args.        *)
   | term_perform : term -> list type -> term -> term
   (* runtime-only: capability value (paper's K_cap τ̄ m h).             *)
-  (* Carries effect tag, marker, α-type-args, and op_body.             *)
-  | term_cap : eff_tag -> marker -> list type -> term -> term
+  (* Carries effect tag, marker, β-arity, α-type-args, and op_body.    *)
+  | term_cap : eff_tag -> marker -> nat -> list type -> term -> term
   (* runtime-only: continuation delimiter (paper's handler_m t).       *)
   | term_handler_m : marker -> term -> term
   (* runtime-only: reified resumption value. `term_resume m b` is the  *)
@@ -101,8 +101,8 @@ Inductive value : term -> Prop :=
   | value_ctor   : forall K l lts Ts vs,
       Forall value vs ->
       value (term_ctor K l lts Ts vs)
-  | value_cap    : forall E m Ts op_body,
-      value (term_cap E m Ts op_body)
+    | value_cap    : forall E m n_β Ts op_body,
+      value (term_cap E m n_β Ts op_body)
   | value_resume : forall m b,
       value (term_resume m b)
   .
@@ -128,7 +128,7 @@ Fixpoint is_value (t : term) : bool :=
   | term_ty_lam _ _       => true
   | term_lt_lam _         => true
   | term_ctor _ _ _ _ vs  => go vs
-  | term_cap _ _ _ _      => true
+  | term_cap _ _ _ _ _    => true
   | term_resume _ _       => true
   | _                     => false
   end.

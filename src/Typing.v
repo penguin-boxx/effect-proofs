@@ -383,12 +383,12 @@ Fixpoint free_tm_vars (cutoff : nat) (t : term) : list nat :=
       free_tm_vars cutoff scrut
         ++ free_tm_vars (cutoff + arity) y
         ++ free_tm_vars cutoff n
-  | term_handle _ _ op_body body =>
+  | term_handle _ _ _ op_body body =>
       free_tm_vars (cutoff + 2) op_body
         ++ free_tm_vars (S cutoff) body
   | term_perform t _ arg =>
       free_tm_vars cutoff t ++ free_tm_vars cutoff arg
-  | term_cap _ _ _ op_body => free_tm_vars (cutoff + 2) op_body
+  | term_cap _ _ _ _ op_body => free_tm_vars (cutoff + 2) op_body
   | term_handler_m _ t => free_tm_vars cutoff t
   | term_resume _ b => free_tm_vars (S cutoff) b
   end.
@@ -881,7 +881,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
         :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
         :: push_ty_vars n_β any_at_free Γ)
         ⊢ₜ op_body : shift_ty n_β 0 T_R ->
-      Γ ⊢ₜ term_cap E_tag m Ts op_body : type_ctor E_tag lt_local Ts
+      Γ ⊢ₜ term_cap E_tag m n_β Ts op_body : type_ctor E_tag lt_local Ts
 
   (* NOTE on op-body variable convention (matching H_Perform):         *)
   (* subst_list_tm [v; resume] op_body substitutes:                    *)
@@ -906,7 +906,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
         :: push_ty_vars n_β any_at_free Γ)
         ⊢ₜ op_body : shift_ty n_β 0 T_R ->
       (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) ⊢ₜ body : T_R ->
-      Γ ⊢ₜ term_handle E_tag Ts op_body body : T_R
+      Γ ⊢ₜ term_handle E_tag n_β Ts op_body body : T_R
 
   (* (Perform): invoke the (single) operation on a capability value.   *)
   (* Caller supplies the β-type-arguments Ss at the perform site.      *)
@@ -919,6 +919,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       types_wf Γ Ss ->
       sig_inst = inst_op_arg n_α Ts n_β Ss sig ->
       ret_inst = inst_op_arg n_α Ts n_β Ss ret ->
+      ty_wf Γ ret_inst ->
       Γ ⊢ₜ arg : sig_inst ->
       Γ ⊢ₜ term_perform recv Ss arg : ret_inst
 

@@ -1,14 +1,21 @@
 ## Plan: Axiom-free whole-calculus safety (drop no_local@Lam, add no_local@Handle, well-scopedness, effectful progress)
 
-Goal: make `Safety.type_safety` axiom-free AND cover the FULL calculus incl. handlers, via three typing-rule groups plus supporting metatheory/runtime invariants. Decisions locked: (D1) effect safety via ADDITIVE runtime marker invariant (typing judgment unchanged); (D2) I edit Typing/SubstitutionTheory/Safety and retire or update Counterexample*.v ONLY — user repairs Examples.v/ExamplesProofs.v (they build AFTER Safety, so my files verify independently).
+Goal: make `Safety.type_safety` axiom-free AND cover the FULL calculus incl. handlers, via three typing-rule groups plus supporting metatheory/runtime invariants. Decisions locked: (D1) effect safety via ADDITIVE runtime marker invariant (typing judgment unchanged); (D2) core proof edits are allowed in Syntax/Substitution/Semantics/Typing/SubstitutionTheory/Safety as needed, while user-owned Examples.v/ExamplesProofs.v remain out of scope.
 
 ### Current status
+- 2026-06-09 update: the foundational `op_body` β-binder refactor is implemented. `term_cap` and `term_handle` now store `n_β`; `shift_ty_in_tm`/`subst_ty_in_tm` bump across the op-body's β binders; Semantics/Safety/SubstitutionTheory thread the stored value. `make all` currently passes.
+- `typing_implies_wf` is now proven (no longer an axiom). `Print Assumptions Safety.type_safety` reports 9 remaining safety-critical obligations, with `handler_perform_preservation` and `canonical_cap` stated over the stored `n_β` field. The refactor removes the previous blocker for proving `typing_InsTy`, `subst_ty_in_tm_lemma`, `subst_tm_lemma`, and `handler_perform_preservation`.
+- `SubstitutionTheory.v` now has the lifetime-shift algebra needed by the non-match parts of `typing_InsLt`: `inst_ty_vars_shift_lt`, `inst_ctor_type_shift_lt`, `inst_op_alpha_shift_lt`, `inst_op_arg_shift_lt`, `lt_of_ty_shift_lt`, and the above-binder lifetime substitution/shift commutation lemma. The file compiles.
+- New blocker for full depth-general `typing_InsLt`: the `T_Match` yes-branch uses `push_lt_vars n_lt Delta Γ`, which repeats the raw `Delta` bound under each fresh lifetime binder. Under an ambient `InsLt c Γ Γ'`, the shifted branch body needs cutoff `n_lt + c`, but the target `push_lt_vars n_lt (shift_lt 1 c Delta) Γ'` does not match the context produced by repeated `InsLt_lt` when `n_lt > 1` and `Delta` mentions ambient lifetime variables. This is not a missing arithmetic rewrite; it needs a corrected push/branch-context strategy (for example, a shifted/correlated push relation or a T_Match context refactor) before `typing_InsLt` can be completed soundly.
+- Hardest non-de-Bruijn target checked first: raw `marker_ok_preservation` is false, not merely unproved. `CounterexampleMarkerReturn.v` now compiles against the current `term_cap E m n_β Ts op_body` syntax and shows `H_Return` can remove a delimiter from a value containing a dead buried capability. The repair cannot be a direct proof of the axiom; it must replace `marker_ok` preservation with a dead-position-aware or progress-specific invariant.
+- The stale `SubstitutionTheory.v` line-63 `term_match` error was caused by old compiled artifacts, not source. Rebuilding the dependency chain clears it.
+- Plan correction: the old F2 recommendation to widen `lt_of_ty` is superseded by the current `T_Ctor` premise `Forall (fun l0 => Γ ⊢ₗ l0 <: l) lts`; prove `ctor_lts_chain_bounded` match-locally by threading that premise through `ctor_typing_inv` and closed-lifetime-under-`eval_ctx` facts.
 - Phase 5 wiring is implemented: `eval_ctx` admits effects, handle allocation uses fresh whole-term markers, `progress`/`type_safety` are marker-aware, and the core build passes.
 - `marker_ok_plug_cap_pure_in` is now proven, so a bare capability under a pure context contradicts `marker_ok []` without an axiom.
 - `Semantics.no_step_value` and `Safety.multi_step_value_inv` are proven support lemmas for the next marker-preservation replacement.
 - Remaining assumptions on `Safety.type_safety` are `handler_perform_preservation`, `marker_ok_preservation`, `canonical_ctor`, `canonical_cap`, plus older substitution/context assumptions from `SubstitutionTheory.v`.
 - Directly proving the current `marker_ok_preservation` statement is impossible: raw `H_Return` can step `term_handler_m m (term_cap E m Ts op_body)` to the bare cap, breaking `marker_ok []`. Replace it with a typed/source-aware preservation invariant, or with a progress-specific invariant that permits returned values and then proves they cannot continue stepping.
-- Directly proving `typing_implies_wf` is blocked by missing effect-signature well-formedness: `T_Perform` returns `ret_inst`, but `ctx_lookup_eff` does not currently guarantee the looked-up `sig`/`ret` schemas are well formed after instantiation.
+- `typing_implies_wf` was discharged by adding the missing `ty_wf Γ ret_inst` premise to `T_Perform` and proving regularity by `typing_ind_forall2`.
 
 ### Rule changes (all in Typing.v)
 - R1 T_Lam (L694): REMOVE `no_local_ty B = true`.
@@ -39,8 +46,9 @@ Goal: make `Safety.type_safety` axiom-free AND cover the FULL calculus incl. han
 - `subst_list_lt_in_tm_lemma` via subst_lt + chain_bounded + subst_list_lt_in_ty_each (reuse inst_ctor_type_subst_eq already proven).
 
 ### PHASE 4 — Fix ctor_lts_chain_bounded (Typing.v + SubstitutionTheory.v). Dep: P1. Parallel w/ P2,P3.
-- Root cause (CounterexampleCtorChain.v): `lt_of_ty (type_fun _ l _)=l` ignores domain/codomain ⇒ contravariant locals invisible. FIX (decision F2): widen lt_of_ty + lt_of_ty_list to fold domain+codomain lifetimes, OR add ctor-schema wf premise. Widening ripples into SA_Any(lt_of_ty_G), T_Ctor bound, capture_lt, escape theorems — re-verify those.
-- Discharge ctor_lts_chain_bounded. Retire CounterexampleCtorChain.v (delete or rewrite as a positive regression once the theorem exists).
+- Do not prove the global statement as written: CounterexampleCtorChain.v shows it is false. The current `T_Ctor` rule already has the needed local premise `Forall (fun l0 => Γ ⊢ₗ l0 <: l) lts`.
+- Extend `ctor_typing_inv` to return that `Forall`; in match preservation combine it with `sub_ctor_inv` to obtain `Forall (fun l0 => Γ ⊢ₗ l0 <: Delta_m) lts`. Add closed-lifetime-under-`eval_ctx` lemmas (`shift_lt`/`subst_lt` identities for `lt_wf Γ l`) so the flat `Forall` supplies the `chain_bounded` facts consumed by `subst_list_lt_in_tm_lemma`.
+- Remove or replace `ctor_lts_chain_bounded` with this match-local theorem. Retire CounterexampleCtorChain.v only after the repaired theorem exists.
 
 ### PHASE 5 — Whole-calculus safety (Safety.v + SubstitutionTheory.v). Dep: P2,P3,P4 (+R2). The novel core.
 - Extend eval_ctx with `ec_eff` (allow bind_eff). eval_ctx_no_tm/no_ty/no_lt STILL hold; REMOVE eval_ctx_no_eff (now false) and everything that used it vacuously. Ensure effect declarations are well-scoped via R3/schema-wf, since lookup absence no longer hides ill-scoped effect schemas.
@@ -77,6 +85,6 @@ Goal: make `Safety.type_safety` axiom-free AND cover the FULL calculus incl. han
 
 **Further Considerations**
 1. F1 Well-scopedness strictness: guard reflexivity rules (LS_Refl/SA_Refl) [chosen — else unbound vars still leak] vs only var-introducers. Guarding maximizes example breakage but is required for genuine well-scopedness.
-2. F2 ctor-chain fix: (A) widen lt_of_ty to include fn domain/codomain [more faithful, ripples into SA_Any/escape thms] vs (B) add ctor-schema wf premise [localized, weaker statement]. Recommend A.
+2. F2 ctor-chain fix: superseded by threading `T_Ctor`'s existing per-lifetime `Forall` premise through `ctor_typing_inv`; no `lt_of_ty` widening planned.
 3. F3 RISK (highest): marker_ok resume case. Resumptions are first-class values that re-install their delimiter (H_Resume ⇒ handler_m m). Invariant must model resume as self-providing m; getting H_Perform (continuation capture) + H_Resume preservation right is the novel crux. Fallback if intractable: have handler_m/cap/resume reference a marker binding in Γ (folds into typing — deviates from D1).
 4. F4 Marker freshness: H_Handle (Semantics L139) admits ANY marker, not fresh. If marker_ok needs distinctness, may require a fresh-marker side condition or supply; confirm whether structural confinement suffices.

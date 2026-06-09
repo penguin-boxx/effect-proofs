@@ -130,9 +130,9 @@ Fixpoint markers_in (t : term) : list marker :=
   | term_ctor _ _ _ _ ts => markers_in_list_local ts
   | term_match scrut _ _ _ yes_body no_body =>
       markers_in scrut ++ markers_in yes_body ++ markers_in no_body
-  | term_handle _ _ op_body body => markers_in op_body ++ markers_in body
+  | term_handle _ _ _ op_body body => markers_in op_body ++ markers_in body
   | term_perform recv _ arg => markers_in recv ++ markers_in arg
-  | term_cap _ m _ op_body => m :: markers_in op_body
+  | term_cap _ m _ _ op_body => m :: markers_in op_body
   | term_handler_m m body => m :: markers_in body
   | term_resume m body => m :: markers_in body
   end.
@@ -214,12 +214,12 @@ Inductive head_step : term -> term -> Prop :=
   | H_LtBeta : forall body l,
       term_lt_app (term_lt_lam body) l -->h subst_lt_in_tm 0 l body
 
-    | H_MatchYes : forall K l lts Ts vs n_lt yes_body no_body,
+  | H_MatchYes : forall K l lts Ts vs n_lt yes_body no_body,
       Forall value vs ->
       term_match (term_ctor K l lts Ts vs) K n_lt (List.length vs) yes_body no_body
         -->h subst_list_tm vs (subst_list_lt_in_tm lts yes_body)
 
-    | H_MatchNo : forall K K' l lts Ts vs n_lt arity yes_body no_body,
+  | H_MatchNo : forall K K' l lts Ts vs n_lt arity yes_body no_body,
       Forall value vs ->
       K <> K' ->
       term_match (term_ctor K' l lts Ts vs) K n_lt arity yes_body no_body -->h no_body
@@ -238,10 +238,10 @@ Inductive head_step : term -> term -> Prop :=
   (*      substituting [arg, resumption] for its term-binders.        *)
   (* The shift on P accounts for the new term-binder introduced by    *)
   (* the resumption.                                                  *)
-  | H_Perform : forall E_tag m Ts op_body Ss v P,
+  | H_Perform : forall E_tag m n_beta Ts op_body Ss v P,
       value v -> pure_ectx_m m P ->
       term_handler_m m
-        (plug P (term_perform (term_cap E_tag m Ts op_body) Ss v))
+        (plug P (term_perform (term_cap E_tag m n_beta Ts op_body) Ss v))
         -->h
           subst_list_tm [v; term_resume m (plug (shift_ectx_tm 1 0 P) (term_var 0))]
             (subst_list_ty_in_tm Ss
@@ -300,11 +300,11 @@ Inductive step : term -> term -> Prop :=
       ectx_wf E ->
       r -->h r' ->
       plug E r ==> plug E r'
-  | S_HandleCtx : forall E E_tag Ts op_body body m,
+  | S_HandleCtx : forall E E_tag n_beta Ts op_body body m,
       ectx_wf E ->
-      ~ In m (markers_in (plug E (term_handle E_tag Ts op_body body))) ->
-      plug E (term_handle E_tag Ts op_body body)
-        ==> plug E (term_handler_m m (subst_tm 0 (term_cap E_tag m Ts op_body) body))
+      ~ In m (markers_in (plug E (term_handle E_tag n_beta Ts op_body body))) ->
+      plug E (term_handle E_tag n_beta Ts op_body body)
+        ==> plug E (term_handler_m m (subst_tm 0 (term_cap E_tag m n_beta Ts op_body) body))
 where "t '==>' t'" := (step t t').
 
 Hint Constructors step : core.
@@ -338,8 +338,8 @@ Proof.
   intros t1 t2 [t1' H]. inversion H; subst.
   - exists (term_app (plug E r') t2). apply (S_step (EC_app1 E t2)); auto.
   - exists (term_app
-      (plug E (term_handler_m (marker_bound (term_app (plug E (term_handle E_tag Ts op_body body)) t2))
-        (subst_tm 0 (term_cap E_tag (marker_bound (term_app (plug E (term_handle E_tag Ts op_body body)) t2)) Ts op_body) body)))
+      (plug E (term_handler_m (marker_bound (term_app (plug E (term_handle E_tag n_beta Ts op_body body)) t2))
+        (subst_tm 0 (term_cap E_tag (marker_bound (term_app (plug E (term_handle E_tag n_beta Ts op_body body)) t2)) n_beta Ts op_body) body)))
       t2).
     apply (S_HandleCtx (EC_app1 E t2)); auto.
     apply marker_bound_fresh.
@@ -353,8 +353,8 @@ Proof.
   intros v t2 Hv [t2' H]. inversion H; subst.
   - exists (term_app v (plug E r')). apply (S_step (EC_app2 v E)); auto.
   - exists (term_app v
-      (plug E (term_handler_m (marker_bound (term_app v (plug E (term_handle E_tag Ts op_body body))))
-        (subst_tm 0 (term_cap E_tag (marker_bound (term_app v (plug E (term_handle E_tag Ts op_body body)))) Ts op_body) body)))).
+      (plug E (term_handler_m (marker_bound (term_app v (plug E (term_handle E_tag n_beta Ts op_body body))))
+        (subst_tm 0 (term_cap E_tag (marker_bound (term_app v (plug E (term_handle E_tag n_beta Ts op_body body)))) n_beta Ts op_body) body)))).
     apply (S_HandleCtx (EC_app2 v E)); auto.
     apply marker_bound_fresh.
 Qed.
@@ -366,8 +366,8 @@ Proof.
   intros t T [t' H]. inversion H; subst.
   - exists (term_ty_app (plug E r') T). apply (S_step (EC_ty_app E T)); auto.
   - exists (term_ty_app
-      (plug E (term_handler_m (marker_bound (term_ty_app (plug E (term_handle E_tag Ts op_body body)) T))
-        (subst_tm 0 (term_cap E_tag (marker_bound (term_ty_app (plug E (term_handle E_tag Ts op_body body)) T)) Ts op_body) body)))
+      (plug E (term_handler_m (marker_bound (term_ty_app (plug E (term_handle E_tag n_beta Ts op_body body)) T))
+        (subst_tm 0 (term_cap E_tag (marker_bound (term_ty_app (plug E (term_handle E_tag n_beta Ts op_body body)) T)) n_beta Ts op_body) body)))
       T).
     apply (S_HandleCtx (EC_ty_app E T)); auto.
     apply marker_bound_fresh.
@@ -380,8 +380,8 @@ Proof.
   intros t l [t' H]. inversion H; subst.
   - exists (term_lt_app (plug E r') l). apply (S_step (EC_lt_app E l)); auto.
   - exists (term_lt_app
-      (plug E (term_handler_m (marker_bound (term_lt_app (plug E (term_handle E_tag Ts op_body body)) l))
-        (subst_tm 0 (term_cap E_tag (marker_bound (term_lt_app (plug E (term_handle E_tag Ts op_body body)) l)) Ts op_body) body)))
+      (plug E (term_handler_m (marker_bound (term_lt_app (plug E (term_handle E_tag n_beta Ts op_body body)) l))
+        (subst_tm 0 (term_cap E_tag (marker_bound (term_lt_app (plug E (term_handle E_tag n_beta Ts op_body body)) l)) n_beta Ts op_body) body)))
       l).
     apply (S_HandleCtx (EC_lt_app E l)); auto.
     apply marker_bound_fresh.
@@ -397,10 +397,10 @@ Proof.
     apply (S_step (EC_ctor K l lts Ts vs E ts)); auto.
   - exists (term_ctor K l lts Ts
       (vs ++ plug E (term_handler_m
-        (marker_bound (term_ctor K l lts Ts (vs ++ plug E (term_handle E_tag Ts0 op_body body) :: ts)))
+        (marker_bound (term_ctor K l lts Ts (vs ++ plug E (term_handle E_tag n_beta Ts0 op_body body) :: ts)))
         (subst_tm 0 (term_cap E_tag
-          (marker_bound (term_ctor K l lts Ts (vs ++ plug E (term_handle E_tag Ts0 op_body body) :: ts)))
-          Ts0 op_body) body)) :: ts)).
+          (marker_bound (term_ctor K l lts Ts (vs ++ plug E (term_handle E_tag n_beta Ts0 op_body body) :: ts)))
+          n_beta Ts0 op_body) body)) :: ts)).
     apply (S_HandleCtx (EC_ctor K l lts Ts vs E ts)); auto.
     apply marker_bound_fresh.
 Qed.
@@ -435,22 +435,22 @@ Proof.
     apply (S_step (EC_match E tag nlt ar y n)); auto.
   - exists (term_match
       (plug E (term_handler_m
-        (marker_bound (term_match (plug E (term_handle E_tag Ts op_body body)) tag nlt ar y n))
+        (marker_bound (term_match (plug E (term_handle E_tag n_beta Ts op_body body)) tag nlt ar y n))
         (subst_tm 0 (term_cap E_tag
-          (marker_bound (term_match (plug E (term_handle E_tag Ts op_body body)) tag nlt ar y n))
-          Ts op_body) body)))
+          (marker_bound (term_match (plug E (term_handle E_tag n_beta Ts op_body body)) tag nlt ar y n))
+          n_beta Ts op_body) body)))
       tag nlt ar y n).
     apply (S_HandleCtx (EC_match E tag nlt ar y n)); auto.
     apply marker_bound_fresh.
 Qed.
 
-Lemma S_Handle : forall E_tag Ts op_body body m,
-  ~ In m (markers_in (term_handle E_tag Ts op_body body)) ->
-  term_handle E_tag Ts op_body body
-    ==> term_handler_m m (subst_tm 0 (term_cap E_tag m Ts op_body) body).
+Lemma S_Handle : forall E_tag n_beta Ts op_body body m,
+  ~ In m (markers_in (term_handle E_tag n_beta Ts op_body body)) ->
+  term_handle E_tag n_beta Ts op_body body
+    ==> term_handler_m m (subst_tm 0 (term_cap E_tag m n_beta Ts op_body) body).
 Proof.
-  intros E_tag Ts op_body body m Hfresh.
-  apply (S_HandleCtx EC_hole E_tag Ts op_body body m); [constructor | exact Hfresh].
+  intros E_tag n_beta Ts op_body body m Hfresh.
+  apply (S_HandleCtx EC_hole E_tag n_beta Ts op_body body m); [constructor | exact Hfresh].
 Qed.
 
 Lemma S_Return : forall m v,
@@ -465,10 +465,10 @@ Proof.
   - exists (term_handler_m m (plug E r')). apply (S_step (EC_handler_m m E)); auto.
   - exists (term_handler_m m
       (plug E (term_handler_m
-        (marker_bound (term_handler_m m (plug E (term_handle E_tag Ts op_body body))))
+        (marker_bound (term_handler_m m (plug E (term_handle E_tag n_beta Ts op_body body))))
         (subst_tm 0 (term_cap E_tag
-          (marker_bound (term_handler_m m (plug E (term_handle E_tag Ts op_body body))))
-          Ts op_body) body)))).
+          (marker_bound (term_handler_m m (plug E (term_handle E_tag n_beta Ts op_body body))))
+          n_beta Ts op_body) body)))).
     apply (S_HandleCtx (EC_handler_m m E)); auto.
     apply marker_bound_fresh.
 Qed.
@@ -481,10 +481,10 @@ Proof.
   - exists (term_perform (plug E r') Ss arg). apply (S_step (EC_perform_r E Ss arg)); auto.
   - exists (term_perform
       (plug E (term_handler_m
-        (marker_bound (term_perform (plug E (term_handle E_tag Ts op_body body)) Ss arg))
+        (marker_bound (term_perform (plug E (term_handle E_tag n_beta Ts op_body body)) Ss arg))
         (subst_tm 0 (term_cap E_tag
-          (marker_bound (term_perform (plug E (term_handle E_tag Ts op_body body)) Ss arg))
-          Ts op_body) body)))
+          (marker_bound (term_perform (plug E (term_handle E_tag n_beta Ts op_body body)) Ss arg))
+          n_beta Ts op_body) body)))
       Ss arg).
     apply (S_HandleCtx (EC_perform_r E Ss arg)); auto.
     apply marker_bound_fresh.
@@ -499,10 +499,10 @@ Proof.
   - exists (term_perform v Ss (plug E r')). apply (S_step (EC_perform_a v Ss E)); auto.
   - exists (term_perform v Ss
       (plug E (term_handler_m
-        (marker_bound (term_perform v Ss (plug E (term_handle E_tag Ts op_body body))))
+        (marker_bound (term_perform v Ss (plug E (term_handle E_tag n_beta Ts op_body body))))
         (subst_tm 0 (term_cap E_tag
-          (marker_bound (term_perform v Ss (plug E (term_handle E_tag Ts op_body body))))
-          Ts op_body) body)))).
+          (marker_bound (term_perform v Ss (plug E (term_handle E_tag n_beta Ts op_body body))))
+          n_beta Ts op_body) body)))).
     apply (S_HandleCtx (EC_perform_a v Ss E)); auto.
     apply marker_bound_fresh.
 Qed.
@@ -563,10 +563,10 @@ Proof.
   - destruct E; simpl in Ht; discriminate.
 Qed.
 
-Lemma no_step_cap : forall E_tag m Ts op_body t',
-  term_cap E_tag m Ts op_body ==> t' -> False.
+Lemma no_step_cap : forall E_tag m n_beta Ts op_body t',
+  term_cap E_tag m n_beta Ts op_body ==> t' -> False.
 Proof.
-  intros Et m Ts ob t' H. remember (term_cap Et m Ts ob) as t eqn:Ht.
+  intros Et m n_beta Ts ob t' H. remember (term_cap Et m n_beta Ts ob) as t eqn:Ht.
   induction H; subst.
   - destruct E; simpl in Ht; try discriminate.
     subst. match goal with Hh : _ -->h _ |- _ => inversion Hh end.
@@ -630,7 +630,7 @@ Proof.
   intros v t' Hv Hs. inversion Hs; subst.
   - eapply head_step_not_value; [|eauto].
     eapply plug_value_inv; eauto.
-  - pose proof (plug_value_inv E (term_handle E_tag Ts op_body body) H Hv) as Hhandle.
+  - pose proof (plug_value_inv E (term_handle E_tag n_beta Ts op_body body) H Hv) as Hhandle.
     inversion Hhandle.
 Qed.
 
@@ -653,7 +653,7 @@ Proof.
   intros t1 t2 t' H.
   inversion H as
     [E r r' Hwf Hh Heq Heq'
-    | E Et Ts ob bd m Hwf Hfresh Heq Heq']; subst.
+    | E Et n_beta Ts ob bd m Hwf Hfresh Heq Heq']; subst.
   - destruct E; simpl in Heq; try discriminate.
     + (* hole *) subst r. inversion Hh; subst.
       * (* H_Beta *)
@@ -674,17 +674,17 @@ Proof.
     + (* EC_app1 *)
       inversion Heq; subst. inversion Hwf; subst.
       right. right. left.
-      exists (plug E (term_handler_m m (subst_tm 0 (term_cap Et m Ts ob) bd))).
+      exists (plug E (term_handler_m m (subst_tm 0 (term_cap Et m n_beta Ts ob) bd))).
       split.
-      * apply (S_HandleCtx E Et Ts ob bd m); auto.
+      * apply (S_HandleCtx E Et n_beta Ts ob bd m); auto.
         intro Hin. apply Hfresh. simpl. rewrite List.in_app_iff. left. exact Hin.
       * reflexivity.
     + (* EC_app2 *)
       inversion Heq; subst. inversion Hwf; subst.
       right. right. right.
-      exists (plug E (term_handler_m m (subst_tm 0 (term_cap Et m Ts ob) bd))).
+      exists (plug E (term_handler_m m (subst_tm 0 (term_cap Et m n_beta Ts ob) bd))).
       split; [auto | split; [|reflexivity]].
-      apply (S_HandleCtx E Et Ts ob bd m); auto.
+      apply (S_HandleCtx E Et n_beta Ts ob bd m); auto.
       intro Hin. apply Hfresh. simpl. rewrite List.in_app_iff. right. exact Hin.
 Qed.
 
@@ -697,7 +697,7 @@ Proof.
   intros t T t' H.
   inversion H as
     [E r r' Hwf Hh Heq Heq'
-    | E Et Ts ob bd m Hwf Hfresh Heq Heq']; subst.
+    | E Et n_beta Ts ob bd m Hwf Hfresh Heq Heq']; subst.
   - destruct E; simpl in Heq; try discriminate.
     + subst r. inversion Hh; subst.
       left. exists bound, body. split; reflexivity.
@@ -706,9 +706,9 @@ Proof.
       split; [apply (S_step E); auto | reflexivity].
   - destruct E; simpl in Heq; try discriminate.
     inversion Heq; subst. inversion Hwf; subst.
-    right. exists (plug E (term_handler_m m (subst_tm 0 (term_cap Et m Ts ob) bd))).
+    right. exists (plug E (term_handler_m m (subst_tm 0 (term_cap Et m n_beta Ts ob) bd))).
     split.
-    + apply (S_HandleCtx E Et Ts ob bd m); auto.
+    + apply (S_HandleCtx E Et n_beta Ts ob bd m); auto.
     + reflexivity.
 Qed.
 
@@ -720,7 +720,7 @@ Proof.
   intros t l t' H.
   inversion H as
     [E r r' Hwf Hh Heq Heq'
-    | E Et Ts ob bd m Hwf Hfresh Heq Heq']; subst.
+    | E Et n_beta Ts ob bd m Hwf Hfresh Heq Heq']; subst.
   - destruct E; simpl in Heq; try discriminate.
     + subst r. inversion Hh; subst.
       left. exists body. split; reflexivity.
@@ -729,9 +729,9 @@ Proof.
       split; [apply (S_step E); auto | reflexivity].
   - destruct E; simpl in Heq; try discriminate.
     inversion Heq; subst. inversion Hwf; subst.
-    right. exists (plug E (term_handler_m m (subst_tm 0 (term_cap Et m Ts ob) bd))).
+    right. exists (plug E (term_handler_m m (subst_tm 0 (term_cap Et m n_beta Ts ob) bd))).
     split.
-    + apply (S_HandleCtx E Et Ts ob bd m); auto.
+    + apply (S_HandleCtx E Et n_beta Ts ob bd m); auto.
     + reflexivity.
 Qed.
 
@@ -744,7 +744,7 @@ Proof.
   intros K l lts Ts ts t' H.
   inversion H as
     [E r r' Hwf Hh Heq Heq'
-    | E Et TsH ob bd m Hwf Hfresh Heq Heq']; subst.
+    | E Et n_beta TsH ob bd m Hwf Hfresh Heq Heq']; subst.
   - destruct E as [ | | | | | K0 l0 lts0 Ts0 vs E0 tsr | | | | ]; simpl in Heq.
     + (* EC_hole *) subst r. inversion Hh.
     + discriminate.
@@ -761,14 +761,14 @@ Proof.
   - destruct E as [ | | | | | K0 l0 lts0 Ts0 vs E0 tsr | | | | ]; simpl in Heq; try discriminate.
     inversion Heq; subst. inversion Hwf; subst.
     exists vs,
-      (plug E0 (term_handle Et TsH ob bd)),
-      (plug E0 (term_handler_m m (subst_tm 0 (term_cap Et m TsH ob) bd))),
+      (plug E0 (term_handle Et n_beta TsH ob bd)),
+      (plug E0 (term_handler_m m (subst_tm 0 (term_cap Et m n_beta TsH ob) bd))),
       tsr.
     repeat split; auto.
-    apply (S_HandleCtx E0 Et TsH ob bd m); auto.
+    apply (S_HandleCtx E0 Et n_beta TsH ob bd m); auto.
     intro Hin. apply Hfresh.
       change (In m (markers_in
-        (term_ctor K l lts Ts (vs ++ plug E0 (term_handle Et TsH ob bd) :: tsr)))).
+        (term_ctor K l lts Ts (vs ++ plug E0 (term_handle Et n_beta TsH ob bd) :: tsr)))).
       rewrite markers_in_ctor. apply markers_in_list_focus. exact Hin.
 Qed.
 
@@ -792,7 +792,7 @@ Proof.
   intros scrut tag n_lt ar y n t' H.
   inversion H as
     [E r r' Hwf Hh Heq Heq'
-    | E Et Ts ob bd m Hwf Hfresh Heq Heq']; subst.
+    | E Et n_beta Ts ob bd m Hwf Hfresh Heq Heq']; subst.
   - destruct E as [ | | | | | | E0 K0 nlt0 ar0 y0 n0 | | | ]; simpl in Heq; try discriminate.
     + (* EC_hole *) subst r. inversion Hh; subst.
       * left. do 5 eexists. repeat split; eauto.
@@ -804,9 +804,9 @@ Proof.
   - destruct E as [ | | | | | | E0 K0 nlt0 ar0 y0 n0 | | | ]; simpl in Heq; try discriminate.
     inversion Heq; subst. inversion Hwf; subst.
     right. right.
-    exists (plug E0 (term_handler_m m (subst_tm 0 (term_cap Et m Ts ob) bd))).
+    exists (plug E0 (term_handler_m m (subst_tm 0 (term_cap Et m n_beta Ts ob) bd))).
     split.
-    + apply (S_HandleCtx E0 Et Ts ob bd m); auto.
+    + apply (S_HandleCtx E0 Et n_beta Ts ob bd m); auto.
       intro Hin. apply Hfresh. simpl. rewrite !List.in_app_iff. left. exact Hin.
     + reflexivity.
 Qed.
@@ -820,9 +820,9 @@ Lemma step_handler_m_inv : forall m t t'',
   term_handler_m m t ==> t'' ->
     (value t /\ t'' = t)
     \/ (exists t', t ==> t' /\ t'' = term_handler_m m t')
-    \/ (exists E_tag Ts op_body Ss v P,
+        \/ (exists E_tag n_beta Ts op_body Ss v P,
           value v /\ pure_ectx_m m P /\
-          t = plug P (term_perform (term_cap E_tag m Ts op_body) Ss v) /\
+          t = plug P (term_perform (term_cap E_tag m n_beta Ts op_body) Ss v) /\
           t'' = subst_list_tm
                   [v;
                    term_resume m
@@ -832,14 +832,13 @@ Proof.
   intros m t t'' H.
   inversion H as
     [E r r' Hwf Hh Heq Heq'
-    | E Et Ts ob bd mh Hwf Hfresh Heq Heq']; subst.
+    | E Et n_beta Ts ob bd mh Hwf Hfresh Heq Heq']; subst.
   - destruct E; simpl in Heq; try discriminate.
     + (* EC_hole *) subst r. inversion Hh; subst.
       * (* H_Return *) left; split; auto.
       * (* H_Perform *)
         right. right.
-        exists E_tag, Ts, op_body, Ss, v, P.
-        repeat split; auto.
+        do 7 eexists. repeat split; eauto.
     + (* EC_handler_m m0 E0 *)
       inversion Heq; subst.
       inversion Hwf; subst.
@@ -848,9 +847,9 @@ Proof.
   - destruct E; simpl in Heq; try discriminate.
     inversion Heq; subst. inversion Hwf; subst.
     right. left.
-    exists (plug E (term_handler_m mh (subst_tm 0 (term_cap Et mh Ts ob) bd))).
+    exists (plug E (term_handler_m mh (subst_tm 0 (term_cap Et mh n_beta Ts ob) bd))).
     split.
-    + apply (S_HandleCtx E Et Ts ob bd mh); auto.
+    + apply (S_HandleCtx E Et n_beta Ts ob bd mh); auto.
       intro Hin. apply Hfresh. simpl. right. exact Hin.
     + reflexivity.
 Qed.
@@ -864,7 +863,7 @@ Proof.
   intros t Ss arg t' H.
   inversion H as
     [E r r' Hwf Hh Heq Heq'
-    | E Et Ts ob bd m Hwf Hfresh Heq Heq']; subst.
+    | E Et n_beta Ts ob bd m Hwf Hfresh Heq Heq']; subst.
   - destruct E; simpl in Heq; try discriminate.
     + (* EC_hole *) subst r. inversion Hh.
     + (* EC_perform_r *)
@@ -878,28 +877,28 @@ Proof.
   - destruct E; simpl in Heq; try discriminate.
     + (* EC_perform_r *)
       inversion Heq; subst. inversion Hwf; subst.
-      left. exists (plug E (term_handler_m m (subst_tm 0 (term_cap Et m Ts ob) bd))).
+      left. exists (plug E (term_handler_m m (subst_tm 0 (term_cap Et m n_beta Ts ob) bd))).
       split.
-      * apply (S_HandleCtx E Et Ts ob bd m); auto.
+      * apply (S_HandleCtx E Et n_beta Ts ob bd m); auto.
         intro Hin. apply Hfresh. simpl. rewrite List.in_app_iff. left. exact Hin.
       * reflexivity.
     + (* EC_perform_a *)
       inversion Heq; subst. inversion Hwf; subst.
-      right. exists (plug E (term_handler_m m (subst_tm 0 (term_cap Et m Ts ob) bd))).
+      right. exists (plug E (term_handler_m m (subst_tm 0 (term_cap Et m n_beta Ts ob) bd))).
       split; [auto | split; [|reflexivity]].
-      apply (S_HandleCtx E Et Ts ob bd m); auto.
+      apply (S_HandleCtx E Et n_beta Ts ob bd m); auto.
       intro Hin. apply Hfresh. simpl. rewrite List.in_app_iff. right. exact Hin.
 Qed.
 
 (* Handle steps by allocating a fresh marker at the step level. *)
-Lemma step_handle_inv : forall E_tag Ts op_body body t',
-  term_handle E_tag Ts op_body body ==> t' ->
-  exists m, t' = term_handler_m m (subst_tm 0 (term_cap E_tag m Ts op_body) body).
+Lemma step_handle_inv : forall E_tag n_beta Ts op_body body t',
+  term_handle E_tag n_beta Ts op_body body ==> t' ->
+  exists m, t' = term_handler_m m (subst_tm 0 (term_cap E_tag m n_beta Ts op_body) body).
 Proof.
-  intros Et Ts ob bd t' H.
+  intros Et n_beta Ts ob bd t' H.
   inversion H as
     [E r r' Hwf Hh Heq Heq'
-    | E Et0 Ts0 ob0 bd0 m Hwf Hfresh Heq Heq']; subst.
+    | E Et0 n_beta0 Ts0 ob0 bd0 m Hwf Hfresh Heq Heq']; subst.
   - destruct E; simpl in Heq; try discriminate.
     subst r. inversion Hh.
   - destruct E; simpl in Heq; try discriminate.
@@ -918,6 +917,6 @@ Ltac no_step :=
   | H : term_lam _ _     ==> _ |- _ => exfalso; eapply no_step_lam; exact H
   | H : term_ty_lam _ _  ==> _ |- _ => exfalso; eapply no_step_ty_lam; exact H
   | H : term_lt_lam _    ==> _ |- _ => exfalso; eapply no_step_lt_lam; exact H
-  | H : term_cap _ _ _ _ ==> _ |- _ => exfalso; eapply no_step_cap; exact H
+  | H : term_cap _ _ _ _ _ ==> _ |- _ => exfalso; eapply no_step_cap; exact H
   | H : term_resume _ _  ==> _ |- _ => exfalso; eapply no_step_resume; exact H
   end.

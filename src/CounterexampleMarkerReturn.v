@@ -48,7 +48,7 @@ Require Import Safety.
 (* ------------------------------------------------------------------ *)
 
 (* A capability with marker 7 (effect tag 1, no type args). *)
-Definition cap7 : term := term_cap 1 7 [] (term_var 0).
+Definition cap7 : term := term_cap 1 7 0 [] (term_var 0).
 
 (* Two simple closed `no_local` types. *)
 Definition TyUnit : type := type_ctor 2 lt_free [].

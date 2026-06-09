@@ -55,12 +55,12 @@ Proof.
 Qed.
 
 (* A well-typed capability value forces its effect tag to be in Γ.    *)
-Lemma cap_typed_eff_some : forall Γ E_tag m Ts op_body T,
-  Γ ⊢ₜ term_cap E_tag m Ts op_body : T ->
+Lemma cap_typed_eff_some : forall Γ E_tag m n_beta Ts op_body T,
+  Γ ⊢ₜ term_cap E_tag m n_beta Ts op_body : T ->
   exists n_α n_β sig0 ret, ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig0, ret).
 Proof.
-  intros Γ E_tag m Ts op_body T H.
-  remember (term_cap E_tag m Ts op_body) as s eqn:Hs.
+  intros Γ E_tag m n_beta Ts op_body T H.
+  remember (term_cap E_tag m n_beta Ts op_body) as s eqn:Hs.
   revert Hs. induction H; intros Hs; try discriminate Hs.
   - (* T_Sub *) apply IHtyping; exact Hs.
   - (* T_Cap *) injection Hs; intros; subst. eauto.
@@ -341,9 +341,9 @@ Fixpoint marker_ok (ms : list marker) (t : term) : Prop :=
   | term_ctor _ _ _ _ ts => marker_ok_list ts
   | term_match scrut _ _ _ yes_body no_body =>
       marker_ok ms scrut /\ marker_ok ms yes_body /\ marker_ok ms no_body
-  | term_handle _ _ op_body body => marker_ok ms op_body /\ marker_ok ms body
+  | term_handle _ _ _ op_body body => marker_ok ms op_body /\ marker_ok ms body
   | term_perform recv _ arg => marker_ok ms recv /\ marker_ok ms arg
-  | term_cap _ m _ op_body => In m ms /\ marker_ok (m :: ms) op_body
+  | term_cap _ m _ _ op_body => In m ms /\ marker_ok (m :: ms) op_body
   | term_handler_m m body => marker_ok (m :: ms) body
   | term_resume m body => marker_ok (m :: ms) body
   end.
@@ -411,11 +411,11 @@ Proof.
     rewrite marker_ok_ctor_eq in Hm |- *. apply (HQ ms ms' Hi Hm).
   - (* match *) intros scrut tag n_lt arity yes no Hs Hy Hn ms ms' Hi Hm. simpl in *.
     destruct Hm as [H1 [H2 H3]]. repeat split; [eapply Hs | eapply Hy | eapply Hn]; eauto.
-  - (* handle *) intros E Ts op body Hop Hb ms ms' Hi Hm. simpl in *.
+  - (* handle *) intros E n_beta Ts op body Hop Hb ms ms' Hi Hm. simpl in *.
     destruct Hm as [H1 H2]. split; [eapply Hop | eapply Hb]; eauto.
   - (* perform *) intros t Ss arg Ht Ha ms ms' Hi Hm. simpl in *.
     destruct Hm as [H1 H2]. split; [eapply Ht | eapply Ha]; eauto.
-  - (* cap *) intros E m Ts op Hop ms ms' Hi Hm. simpl in *.
+  - (* cap *) intros E m n_beta Ts op Hop ms ms' Hi Hm. simpl in *.
     destruct Hm as [Hin Hrec]. split.
     + exact (Hi m Hin).
     + apply (Hop (m :: ms) (m :: ms')); [apply incl_same_cons; exact Hi | exact Hrec].
@@ -551,13 +551,13 @@ Proof.
     + eapply Hy; [ apply marker_ok_shift_tm; apply marker_ok_shift_lt_in_tm; exact Hrepl
                  | exact Hye ].
     + eapply Hn; eauto.
-  - (* handle *) intros E Ts op body Hop Hb ms var repl Hrepl Hm. simpl in *.
+  - (* handle *) intros E n_beta Ts op body Hop Hb ms var repl Hrepl Hm. simpl in *.
     destruct Hm as [Ho Hbo]. split.
     + eapply Hop; [ apply marker_ok_shift_tm; exact Hrepl | exact Ho ].
     + eapply Hb;  [ apply marker_ok_shift_tm; exact Hrepl | exact Hbo ].
   - (* perform *) intros t Ss arg Ht Ha ms var repl Hrepl Hm. simpl in *.
     destruct Hm as [Ht1 Ha1]. split; [eapply Ht | eapply Ha]; eauto.
-  - (* cap *) intros E m Ts op Hop ms var repl Hrepl Hm. simpl in *.
+  - (* cap *) intros E m n_beta Ts op Hop ms var repl Hrepl Hm. simpl in *.
     destruct Hm as [Hin Hrec]. split.
     + exact Hin.
     + apply (Hop (m :: ms) (var + 2) (shift_tm 2 0 repl)).
@@ -609,9 +609,9 @@ Proof.
 Qed.
 
 Definition perform_escape (ms : list marker) (t : term) : Prop :=
-  exists E_tag m Ts op_body Ss v P,
+  exists E_tag m n_beta Ts op_body Ss v P,
     In m ms /\ pure_ectx_m m P /\ value v /\
-    t = plug P (term_perform (term_cap E_tag m Ts op_body) Ss v).
+    t = plug P (term_perform (term_cap E_tag m n_beta Ts op_body) Ss v).
 
 Definition progress_result (ms : list marker) (t : term) : Prop :=
   value t \/ (exists t', t ==> t') \/ perform_escape ms t.
@@ -621,9 +621,9 @@ Definition progress_result (ms : list marker) (t : term) : Prop :=
    obligations to discharge: H_Perform preservation packages parallel β type
    substitution plus captured-continuation typing; marker preservation packages
    the runtime marker bookkeeping for all step cases. *)
-Axiom handler_perform_preservation : forall Γ m T E_tag Ts op_body Ss v P,
+Axiom handler_perform_preservation : forall Γ m T E_tag n_beta Ts op_body Ss v P,
   eval_ctx Γ ->
-  Γ ⊢ₜ plug P (term_perform (term_cap E_tag m Ts op_body) Ss v) : T ->
+  Γ ⊢ₜ plug P (term_perform (term_cap E_tag m n_beta Ts op_body) Ss v) : T ->
   value v ->
   pure_ectx_m m P ->
   Γ ⊢ₜ subst_list_tm
@@ -652,7 +652,7 @@ Axiom canonical_cap : forall Γ v E_tag Δ Ts n_α n_β sig ret,
     ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
     Γ ⊢ₜ v : type_ctor E_tag Δ Ts ->
     value v ->
-    exists m op_body, v = term_cap E_tag m Ts op_body.
+    exists m op_body, v = term_cap E_tag m n_β Ts op_body.
 
 Lemma canonical_lt_all : forall Γ v T,
   eval_ctx Γ ->
@@ -706,6 +706,33 @@ Proof.
     | H : type_ty_all _ _ = type_ctor _ _ _ |- _ => discriminate H
     | H : type_ctor _ _ _ = type_ty_all _ _ |- _ => discriminate H
     end.
+Qed.
+
+Lemma canonical_ctor_data : forall Γ v K l Ts,
+  eval_ctx Γ ->
+  ctx_lookup_eff Γ K = None ->
+  Γ ⊢ₜ v : type_ctor K l Ts ->
+  value v ->
+  K <> any_tag ->
+  exists K' l' lts' Ts' vs,
+    v = term_ctor K' l' lts' Ts' vs /\ Forall value vs.
+Proof.
+  intros Γ v K l Ts Hec Hnoeff Hty.
+  remember (type_ctor K l Ts) as T0 eqn:HT.
+  revert K l Ts HT Hnoeff.
+  induction Hty; intros K0 l0 Ts0 HT Hnoeff Hval HK; subst;
+    try (inversion Hval; fail);
+    try discriminate HT.
+  - (* T_Sub *)
+    destruct (sub_ctor_inv _ _ _ _ _ Hec H HK) as [l' [HeqT _]].
+    subst T.
+    eapply IHHty; eauto.
+  - (* T_Ctor *)
+    inversion Hval; subst.
+    exists K, l, lts, Ts, vs. split; [reflexivity|eassumption].
+  - (* T_Cap *)
+    injection HT as HK0 Hl0 HTs0. subst K0 l0 Ts0.
+    rewrite H in Hnoeff. discriminate.
 Qed.
 
 (* ------------------------------------------------------------------ *)
@@ -825,7 +852,7 @@ Lemma typing_ind2 :
      P (bind_tm sig_β
         :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
         :: push_ty_vars n_β any_at_free Γ) op_body (shift_ty n_β 0 T_R) ->
-     P Γ (term_cap E_tag m Ts op_body) (type_ctor E_tag lt_local Ts)) ->
+    P Γ (term_cap E_tag m n_β Ts op_body) (type_ctor E_tag lt_local Ts)) ->
   (forall Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β,
      ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
      List.length Ts = n_α ->
@@ -842,7 +869,7 @@ Lemma typing_ind2 :
         :: push_ty_vars n_β any_at_free Γ) op_body (shift_ty n_β 0 T_R) ->
      (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) ⊢ₜ body : T_R ->
      P (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) body T_R ->
-     P Γ (term_handle E_tag Ts op_body body) T_R) ->
+    P Γ (term_handle E_tag n_β Ts op_body body) T_R) ->
   (forall Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst,
      Γ ⊢ₜ recv : type_ctor E_tag Δ Ts -> P Γ recv (type_ctor E_tag Δ Ts) ->
      ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
@@ -851,6 +878,7 @@ Lemma typing_ind2 :
     types_wf Γ Ss ->
      sig_inst = inst_op_arg n_α Ts n_β Ss sig ->
      ret_inst = inst_op_arg n_α Ts n_β Ss ret ->
+    ty_wf Γ ret_inst ->
      Γ ⊢ₜ arg : sig_inst -> P Γ arg sig_inst ->
      P Γ (term_perform recv Ss arg) ret_inst) ->
   (forall Γ m t T, Γ ⊢ₜ t : T -> P Γ t T -> P Γ (term_handler_m m t) T) ->
@@ -985,13 +1013,13 @@ Proof.
         -- right. left. eexists. apply S_Resume; auto.
       * destruct (S_App2 t1 t2 Hv1 (ex_intro _ t2' Hs2)) as [u Hu].
         right. left. exists u. exact Hu.
-      * destruct Hesc2 as (Et & m & Ts0 & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
-        right. right. exists Et, m, Ts0, ob, Ss, v, (EC_app2 t1 P).
+      * destruct Hesc2 as (Et & m & nb & Ts0 & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
+        right. right. exists Et, m, nb, Ts0, ob, Ss, v, (EC_app2 t1 P).
         repeat split; auto.
     + destruct (S_App1 t1 t2 (ex_intro _ t1' Hs1)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hesc1 as (Et & m & Ts0 & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
-      right. right. exists Et, m, Ts0, ob, Ss, v, (EC_app1 P t2).
+    + destruct Hesc1 as (Et & m & nb & Ts0 & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
+      right. right. exists Et, m, nb, Ts0, ob, Ss, v, (EC_app1 P t2).
       repeat split; auto.
   - (* T_TyLam *)
     intros Γ bound body T HwfBound HwfT Hbody IHbody ms Hmok Hec. left; constructor.
@@ -1003,8 +1031,8 @@ Proof.
       right. left. eexists. apply S_TyBeta.
     + destruct (S_TyApp t S (ex_intro _ t' Hs)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m & Ts0 & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
-      right. right. exists Et, m, Ts0, ob, Ss, v, (EC_ty_app P S).
+    + destruct Hesc as (Et & m & nb & Ts0 & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
+      right. right. exists Et, m, nb, Ts0, ob, Ss, v, (EC_ty_app P S).
       repeat split; auto.
   - (* T_LtLam *)
     intros Γ body T HwfT Hbody IHbody ms Hmok Hec. left; constructor.
@@ -1016,8 +1044,8 @@ Proof.
       right. left. eexists. apply S_LtBeta.
     + destruct (S_LtApp t l (ex_intro _ t' Hs)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m & Ts0 & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
-      right. right. exists Et, m, Ts0, ob, Ss, v, (EC_lt_app P l).
+    + destruct Hesc as (Et & m & nb & Ts0 & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
+      right. right. exists Et, m, nb, Ts0, ob, Ss, v, (EC_lt_app P l).
       repeat split; auto.
   - (* T_Ctor *)
     intros Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields
@@ -1037,9 +1065,9 @@ Proof.
     + left. constructor; auto.
     + subst. destruct (S_Ctor K l lts Ts vsl tm vsr Hallvl (ex_intro _ tm' Hst)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m & Ts0 & ob & Ss & v & P & Hin & Hp & Hv & Heqesc).
+    + destruct Hesc as (Et & m & nb & Ts0 & ob & Ss & v & P & Hin & Hp & Hv & Heqesc).
       subst vs tm.
-      right. right. exists Et, m, Ts0, ob, Ss, v, (EC_ctor K l lts Ts vsl P vsr).
+      right. right. exists Et, m, nb, Ts0, ob, Ss, v, (EC_ctor K l lts Ts vsl P vsr).
       repeat split; auto.
   - (* T_Match *)
     intros Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
@@ -1069,9 +1097,9 @@ Proof.
       * eexists. eapply S_MatchNo; eauto.
     + destruct (S_Match scrut K n_lt arity yes_body no_body (ex_intro _ scrut' Hs)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m & Ts0 & ob & Ss & v & P & Hin & Hp & Hv & Heq).
+    + destruct Hesc as (Et & m & nb & Ts0 & ob & Ss & v & P & Hin & Hp & Hv & Heq).
       subst scrut.
-      right. right. exists Et, m, Ts0, ob, Ss, v, (EC_match P K n_lt arity yes_body no_body).
+      right. right. exists Et, m, nb, Ts0, ob, Ss, v, (EC_match P K n_lt arity yes_body no_body).
       repeat split; auto.
   - (* T_Cap *)
     intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
@@ -1079,13 +1107,13 @@ Proof.
   - (* T_Handle *)
     intros Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β
       Heff Hlen HwfTs HwfTR HnoLocal Hsb Hrb Hop IHop Hbody IHbody ms Hmok Hec.
-    set (m := marker_bound (term_handle E_tag Ts op_body body)).
+    set (m := marker_bound (term_handle E_tag n_β Ts op_body body)).
     right. left.
-    exists (term_handler_m m (subst_tm 0 (term_cap E_tag m Ts op_body) body)).
+    exists (term_handler_m m (subst_tm 0 (term_cap E_tag m n_β Ts op_body) body)).
     unfold m. apply S_Handle. apply marker_bound_fresh.
   - (* T_Perform *)
     intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
-      Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs Hsi Hri Harg IHarg ms Hmok Hec.
+      Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs Hsi Hri HwfRet Harg IHarg ms Hmok Hec.
     simpl in Hmok. destruct Hmok as [Hmok_recv Hmok_arg].
     specialize (IHrecv ms Hmok_recv Hec).
     destruct IHrecv as [Hvrecv | [[recv' Hsrecv] | Hescrecv]].
@@ -1094,17 +1122,17 @@ Proof.
       * destruct (canonical_cap Γ recv E_tag Δ Ts n_α n_β sig ret Hec Heff Hrecv Hvrecv)
           as [m [op_body Heqcap]].
         subst recv. simpl in Hmok_recv. destruct Hmok_recv as [Hin Hop_ok].
-        right. right. exists E_tag, m, Ts, op_body, Ss, arg, EC_hole.
+        right. right. exists E_tag, m, n_β, Ts, op_body, Ss, arg, EC_hole.
         repeat split; auto.
       * destruct (S_PerformArg recv Ss arg Hvrecv (ex_intro _ arg' Hsarg)) as [u Hu].
         right. left. exists u. exact Hu.
-      * destruct Hescarg as (Et & m & Ts0 & ob & Ss0 & v & P & Hin & Hp & Hv & Heq); subst.
-        right. right. exists Et, m, Ts0, ob, Ss0, v, (EC_perform_a recv Ss P).
+      * destruct Hescarg as (Et & m & nb & Ts0 & ob & Ss0 & v & P & Hin & Hp & Hv & Heq); subst.
+        right. right. exists Et, m, nb, Ts0, ob, Ss0, v, (EC_perform_a recv Ss P).
         repeat split; auto.
     + destruct (S_PerformRecv recv Ss arg (ex_intro _ recv' Hsrecv)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hescrecv as (Et & m & Ts0 & ob & Ss0 & v & P & Hin & Hp & Hv & Heq); subst.
-      right. right. exists Et, m, Ts0, ob, Ss0, v, (EC_perform_r P Ss arg).
+    + destruct Hescrecv as (Et & m & nb & Ts0 & ob & Ss0 & v & P & Hin & Hp & Hv & Heq); subst.
+      right. right. exists Et, m, nb, Ts0, ob, Ss0, v, (EC_perform_r P Ss arg).
       repeat split; auto.
   - (* T_HandlerM *)
     intros Γ m t T Ht IH ms Hmok Hec.
@@ -1113,13 +1141,13 @@ Proof.
     + right. left. exists t. apply S_Return; auto.
     + destruct (S_HandlerM m t (ex_intro _ t' Hs)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m0 & Ts & op_body & Ss & v & P & Hin & Hp & Hv & Heq); subst.
+    + destruct Hesc as (Et & m0 & nb & Ts & op_body & Ss & v & P & Hin & Hp & Hv & Heq); subst.
       destruct (Nat.eq_dec m0 m) as [Heqm | Hneq].
       * subst m0. right. left. eexists.
         apply (S_step EC_hole); [constructor|]. apply H_Perform; auto.
       * destruct Hin as [Hin_head | Hin_tail].
         { subst. contradiction. }
-        right. right. exists Et, m0, Ts, op_body, Ss, v, (EC_handler_m m P).
+        right. right. exists Et, m0, nb, Ts, op_body, Ss, v, (EC_handler_m m P).
         repeat split; auto.
   - (* T_Resume *)
     intros Γ m b A T_R HwfA HwfTR Hb IHb ms Hmok Hec. left; constructor.
@@ -1135,7 +1163,7 @@ Proof.
   destruct (progress_open _ _ _ _ Hec Hmok Hty) as [Hv | [[t' Hs] | Hesc]].
   - left. exact Hv.
   - right. exists t'. exact Hs.
-  - destruct Hesc as (Et & m & Ts & op_body & Ss & v & P & Hin & Hp & Hv & Heq).
+  - destruct Hesc as (Et & m & nb & Ts & op_body & Ss & v & P & Hin & Hp & Hv & Heq).
     inversion Hin.
 Qed.
 
@@ -2720,7 +2748,7 @@ Proof.
     + right; left. apply IHy; exact H.
     + right; right. apply IHn; exact H.
   - (* handle *)
-    intros E Ts op_body body IHop IHb c y. simpl.
+    intros E n_beta Ts op_body body IHop IHb c y. simpl.
     rewrite !List.in_app_iff. intros [H|H].
     + left. apply IHop; exact H.
     + right. apply IHb; exact H.
@@ -2728,7 +2756,7 @@ Proof.
     intros t Ss arg IHt IHa c y. simpl.
     rewrite !List.in_app_iff. intros [H|H]; [left; apply IHt; exact H | right; apply IHa; exact H].
   - (* cap *)
-    intros E m Ts op_body IHop c y. simpl. apply IHop.
+    intros E m n_beta Ts op_body IHop c y. simpl. apply IHop.
   - (* handler_m *)
     intros m t IH c y. simpl. apply IH.
   - (* resume *)
@@ -2867,8 +2895,8 @@ Proof.
     + apply fv_succ in Hb. specialize (IHbody (S x) Hb).
       simpl in IHbody. exact IHbody.
   - (* T_Perform *)
-    intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
-           H1 IHrecv H3 H4 H5 H6 H7 H8 H9 IHarg x Hin.
+        intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
+          H1 IHrecv H3 H4 H5 H6 H7 H8 HwfRet H9 IHarg x Hin.
     simpl in Hin. rewrite List.in_app_iff in Hin.
     destruct Hin as [H|H]; [apply IHrecv | apply IHarg]; exact H.
   - (* T_HandlerM *)
@@ -3284,7 +3312,7 @@ Proof.
            Heff Hlen HwfTs HwfTR HnoLocal Hsig Hret Hop IHop Hbody IHbody Hec t'' Hstep.
     apply step_handle_inv in Hstep.
     destruct Hstep as [m Heq]. subst t''.
-    assert (Hcap : Γ ⊢ₜ term_cap E_tag m Ts op_body : type_ctor E_tag lt_local Ts).
+    assert (Hcap : Γ ⊢ₜ term_cap E_tag m n_β Ts op_body : type_ctor E_tag lt_local Ts).
     { eapply T_Cap; eauto. }
     apply T_HandlerM.
     eapply subst_tm_lemma.
@@ -3293,8 +3321,8 @@ Proof.
     + constructor.
     + exact Hcap.
   - (* T_Perform *)
-    intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
-           Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs Hsi Hri Harg IHarg Hec t'' Hstep.
+        intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
+          Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs Hsi Hri HwfRet Harg IHarg Hec t'' Hstep.
     apply step_perform_inv in Hstep.
     destruct Hstep as [(recv' & Hsrecv & Heq) | (arg' & Hvrecv & Hsarg & Heq)].
     + subst t''. eapply T_Perform; eauto.
@@ -3306,7 +3334,7 @@ Proof.
     destruct Hstep as
       [(Hv & Et)
       | [(t' & Hs & Et)
-      | (E_tag & Ts & op_body & Ss & v & Pr & Hv & Hpe & Edec & Et)]].
+      | (E_tag & n_beta & Ts & op_body & Ss & v & Pr & Hv & Hpe & Edec & Et)]].
     + (* H_Return *) subst t''. exact Ht.
     + (* S_HandlerM *) subst t''. apply T_HandlerM. apply IH; assumption.
     + (* H_Perform *)
@@ -3502,12 +3530,12 @@ Qed.
 (* capabilities; the runtime `marker_ok` invariant does.              *)
 (* ================================================================== *)
 
-Lemma marker_ok_plug_cap_pure_in : forall ms E E_tag m Ts op_body,
+Lemma marker_ok_plug_cap_pure_in : forall ms E E_tag m n_beta Ts op_body,
   pure_ectx_m m E ->
-  marker_ok ms (plug E (term_cap E_tag m Ts op_body)) ->
+  marker_ok ms (plug E (term_cap E_tag m n_beta Ts op_body)) ->
   In m ms.
 Proof.
-  intros ms E E_tag m Ts op_body Hpure.
+  intros ms E E_tag m n_beta Ts op_body Hpure.
   revert ms. induction Hpure; simpl; intros ms Hmok.
   - exact (proj1 Hmok).
   - apply IHHpure. exact (proj1 Hmok).
@@ -3536,34 +3564,34 @@ Proof.
   - apply IH. eapply marker_ok_preservation; eauto.
 Qed.
 
-Theorem capability_confined : forall E E_tag m Ts op_body,
-  marker_ok [] (plug E (term_cap E_tag m Ts op_body)) ->
+Theorem capability_confined : forall E E_tag m n_beta Ts op_body,
+  marker_ok [] (plug E (term_cap E_tag m n_beta Ts op_body)) ->
   ~ pure_ectx_m m E.
 Proof.
-  intros E E_tag m Ts op_body Hmok Hpure.
-  pose proof (marker_ok_plug_cap_pure_in [] E E_tag m Ts op_body Hpure Hmok) as Hin.
+  intros E E_tag m n_beta Ts op_body Hmok Hpure.
+  pose proof (marker_ok_plug_cap_pure_in [] E E_tag m n_beta Ts op_body Hpure Hmok) as Hin.
   inversion Hin.
 Qed.
 
-Theorem capability_never_exposed : forall Γ t E E_tag m Ts op_body T,
+Theorem capability_never_exposed : forall Γ t E E_tag m n_beta Ts op_body T,
   eval_ctx Γ ->
   marker_ok [] t ->
   Γ ⊢ₜ t : T ->
-  multi_step t (plug E (term_cap E_tag m Ts op_body)) ->
+  multi_step t (plug E (term_cap E_tag m n_beta Ts op_body)) ->
   ~ pure_ectx_m m E.
 Proof.
-  intros Γ t E E_tag m Ts op_body T Hec Hmok Hty Hms Hpure.
+  intros Γ t E E_tag m n_beta Ts op_body T Hec Hmok Hty Hms Hpure.
   pose proof (multi_marker_ok_preservation _ _ _ Hmok Hms) as Hmok'.
   eapply capability_confined; eauto.
 Qed.
 
-Corollary capability_under_handler : forall Γ t E E_tag m Ts op_body T,
+Corollary capability_under_handler : forall Γ t E E_tag m n_beta Ts op_body T,
   eval_ctx Γ ->
   marker_ok [] t ->
   Γ ⊢ₜ t : T ->
-  multi_step t (plug E (term_cap E_tag m Ts op_body)) ->
+  multi_step t (plug E (term_cap E_tag m n_beta Ts op_body)) ->
   ~ pure_ectx_m m E.
 Proof.
-  intros Γ t E E_tag m Ts op_body T Hec Hmok Hty Hms Hpure.
+  intros Γ t E E_tag m n_beta Ts op_body T Hec Hmok Hty Hms Hpure.
   eapply capability_never_exposed; eauto.
 Qed.
