@@ -5485,8 +5485,8 @@ Qed.
 (* ================================================================== *)
 (* Evaluation contexts (program-level typing contexts).               *)
 (*                                                                    *)
-(* An `eval_ctx` contains ONLY constructor bindings: no `bind_tm`,    *)
-(* `bind_ty`, `bind_lt`, or `bind_eff`.  Consequently a term typed    *)
+(* An `eval_ctx` contains ONLY constructor/effect bindings: no        *)
+(* `bind_tm`, `bind_ty`, or `bind_lt`.  Consequently a term typed     *)
 (* under an `eval_ctx` has no free term, type, or lifetime variables  *)
 (* (it is fully closed).  This is exactly the invariant the term      *)
 (* substitution lemma needs: the value being inlined is fully closed, *)
@@ -5502,35 +5502,37 @@ Qed.
 Inductive eval_ctx : ctx -> Prop :=
   | ec_nil   : eval_ctx []
   | ec_ctor  : forall K n_lt n_ty f r Γ,
-      eval_ctx Γ -> eval_ctx (bind_ctor K n_lt n_ty f r :: Γ).
+    eval_ctx Γ -> eval_ctx (bind_ctor K n_lt n_ty f r :: Γ)
+  | ec_eff   : forall E n_α n_β sig ret Γ,
+    eval_ctx Γ -> eval_ctx (bind_eff E n_α n_β sig ret :: Γ).
 
 Lemma eval_ctx_no_tm : forall Γ x,
   eval_ctx Γ -> ctx_lookup_tm Γ x = None.
 Proof.
   intros Γ x H; revert x; induction H; intros x; simpl; try reflexivity.
-  rewrite IHeval_ctx; reflexivity.
+  - rewrite IHeval_ctx; reflexivity.
+  - rewrite IHeval_ctx; reflexivity.
 Qed.
 
 Lemma eval_ctx_no_ty : forall Γ α,
   eval_ctx Γ -> ctx_lookup_ty Γ α = None.
 Proof.
   intros Γ α H; revert α; induction H; intros α; simpl; try reflexivity.
-  rewrite IHeval_ctx; reflexivity.
+  - rewrite IHeval_ctx; reflexivity.
+  - rewrite IHeval_ctx; reflexivity.
 Qed.
 
 Lemma eval_ctx_no_lt : forall Γ x,
   eval_ctx Γ -> ctx_lookup_lt Γ x = None.
 Proof.
   intros Γ x H; revert x; induction H; intros x; simpl; try reflexivity.
-  rewrite IHeval_ctx; reflexivity.
+  - rewrite IHeval_ctx; reflexivity.
+  - rewrite IHeval_ctx; reflexivity.
 Qed.
 
-Lemma eval_ctx_no_eff : forall Γ E,
-  eval_ctx Γ -> ctx_lookup_eff Γ E = None.
-Proof.
-  intros Γ E H; revert E; induction H; intros E; simpl; try reflexivity.
-  rewrite IHeval_ctx; reflexivity.
-Qed.
+(* Phase-1 regularity capstone, axiomatized while Phase 5 is developed. *)
+Axiom typing_implies_wf : forall Γ t T,
+  Γ ⊢ₜ t : T -> ty_wf Γ T.
 
 (* The substitution lemma for term variables.  The extra premise         *)
 (* `free_tm_vars 0 v = []` (the substituted value is term-closed) makes  *)

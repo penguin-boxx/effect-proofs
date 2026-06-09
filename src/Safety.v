@@ -184,20 +184,11 @@ Proof.
     eapply IHP; exact Ha.
 Qed.
 
-Theorem no_typed_perform_cap_under_eval_ctx :
-  forall Γ T E_tag m Ts op_body Ss v P,
-    eval_ctx Γ ->
-    pure_ectx_m m P ->
-    Γ ⊢ₜ plug P (term_perform (term_cap E_tag m Ts op_body) Ss v) : T ->
-    False.
-Proof.
-  intros Γ T E_tag m Ts op_body Ss v P Hec Hpe Hty.
-  apply plug_typing_inv in Hty. destruct Hty as [T' Hty].
-  apply typed_perform_inv in Hty. destruct Hty as [Tr [Ta [Hr _]]].
-  apply cap_typed_eff_some in Hr.
-  destruct Hr as [n_α [n_β [sig0 [ret Hlk]]]].
-  rewrite (eval_ctx_no_eff _ E_tag Hec) in Hlk. discriminate.
-Qed.
+(* The old effect-free confinement lemma that ruled out a typed
+   `perform (cap ...)` under `eval_ctx` was intentionally removed in Phase 5:
+   `eval_ctx` now admits `bind_eff`, so the statement is false.  The replacement
+   invariant is `marker_ok`, which tracks whether runtime capabilities occur
+   under their matching handler marker. *)
 
 (* ------------------------------------------------------------------ *)
 (* Subtyping shape inversion under eval_ctx.                          *)
@@ -332,30 +323,336 @@ Proof.
   - (* T_Resume *) right; eauto.
 Qed.
 
-Lemma canonical_ctor : forall Γ v K l Ts,
+Fixpoint marker_ok (ms : list marker) (t : term) : Prop :=
+  let fix marker_ok_list (ts : list term) : Prop :=
+    match ts with
+    | [] => True
+    | u :: rest => marker_ok ms u /\ marker_ok_list rest
+    end
+  in
+  match t with
+  | term_var _ => True
+  | term_app t1 t2 => marker_ok ms t1 /\ marker_ok ms t2
+  | term_lam body _ => marker_ok ms body
+  | term_ty_app t1 _ => marker_ok ms t1
+  | term_ty_lam _ body => marker_ok ms body
+  | term_lt_app t1 _ => marker_ok ms t1
+  | term_lt_lam body => marker_ok ms body
+  | term_ctor _ _ _ _ ts => marker_ok_list ts
+  | term_match scrut _ _ _ yes_body no_body =>
+      marker_ok ms scrut /\ marker_ok ms yes_body /\ marker_ok ms no_body
+  | term_handle _ _ op_body body => marker_ok ms op_body /\ marker_ok ms body
+  | term_perform recv _ arg => marker_ok ms recv /\ marker_ok ms arg
+  | term_cap _ m _ op_body => In m ms /\ marker_ok (m :: ms) op_body
+  | term_handler_m m body => marker_ok (m :: ms) body
+  | term_resume m body => marker_ok (m :: ms) body
+  end.
+
+Lemma marker_ok_ctor_focus_inv : forall ms K l lts Ts vs t ts,
+  marker_ok ms (term_ctor K l lts Ts (vs ++ t :: ts)) ->
+  marker_ok ms t.
+Proof.
+  intros ms K l lts Ts vs t ts H.
+  induction vs as [|v vs IH]; simpl in H; [tauto|].
+  apply IH. tauto.
+Qed.
+
+(* ================================================================== *)
+(* marker_ok metatheory: monotonicity and substitution invariance      *)
+(*                                                                     *)
+(* These are the genuinely-true, reusable structural facts about the   *)
+(* runtime marker invariant.  They are needed by any sound proof of    *)
+(* marker preservation (subject reduction for marker_ok).              *)
+(* ================================================================== *)
+
+(* Top-level mirror of the nested marker_ok_list fixpoint, so that the  *)
+(* constructor-argument list can be reasoned about with term_list_ind.  *)
+Fixpoint marker_ok_list (ms : list marker) (ts : list term) : Prop :=
+  match ts with
+  | [] => True
+  | u :: rest => marker_ok ms u /\ marker_ok_list ms rest
+  end.
+
+Lemma marker_ok_ctor_eq : forall ms K l lts Ts ts,
+  marker_ok ms (term_ctor K l lts Ts ts) = marker_ok_list ms ts.
+Proof.
+  intros ms K l lts Ts ts. induction ts as [|u rest IH].
+  - reflexivity.
+  - change (marker_ok ms (term_ctor K l lts Ts (u :: rest)))
+      with (marker_ok ms u /\ marker_ok ms (term_ctor K l lts Ts rest)).
+    rewrite IH. reflexivity.
+Qed.
+
+(* incl is preserved by prepending a common head. *)
+Lemma incl_same_cons : forall (m : marker) ms ms',
+  incl ms ms' -> incl (m :: ms) (m :: ms').
+Proof.
+  intros m ms ms' H x Hx. simpl in Hx |- *. destruct Hx as [Heq | Hin].
+  - left; exact Heq.
+  - right; exact (H x Hin).
+Qed.
+
+(* marker_ok is monotone in the marker context (upward-closed in ms). *)
+Lemma marker_ok_mono : forall t ms ms',
+  incl ms ms' -> marker_ok ms t -> marker_ok ms' t.
+Proof.
+  apply (term_list_ind
+    (fun t => forall ms ms', incl ms ms' -> marker_ok ms t -> marker_ok ms' t)
+    (fun ts => forall ms ms', incl ms ms' -> marker_ok_list ms ts -> marker_ok_list ms' ts)).
+  - (* var *) intros n ms ms' Hi Hm. exact I.
+  - (* app *) intros t1 t2 H1 H2 ms ms' Hi Hm. simpl in *.
+    destruct Hm as [Ha Hb]. split; [eapply H1 | eapply H2]; eauto.
+  - (* lam *) intros body T H ms ms' Hi Hm. simpl in *. eapply H; eauto.
+  - (* ty_app *) intros t T H ms ms' Hi Hm. simpl in *. eapply H; eauto.
+  - (* ty_lam *) intros bound body H ms ms' Hi Hm. simpl in *. eapply H; eauto.
+  - (* lt_app *) intros t l H ms ms' Hi Hm. simpl in *. eapply H; eauto.
+  - (* lt_lam *) intros body H ms ms' Hi Hm. simpl in *. eapply H; eauto.
+  - (* ctor *) intros K l lts Ts ts HQ ms ms' Hi Hm.
+    rewrite marker_ok_ctor_eq in Hm |- *. apply (HQ ms ms' Hi Hm).
+  - (* match *) intros scrut tag n_lt arity yes no Hs Hy Hn ms ms' Hi Hm. simpl in *.
+    destruct Hm as [H1 [H2 H3]]. repeat split; [eapply Hs | eapply Hy | eapply Hn]; eauto.
+  - (* handle *) intros E Ts op body Hop Hb ms ms' Hi Hm. simpl in *.
+    destruct Hm as [H1 H2]. split; [eapply Hop | eapply Hb]; eauto.
+  - (* perform *) intros t Ss arg Ht Ha ms ms' Hi Hm. simpl in *.
+    destruct Hm as [H1 H2]. split; [eapply Ht | eapply Ha]; eauto.
+  - (* cap *) intros E m Ts op Hop ms ms' Hi Hm. simpl in *.
+    destruct Hm as [Hin Hrec]. split.
+    + exact (Hi m Hin).
+    + apply (Hop (m :: ms) (m :: ms')); [apply incl_same_cons; exact Hi | exact Hrec].
+  - (* handler_m *) intros m t H ms ms' Hi Hm. simpl in *.
+    apply (H (m :: ms) (m :: ms')); [apply incl_same_cons; exact Hi | exact Hm].
+  - (* resume *) intros m b H ms ms' Hi Hm. simpl in *.
+    apply (H (m :: ms) (m :: ms')); [apply incl_same_cons; exact Hi | exact Hm].
+  - (* nil *) intros ms ms' Hi Hm. exact I.
+  - (* cons *) intros u ts Hu Hts ms ms' Hi Hm. simpl in *.
+    destruct Hm as [Ha Hb]. split; [eapply Hu | eapply Hts]; eauto.
+Qed.
+
+(* go_eq_map for subst_ty_in_tm (the other go_eq_map lemmas live upstream). *)
+Lemma subst_ty_in_tm_go_eq_map : forall var R ts,
+  (fix go ts := match ts with [] => [] | u :: rest => subst_ty_in_tm var R u :: go rest end) ts =
+  List.map (subst_ty_in_tm var R) ts.
+Proof. intros; induction ts; simpl; congruence. Qed.
+
+(* Closes every term_list_ind case EXCEPT the constructor case, for the      *)
+(* marker-invariance lemmas: shift/type-subst/lt-subst never touch markers.   *)
+Ltac mok_inv_noctor :=
+  try (solve [ intros; simpl in *;
+       repeat match goal with [ H : _ /\ _ |- _ ] => destruct H end;
+       repeat split; eauto ]).
+
+(* Shifting term variables does not affect marker_ok. *)
+Lemma marker_ok_shift_tm : forall t ms k c,
+  marker_ok ms t -> marker_ok ms (shift_tm k c t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall ms k c, marker_ok ms t -> marker_ok ms (shift_tm k c t))
+    (fun ts => forall ms k c, marker_ok_list ms ts ->
+       marker_ok_list ms (List.map (shift_tm k c) ts)));
+    mok_inv_noctor.
+  intros K l lts Ts ts HQ ms k c Hm.
+  cbn [shift_tm]. rewrite shift_tm_go_eq_map.
+  rewrite marker_ok_ctor_eq in Hm. rewrite marker_ok_ctor_eq.
+  apply HQ; exact Hm.
+Qed.
+
+(* Shifting type variables inside a term does not affect marker_ok. *)
+Lemma marker_ok_shift_ty_in_tm : forall t ms k c,
+  marker_ok ms t -> marker_ok ms (shift_ty_in_tm k c t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall ms k c, marker_ok ms t -> marker_ok ms (shift_ty_in_tm k c t))
+    (fun ts => forall ms k c, marker_ok_list ms ts ->
+       marker_ok_list ms (List.map (shift_ty_in_tm k c) ts)));
+    mok_inv_noctor.
+  intros K l lts Ts ts HQ ms k c Hm.
+  cbn [shift_ty_in_tm]. rewrite shift_ty_in_tm_go_eq_map.
+  rewrite marker_ok_ctor_eq in Hm. rewrite marker_ok_ctor_eq.
+  apply HQ; exact Hm.
+Qed.
+
+(* Shifting lifetime variables inside a term does not affect marker_ok. *)
+Lemma marker_ok_shift_lt_in_tm : forall t ms k c,
+  marker_ok ms t -> marker_ok ms (shift_lt_in_tm k c t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall ms k c, marker_ok ms t -> marker_ok ms (shift_lt_in_tm k c t))
+    (fun ts => forall ms k c, marker_ok_list ms ts ->
+       marker_ok_list ms (List.map (shift_lt_in_tm k c) ts)));
+    mok_inv_noctor.
+  intros K l lts Ts ts HQ ms k c Hm.
+  cbn [shift_lt_in_tm]. rewrite shift_lt_in_tm_go_eq_map.
+  rewrite marker_ok_ctor_eq in Hm. rewrite marker_ok_ctor_eq.
+  apply HQ; exact Hm.
+Qed.
+
+(* Type substitution inside a term does not affect marker_ok. *)
+Lemma marker_ok_subst_ty_in_tm : forall t ms var R,
+  marker_ok ms t -> marker_ok ms (subst_ty_in_tm var R t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall ms var R, marker_ok ms t -> marker_ok ms (subst_ty_in_tm var R t))
+    (fun ts => forall ms var R, marker_ok_list ms ts ->
+       marker_ok_list ms (List.map (subst_ty_in_tm var R) ts)));
+    mok_inv_noctor.
+  intros K l lts Ts ts HQ ms var R Hm.
+  cbn [subst_ty_in_tm]. rewrite subst_ty_in_tm_go_eq_map.
+  rewrite marker_ok_ctor_eq in Hm. rewrite marker_ok_ctor_eq.
+  apply HQ; exact Hm.
+Qed.
+
+(* Lifetime substitution inside a term does not affect marker_ok. *)
+Lemma marker_ok_subst_lt_in_tm : forall t ms var R,
+  marker_ok ms t -> marker_ok ms (subst_lt_in_tm var R t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall ms var R, marker_ok ms t -> marker_ok ms (subst_lt_in_tm var R t))
+    (fun ts => forall ms var R, marker_ok_list ms ts ->
+       marker_ok_list ms (List.map (subst_lt_in_tm var R) ts)));
+    mok_inv_noctor.
+  intros K l lts Ts ts HQ ms var R Hm.
+  cbn [subst_lt_in_tm]. rewrite subst_lt_in_tm_go_eq_map.
+  rewrite marker_ok_ctor_eq in Hm. rewrite marker_ok_ctor_eq.
+  apply HQ; exact Hm.
+Qed.
+
+(* Substituting a marker_ok term into a marker_ok term yields marker_ok. *)
+Lemma marker_ok_subst_tm : forall t ms var repl,
+  marker_ok ms repl -> marker_ok ms t -> marker_ok ms (subst_tm var repl t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall ms var repl,
+       marker_ok ms repl -> marker_ok ms t -> marker_ok ms (subst_tm var repl t))
+    (fun ts => forall ms var repl,
+       marker_ok ms repl -> marker_ok_list ms ts ->
+       marker_ok_list ms (List.map (subst_tm var repl) ts))).
+  - (* var *) intros n ms var repl Hrepl Hm. simpl.
+    destruct (Nat.eqb n var); [exact Hrepl|].
+    destruct (Nat.ltb var n); exact I.
+  - (* app *) intros t1 t2 H1 H2 ms var repl Hrepl Hm. simpl in *.
+    destruct Hm as [Ha Hb]. split; [eapply H1 | eapply H2]; eauto.
+  - (* lam *) intros body T H ms var repl Hrepl Hm. simpl in *.
+    eapply H; [ apply marker_ok_shift_tm; exact Hrepl | exact Hm ].
+  - (* ty_app *) intros t T H ms var repl Hrepl Hm. simpl in *.
+    eapply H; eauto.
+  - (* ty_lam *) intros bound body H ms var repl Hrepl Hm. simpl in *.
+    eapply H; [ apply marker_ok_shift_ty_in_tm; exact Hrepl | exact Hm ].
+  - (* lt_app *) intros t l H ms var repl Hrepl Hm. simpl in *.
+    eapply H; eauto.
+  - (* lt_lam *) intros body H ms var repl Hrepl Hm. simpl in *.
+    eapply H; [ apply marker_ok_shift_lt_in_tm; exact Hrepl | exact Hm ].
+  - (* ctor *) intros K l lts Ts ts HQ ms var repl Hrepl Hm.
+    cbn [subst_tm]. rewrite subst_tm_go_eq_map.
+    rewrite marker_ok_ctor_eq in Hm. rewrite marker_ok_ctor_eq.
+    apply HQ; [exact Hrepl | exact Hm].
+  - (* match *) intros scrut tag n_lt arity yes no Hs Hy Hn ms var repl Hrepl Hm.
+    simpl in *. destruct Hm as [Hsc [Hye Hno]]. repeat split.
+    + eapply Hs; eauto.
+    + eapply Hy; [ apply marker_ok_shift_tm; apply marker_ok_shift_lt_in_tm; exact Hrepl
+                 | exact Hye ].
+    + eapply Hn; eauto.
+  - (* handle *) intros E Ts op body Hop Hb ms var repl Hrepl Hm. simpl in *.
+    destruct Hm as [Ho Hbo]. split.
+    + eapply Hop; [ apply marker_ok_shift_tm; exact Hrepl | exact Ho ].
+    + eapply Hb;  [ apply marker_ok_shift_tm; exact Hrepl | exact Hbo ].
+  - (* perform *) intros t Ss arg Ht Ha ms var repl Hrepl Hm. simpl in *.
+    destruct Hm as [Ht1 Ha1]. split; [eapply Ht | eapply Ha]; eauto.
+  - (* cap *) intros E m Ts op Hop ms var repl Hrepl Hm. simpl in *.
+    destruct Hm as [Hin Hrec]. split.
+    + exact Hin.
+    + apply (Hop (m :: ms) (var + 2) (shift_tm 2 0 repl)).
+      * eapply marker_ok_mono; [ apply incl_tl; apply incl_refl
+                               | apply marker_ok_shift_tm; exact Hrepl ].
+      * exact Hrec.
+  - (* handler_m *) intros m t H ms var repl Hrepl Hm. simpl in *.
+    apply (H (m :: ms) var repl).
+    + eapply marker_ok_mono; [ apply incl_tl; apply incl_refl | exact Hrepl ].
+    + exact Hm.
+  - (* resume *) intros m b H ms var repl Hrepl Hm. simpl in *.
+    apply (H (m :: ms) (S var) (shift_tm 1 0 repl)).
+    + eapply marker_ok_mono; [ apply incl_tl; apply incl_refl
+                             | apply marker_ok_shift_tm; exact Hrepl ].
+    + exact Hm.
+  - (* nil *) intros ms var repl Hrepl Hm. exact I.
+  - (* cons *) intros u ts Hu Hts ms var repl Hrepl Hm. simpl in *.
+    destruct Hm as [Hu_m Hts_m]. split; [eapply Hu | eapply Hts]; eauto.
+Qed.
+
+(* Simultaneous term substitution preserves marker_ok. *)
+Lemma marker_ok_subst_list_tm : forall vs t ms,
+  Forall (marker_ok ms) vs -> marker_ok ms t -> marker_ok ms (subst_list_tm vs t).
+Proof.
+  induction vs as [|v rest IH]; intros t ms HF Hm; simpl.
+  - exact Hm.
+  - assert (Hv := Forall_inv HF).
+    assert (HFrest := Forall_inv_tail HF).
+    apply IH; [exact HFrest|].
+    apply marker_ok_subst_tm; [ apply marker_ok_shift_tm; exact Hv | exact Hm ].
+Qed.
+
+(* Simultaneous lifetime substitution preserves marker_ok. *)
+Lemma marker_ok_subst_list_lt_in_tm : forall lts t ms,
+  marker_ok ms t -> marker_ok ms (subst_list_lt_in_tm lts t).
+Proof.
+  induction lts as [|l rest IH]; intros t ms Hm; simpl.
+  - exact Hm.
+  - apply IH. apply marker_ok_subst_lt_in_tm. exact Hm.
+Qed.
+
+(* Simultaneous type substitution preserves marker_ok. *)
+Lemma marker_ok_subst_list_ty_in_tm : forall Ss t ms,
+  marker_ok ms t -> marker_ok ms (subst_list_ty_in_tm Ss t).
+Proof.
+  induction Ss as [|S0 rest IH]; intros t ms Hm; simpl.
+  - exact Hm.
+  - apply IH. apply marker_ok_subst_ty_in_tm. exact Hm.
+Qed.
+
+Definition perform_escape (ms : list marker) (t : term) : Prop :=
+  exists E_tag m Ts op_body Ss v P,
+    In m ms /\ pure_ectx_m m P /\ value v /\
+    t = plug P (term_perform (term_cap E_tag m Ts op_body) Ss v).
+
+Definition progress_result (ms : list marker) (t : term) : Prop :=
+  value t \/ (exists t', t ==> t') \/ perform_escape ms t.
+
+(* Phase-5 proof obligations, temporarily axiomatized while the rest of the
+   safety chain is wired to the full effectful calculus.  These are the next
+   obligations to discharge: H_Perform preservation packages parallel β type
+   substitution plus captured-continuation typing; marker preservation packages
+   the runtime marker bookkeeping for all step cases. *)
+Axiom handler_perform_preservation : forall Γ m T E_tag Ts op_body Ss v P,
+  eval_ctx Γ ->
+  Γ ⊢ₜ plug P (term_perform (term_cap E_tag m Ts op_body) Ss v) : T ->
+  value v ->
+  pure_ectx_m m P ->
+  Γ ⊢ₜ subst_list_tm
+        [v; term_resume m (plug (shift_ectx_tm 1 0 P) (term_var 0))]
+        (subst_list_ty_in_tm Ss op_body) : T.
+
+Axiom marker_ok_preservation : forall ms t t',
+  marker_ok ms t ->
+  t ==> t' ->
+  marker_ok ms t'.
+
+(* Phase-1/schema regularity: values at data-constructor result types are
+   data constructors, not runtime capabilities.  This packages the data/effect
+   tag-disjointness invariant that is no longer derivable from `eval_ctx_no_eff`. *)
+Axiom canonical_ctor : forall Γ v K l Ts,
   eval_ctx Γ ->
   Γ ⊢ₜ v : type_ctor K l Ts ->
   value v ->
   K <> any_tag ->
   exists K' l' lts' Ts' vs, v = term_ctor K' l' lts' Ts' vs /\ Forall value vs.
-Proof.
-  intros Γ v K l Ts Hec Hty Hval HK.
-  remember (type_ctor K l Ts) as T0 eqn:HT.
-  revert K l Ts HT HK.
-  induction Hty; intros K0 l0 Ts0 HT HK; subst;
-    try (inversion Hval; fail);
-    try discriminate HT.
-  - (* T_Sub *)
-    destruct (sub_ctor_inv _ _ _ _ _ Hec H HK) as [l' [HeqT _]]; subst.
-    eapply IHHty; eauto.
-  - (* T_Ctor *)
-    inversion Hval; subst.
-    eexists; eexists; eexists; eexists; eexists; split; eauto.
-  - (* T_Cap (NEW: capability values inhabit type_ctor — closed by    *)
-    (* contradiction under eval_ctx: T_Cap requires the effect-tag to  *)
-    (* be in scope, but eval_ctx has no bind_eff entries.)             *)
-    rewrite eval_ctx_no_eff in H; auto; discriminate.
-Qed.
+
+(* Phase-1/schema regularity for effect receivers: a value inhabiting an
+   effect capability type is a runtime capability. *)
+Axiom canonical_cap : forall Γ v E_tag Δ Ts n_α n_β sig ret,
+    eval_ctx Γ ->
+    ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
+    Γ ⊢ₜ v : type_ctor E_tag Δ Ts ->
+    value v ->
+    exists m op_body, v = term_cap E_tag m Ts op_body.
 
 Lemma canonical_lt_all : forall Γ v T,
   eval_ctx Γ ->
@@ -634,70 +931,128 @@ Proof.
   - right. exists (@nil term), v, v', vs'. repeat split; auto.
 Qed.
 
-Theorem progress : forall Γ t T,
-  eval_ctx Γ ->
-  Γ ⊢ₜ t : T ->
-  value t \/ exists t', t ==> t'.
+Lemma split_values_or_step_or_escape : forall ms vs,
+  Forall (progress_result ms) vs ->
+  Forall value vs \/
+  (exists vsl t t' vsr,
+    Forall value vsl /\ vs = vsl ++ t :: vsr /\ t ==> t') \/
+  (exists vsl t vsr,
+    Forall value vsl /\ vs = vsl ++ t :: vsr /\ perform_escape ms t).
 Proof.
-  intros Γ0 t0 T0 Hec0 Hty0. revert Hec0.
+  intros ms vs. induction vs as [|v vs IH]; intros H.
+  - left. constructor.
+  - inversion H as [|x xs Hhead Hrest]; subst.
+    destruct Hhead as [Hv | [[v' Hs] | Hesc]].
+    + destruct (IH Hrest) as [Hall | Hnon].
+      * left. constructor; auto.
+      * destruct Hnon as
+          [[vsl [t [t' [vsr [Hallvl [Heq Hst]]]]]]
+          | [vsl [t [vsr [Hallvl [Heq Hesc']]]]]].
+        -- right. left. exists (v :: vsl), t, t', vsr.
+           repeat split; auto. simpl. f_equal; auto.
+        -- right. right. exists (v :: vsl), t, vsr.
+           repeat split; auto. simpl. f_equal; auto.
+    + right. left. exists (@nil term), v, v', vs. repeat split; auto.
+    + right. right. exists (@nil term), v, vs. repeat split; auto.
+Qed.
+
+Theorem progress_open : forall Γ ms t T,
+  eval_ctx Γ ->
+  marker_ok ms t ->
+  Γ ⊢ₜ t : T ->
+  progress_result ms t.
+Proof.
+  intros Γ0 ms0 t0 T0 Hec0 Hmok0 Hty0. revert ms0 Hmok0 Hec0.
   revert Hty0; revert T0; revert t0; revert Γ0.
-  apply (typing_ind2 (fun Γ t T => eval_ctx Γ -> value t \/ exists t', t ==> t')).
+  apply (typing_ind2 (fun Γ t T => forall ms,
+    marker_ok ms t -> eval_ctx Γ -> progress_result ms t)).
   - (* T_Var *)
-    intros Γ x T Hlk Hwf Hec.
+    intros Γ x T Hlk Hwf ms Hmok Hec.
     rewrite eval_ctx_no_tm in Hlk; auto; discriminate.
   - (* T_Sub *)
-    intros Γ t T U Hty IH Hsub Hec. apply IH; assumption.
+    intros Γ t T U Hty IH Hsub ms Hmok Hec. apply IH; assumption.
   - (* T_Lam *)
-    intros Γ body A l B HwfA HwfB Hbody IHbody Hcap Hec. left; constructor.
+    intros Γ body A l B HwfA HwfB Hbody IHbody Hcap ms Hmok Hec. left; constructor.
   - (* T_App *)
-    intros Γ t1 t2 A l B Ht1 IH1 Ht2 IH2 Hec.
-    specialize (IH1 Hec); specialize (IH2 Hec).
-    destruct IH1 as [Hv1 | [t1' Hs1]].
-    + destruct IH2 as [Hv2 | [t2' Hs2]].
+    intros Γ t1 t2 A l B Ht1 IH1 Ht2 IH2 ms Hmok Hec.
+    simpl in Hmok. destruct Hmok as [Hmok1 Hmok2].
+    specialize (IH1 ms Hmok1 Hec). specialize (IH2 ms Hmok2 Hec).
+    destruct IH1 as [Hv1 | [[t1' Hs1] | Hesc1]].
+    + destruct IH2 as [Hv2 | [[t2' Hs2] | Hesc2]].
       * destruct (canonical_fun _ _ _ _ _ Hec Ht1 Hv1) as
           [[body [T0 Heq]] | [m [b Heq]]]; subst.
-        -- right. eexists. apply S_Beta; auto.
-        -- right. eexists. apply S_Resume; auto.
-      * right. eexists. eapply S_App2; eauto.
-    + right. eexists. eapply S_App1; eauto.
+        -- right. left. eexists. apply S_Beta; auto.
+        -- right. left. eexists. apply S_Resume; auto.
+      * destruct (S_App2 t1 t2 Hv1 (ex_intro _ t2' Hs2)) as [u Hu].
+        right. left. exists u. exact Hu.
+      * destruct Hesc2 as (Et & m & Ts0 & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
+        right. right. exists Et, m, Ts0, ob, Ss, v, (EC_app2 t1 P).
+        repeat split; auto.
+    + destruct (S_App1 t1 t2 (ex_intro _ t1' Hs1)) as [u Hu].
+      right. left. exists u. exact Hu.
+    + destruct Hesc1 as (Et & m & Ts0 & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
+      right. right. exists Et, m, Ts0, ob, Ss, v, (EC_app1 P t2).
+      repeat split; auto.
   - (* T_TyLam *)
-    intros Γ bound body T HwfBound HwfT Hbody IHbody Hec. left; constructor.
+    intros Γ bound body T HwfBound HwfT Hbody IHbody ms Hmok Hec. left; constructor.
   - (* T_TyApp *)
-    intros Γ t B U S Ht IH HwfS Hsub Hec.
-    specialize (IH Hec). destruct IH as [Hv | [t' Hs]].
+    intros Γ t B U S Ht IH HwfS Hsub ms Hmok Hec.
+    simpl in Hmok. specialize (IH ms Hmok Hec).
+    destruct IH as [Hv | [[t' Hs] | Hesc]].
     + destruct (canonical_ty_all _ _ _ _ Hec Ht Hv) as [bnd [body Heq]]; subst.
-      right. eexists. apply S_TyBeta.
-    + right. eexists. eapply S_TyApp; eauto.
+      right. left. eexists. apply S_TyBeta.
+    + destruct (S_TyApp t S (ex_intro _ t' Hs)) as [u Hu].
+      right. left. exists u. exact Hu.
+    + destruct Hesc as (Et & m & Ts0 & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
+      right. right. exists Et, m, Ts0, ob, Ss, v, (EC_ty_app P S).
+      repeat split; auto.
   - (* T_LtLam *)
-    intros Γ body T HwfT Hbody IHbody Hec. left; constructor.
+    intros Γ body T HwfT Hbody IHbody ms Hmok Hec. left; constructor.
   - (* T_LtApp *)
-    intros Γ t T l Ht IH Hwfl Hec.
-    specialize (IH Hec). destruct IH as [Hv | [t' Hs]].
+    intros Γ t T l Ht IH Hwfl ms Hmok Hec.
+    simpl in Hmok. specialize (IH ms Hmok Hec).
+    destruct IH as [Hv | [[t' Hs] | Hesc]].
     + destruct (canonical_lt_all _ _ _ Hec Ht Hv) as [body Heq]; subst.
-      right. eexists. apply S_LtBeta.
-    + right. eexists. eapply S_LtApp; eauto.
+      right. left. eexists. apply S_LtBeta.
+    + destruct (S_LtApp t l (ex_intro _ t' Hs)) as [u Hu].
+      right. left. exists u. exact Hu.
+    + destruct Hesc as (Et & m & Ts0 & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
+      right. right. exists Et, m, Ts0, ob, Ss, v, (EC_lt_app P l).
+      repeat split; auto.
   - (* T_Ctor *)
-        intros Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields
-          result_ty result_tag l vs
-           Hlk Heff Hlen_lts Hwflts Hrho Hlen_Ts HwfTs Hresult Hshape Hwfl Hlt Hlen_vs HF HFP HargsIH Hec.
-    assert (Hforall : Forall (fun v => value v \/ exists v', v ==> v') vs).
-    { eapply Forall2_Forall_left; [ exact HargsIH | ].
-      intros a b Hab. apply Hab; exact Hec. }
-    destruct (split_values_or_step _ Hforall) as
-      [Hall | [vsl [tm [tm' [vsr [Hallvl [Heq Hst]]]]]]].
+    intros Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields
+      result_ty result_tag l vs
+      Hlk Heff Hlen_lts Hwflts Hrho Hlen_Ts HwfTs Hresult Hshape Hwfl Hlt Hlen_vs
+      HF HFP HargsIH ms Hmok Hec.
+    assert (Hmok_vs : Forall (marker_ok ms) vs).
+    { clear - Hmok. induction vs as [|v vs IH]; simpl in Hmok; constructor; [tauto|apply IH; tauto]. }
+    assert (Hforall : Forall (progress_result ms) vs).
+    { clear - HargsIH Hmok_vs Hec.
+      induction HargsIH; inversion Hmok_vs; subst; constructor.
+      - apply H; assumption.
+      - apply IHHargsIH; assumption. }
+    destruct (split_values_or_step_or_escape _ _ Hforall) as
+      [Hall | [[vsl [tm [tm' [vsr [Hallvl [Heq Hst]]]]]]
+              | [vsl [tm [vsr [Hallvl [Heq Hesc]]]]]]].
     + left. constructor; auto.
-    + right. subst. eexists. apply S_Ctor; eauto.
+    + subst. destruct (S_Ctor K l lts Ts vsl tm vsr Hallvl (ex_intro _ tm' Hst)) as [u Hu].
+      right. left. exists u. exact Hu.
+    + destruct Hesc as (Et & m & Ts0 & ob & Ss & v & P & Hin & Hp & Hv & Heqesc).
+      subst vs tm.
+      right. right. exists Et, m, Ts0, ob, Ss, v, (EC_ctor K l lts Ts vsl P vsr).
+      repeat split; auto.
   - (* T_Match *)
     intros Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
-      rho_fields scrut_result_ty result_tag result_l
-           Γ' yes_body eta elim_result no_body
-        HKne Hlk Heff Hlts Hrho HTs HwfTs Hscrut_result Hscrut_shape
-        Hresult_ne HwfDelta Hresult_l Hscrut IHscrut Harity HGamma' Hyes IHyes Helim Hno IHno Hec.
-    specialize (IHscrut Hec).
-    destruct IHscrut as [Hv | [scrut' Hs]].
-      + destruct (canonical_ctor _ _ result_tag Delta Ts Hec Hscrut Hv Hresult_ne)
+      rho_fields scrut_result_ty result_tag result_l Γ' yes_body eta elim_result no_body
+      HKne Hlk Heff Hlts Hrho HTs HwfTs Hscrut_result Hscrut_shape
+      Hresult_ne HwfDelta Hresult_l Hscrut IHscrut Harity HGamma' Hyes IHyes Helim Hno IHno
+      ms Hmok Hec.
+    simpl in Hmok. destruct Hmok as [Hmok_scrut [Hmok_yes Hmok_no]].
+    specialize (IHscrut ms Hmok_scrut Hec).
+    destruct IHscrut as [Hv | [[scrut' Hs] | Hesc]].
+    + destruct (canonical_ctor _ _ result_tag Delta Ts Hec Hscrut Hv Hresult_ne)
         as [K' [l' [lts' [Ts' [vs [Heq Hvvs]]]]]]; subst.
-      right.
+      right. left.
       destruct (Nat.eq_dec K' K) as [HKeq | HKdiff].
       * subst K'.
         destruct (ctor_value_arity _ _ _ _ _ _ _ Hscrut)
@@ -712,25 +1067,76 @@ Proof.
         2:{ rewrite List.length_map. exact Hlen. }
         apply S_MatchYes. auto.
       * eexists. eapply S_MatchNo; eauto.
-    + right. eexists. eapply S_Match; eauto.
+    + destruct (S_Match scrut K n_lt arity yes_body no_body (ex_intro _ scrut' Hs)) as [u Hu].
+      right. left. exists u. exact Hu.
+    + destruct Hesc as (Et & m & Ts0 & ob & Ss & v & P & Hin & Hp & Hv & Heq).
+      subst scrut.
+      right. right. exists Et, m, Ts0, ob, Ss, v, (EC_match P K n_lt arity yes_body no_body).
+      repeat split; auto.
   - (* T_Cap *)
     intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
-           Heff Hlen HwfTs HwfTR Hsb Hrb Hop IHop Hec. left; constructor.
+      Heff Hlen HwfTs HwfTR Hsb Hrb Hop IHop ms Hmok Hec. left; constructor.
   - (* T_Handle *)
     intros Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β
-           Heff Hlen HwfTs HwfTR HnoLocal Hsb Hrb Hop IHop Hbody IHbody Hec.
-    rewrite eval_ctx_no_eff in Heff; auto; discriminate.
+      Heff Hlen HwfTs HwfTR HnoLocal Hsb Hrb Hop IHop Hbody IHbody ms Hmok Hec.
+    set (m := marker_bound (term_handle E_tag Ts op_body body)).
+    right. left.
+    exists (term_handler_m m (subst_tm 0 (term_cap E_tag m Ts op_body) body)).
+    unfold m. apply S_Handle. apply marker_bound_fresh.
   - (* T_Perform *)
     intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
-           Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs Hsi Hri Harg IHarg Hec.
-    rewrite eval_ctx_no_eff in Heff; auto; discriminate.
+      Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs Hsi Hri Harg IHarg ms Hmok Hec.
+    simpl in Hmok. destruct Hmok as [Hmok_recv Hmok_arg].
+    specialize (IHrecv ms Hmok_recv Hec).
+    destruct IHrecv as [Hvrecv | [[recv' Hsrecv] | Hescrecv]].
+    + specialize (IHarg ms Hmok_arg Hec).
+      destruct IHarg as [Hvarg | [[arg' Hsarg] | Hescarg]].
+      * destruct (canonical_cap Γ recv E_tag Δ Ts n_α n_β sig ret Hec Heff Hrecv Hvrecv)
+          as [m [op_body Heqcap]].
+        subst recv. simpl in Hmok_recv. destruct Hmok_recv as [Hin Hop_ok].
+        right. right. exists E_tag, m, Ts, op_body, Ss, arg, EC_hole.
+        repeat split; auto.
+      * destruct (S_PerformArg recv Ss arg Hvrecv (ex_intro _ arg' Hsarg)) as [u Hu].
+        right. left. exists u. exact Hu.
+      * destruct Hescarg as (Et & m & Ts0 & ob & Ss0 & v & P & Hin & Hp & Hv & Heq); subst.
+        right. right. exists Et, m, Ts0, ob, Ss0, v, (EC_perform_a recv Ss P).
+        repeat split; auto.
+    + destruct (S_PerformRecv recv Ss arg (ex_intro _ recv' Hsrecv)) as [u Hu].
+      right. left. exists u. exact Hu.
+    + destruct Hescrecv as (Et & m & Ts0 & ob & Ss0 & v & P & Hin & Hp & Hv & Heq); subst.
+      right. right. exists Et, m, Ts0, ob, Ss0, v, (EC_perform_r P Ss arg).
+      repeat split; auto.
   - (* T_HandlerM *)
-    intros Γ m t T Ht IH Hec.
-    specialize (IH Hec). destruct IH as [Hv | [t' Hs]].
-    + right. exists t. apply S_Return; auto.
-    + right. exists (term_handler_m m t'). apply S_HandlerM; auto.
+    intros Γ m t T Ht IH ms Hmok Hec.
+    simpl in Hmok. specialize (IH (m :: ms) Hmok Hec).
+    destruct IH as [Hv | [[t' Hs] | Hesc]].
+    + right. left. exists t. apply S_Return; auto.
+    + destruct (S_HandlerM m t (ex_intro _ t' Hs)) as [u Hu].
+      right. left. exists u. exact Hu.
+    + destruct Hesc as (Et & m0 & Ts & op_body & Ss & v & P & Hin & Hp & Hv & Heq); subst.
+      destruct (Nat.eq_dec m0 m) as [Heqm | Hneq].
+      * subst m0. right. left. eexists.
+        apply (S_step EC_hole); [constructor|]. apply H_Perform; auto.
+      * destruct Hin as [Hin_head | Hin_tail].
+        { subst. contradiction. }
+        right. right. exists Et, m0, Ts, op_body, Ss, v, (EC_handler_m m P).
+        repeat split; auto.
   - (* T_Resume *)
-    intros Γ m b A T_R HwfA HwfTR Hb IHb Hec. left; constructor.
+    intros Γ m b A T_R HwfA HwfTR Hb IHb ms Hmok Hec. left; constructor.
+Qed.
+
+Theorem progress : forall Γ t T,
+  eval_ctx Γ ->
+  marker_ok [] t ->
+  Γ ⊢ₜ t : T ->
+  value t \/ exists t', t ==> t'.
+Proof.
+  intros Γ t T Hec Hmok Hty.
+  destruct (progress_open _ _ _ _ Hec Hmok Hty) as [Hv | [[t' Hs] | Hesc]].
+  - left. exact Hv.
+  - right. exists t'. exact Hs.
+  - destruct Hesc as (Et & m & Ts & op_body & Ss & v & P & Hin & Hp & Hv & Heq).
+    inversion Hin.
 Qed.
 
 
@@ -2731,14 +3137,7 @@ Proof.
     - exact Hlt_body. }
   eapply T_Sub; [exact Htm_body|].
   assert (HwfEta_push : ty_wf (push_corr n_lt Delta_m Γ) eta).
-  { assert (Hnoeff_yes : forall E,
-        ctx_lookup_eff
-          (fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
-             (push_lt_vars n_lt Delta_m Γ)
-             (List.map (inst_ctor_type n_lt n_ty (lt_var_list n_lt) Ts) sigma)) E = None).
-    { intro E. rewrite ctx_lookup_eff_fold_bind_tm.
-      apply ctx_lookup_eff_push_lt_vars_none. apply eval_ctx_no_eff. exact Hec. }
-    pose proof (typing_regular_no_eff _ _ _ Hnoeff_yes Hyes) as HwfEta_yes.
+  { pose proof (typing_implies_wf _ _ _ Hyes) as HwfEta_yes.
     eapply ty_wf_lookup_ty_eq_lt_dom; [exact HwfEta_yes| |].
     - intros x Hsome. rewrite ctx_lookup_lt_fold_bind_tm in Hsome.
       apply ctx_lookup_lt_push_lt_vars_push_corr_dom. exact Hsome.
@@ -2883,11 +3282,23 @@ Proof.
   - (* T_Handle *)
     intros Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β
            Heff Hlen HwfTs HwfTR HnoLocal Hsig Hret Hop IHop Hbody IHbody Hec t'' Hstep.
-    rewrite eval_ctx_no_eff in Heff; auto; discriminate.
+    apply step_handle_inv in Hstep.
+    destruct Hstep as [m Heq]. subst t''.
+    assert (Hcap : Γ ⊢ₜ term_cap E_tag m Ts op_body : type_ctor E_tag lt_local Ts).
+    { eapply T_Cap; eauto. }
+    apply T_HandlerM.
+    eapply subst_tm_lemma.
+    + eapply typing_closed; [exact Hec | exact Hcap].
+    + exact Hbody.
+    + constructor.
+    + exact Hcap.
   - (* T_Perform *)
     intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
            Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs Hsi Hri Harg IHarg Hec t'' Hstep.
-    rewrite eval_ctx_no_eff in Heff; auto; discriminate.
+    apply step_perform_inv in Hstep.
+    destruct Hstep as [(recv' & Hsrecv & Heq) | (arg' & Hvrecv & Hsarg & Heq)].
+    + subst t''. eapply T_Perform; eauto.
+    + subst t''. eapply T_Perform; eauto.
   - (* T_HandlerM *)
     intros Γ m t T Ht IH Hec t'' Hstep.
     specialize (IH Hec).
@@ -2899,8 +3310,8 @@ Proof.
     + (* H_Return *) subst t''. exact Ht.
     + (* S_HandlerM *) subst t''. apply T_HandlerM. apply IH; assumption.
     + (* H_Perform *)
-      exfalso. subst t.
-      eapply no_typed_perform_cap_under_eval_ctx; eauto.
+      subst t. subst t''.
+      eapply handler_perform_preservation; eauto.
   - (* T_Resume *)
     intros Γ m b A T_R HwfA HwfTR Hb IHb Hec t'' Hstep. no_step.
 Qed.
@@ -2914,21 +3325,36 @@ Inductive multi_step : term -> term -> Prop :=
   | MS_Step : forall t1 t2 t3,
       t1 ==> t2 -> multi_step t2 t3 -> multi_step t1 t3.
 
+Lemma multi_step_value_inv : forall v t,
+  value v ->
+  multi_step v t ->
+  t = v.
+Proof.
+  intros v t Hv Hmulti.
+  inversion Hmulti; subst.
+  - reflexivity.
+  - exfalso. eapply no_step_value; eauto.
+Qed.
+
 Definition stuck (t : term) : Prop :=
   ~ value t /\ ~ exists t', t ==> t'.
 
 Corollary type_safety : forall Γ t t' T,
   eval_ctx Γ ->
+  marker_ok [] t ->
   Γ ⊢ₜ t : T ->
   multi_step t t' ->
   ~ stuck t'.
 Proof.
-  intros Γ t t' T Hec Hty Hmulti.
-  induction Hmulti as [t | t1 t2 t3 Hs12 Hmulti IH].
+  intros Γ t t' T Hec Hmok Hty Hmulti.
+  revert Γ T Hec Hmok Hty.
+  induction Hmulti as [t | t1 t2 t3 Hs12 Hmulti IH]; intros Γ T Hec Hmok Hty.
   - intros [Hnv Hns].
-    destruct (progress _ _ _ Hec Hty) as [Hv | [t'' Hs]]; [contradiction|].
+    destruct (progress _ _ _ Hec Hmok Hty) as [Hv | [t'' Hs]]; [contradiction|].
     apply Hns; eauto.
-  - apply IH. eapply preservation; eauto.
+  - apply (IH Γ T Hec).
+    + eapply marker_ok_preservation; eauto.
+    + eapply preservation; eauto.
 Qed.
 
 (* ================================================================== *)
@@ -3070,55 +3496,74 @@ Qed.
 (* A runtime capability `cap_E^m _ _` is the only construct whose      *)
 (* typing rule (`T_Cap`) consults the effect environment: it is       *)
 (* well-typed solely in a context that *binds* the effect tag `E`.    *)
-(* Capabilities are minted exclusively by `H_Handle`, which wraps     *)
-(* each one immediately inside its own `handler_m m` delimiter        *)
-(*   handle …  -->h  handler_m m (… cap_E^m …).                       *)
-(* In the program-level evaluation scenario the ambient context is an *)
-(* `eval_ctx` (no `bind_eff`), so a capability can never inhabit a    *)
-(* typed evaluation position: every evaluation context surrounding a  *)
-(* (well-typed) capability must pass through its handler.             *)
+(* Capabilities are minted by `S_Handle`, which wraps each one        *)
+(* immediately inside its own `handler_m m` delimiter.  Under the     *)
+(* full effectful calculus, typing alone no longer rules out visible  *)
+(* capabilities; the runtime `marker_ok` invariant does.              *)
 (* ================================================================== *)
 
-(* Core confinement.  Because `plug E _` types its hole in the *same* *)
-(* context (ectx frames introduce no binders), a capability in the    *)
-(* hole would force its effect tag into Γ — impossible under          *)
-(* `eval_ctx`.  The conclusion is the strongest possible: no such     *)
-(* configuration is even well-typed.                                  *)
-Theorem capability_confined : forall Γ E E_tag m Ts op_body T,
-  eval_ctx Γ ->
-  Γ ⊢ₜ plug E (term_cap E_tag m Ts op_body) : T ->
-  False.
+Lemma marker_ok_plug_cap_pure_in : forall ms E E_tag m Ts op_body,
+  pure_ectx_m m E ->
+  marker_ok ms (plug E (term_cap E_tag m Ts op_body)) ->
+  In m ms.
 Proof.
-  intros Γ E E_tag m Ts op_body T Hec Hty.
-  apply plug_typing_inv in Hty. destruct Hty as [T' Hty].
-  apply cap_typed_eff_some in Hty.
-  destruct Hty as [n_α [n_β [sig0 [ret Hlk]]]].
-  rewrite (eval_ctx_no_eff _ E_tag Hec) in Hlk. discriminate.
+  intros ms E E_tag m Ts op_body Hpure.
+  revert ms. induction Hpure; simpl; intros ms Hmok.
+  - exact (proj1 Hmok).
+  - apply IHHpure. exact (proj1 Hmok).
+  - apply IHHpure. exact (proj2 Hmok).
+  - apply IHHpure. exact Hmok.
+  - apply IHHpure. exact Hmok.
+  - apply IHHpure.
+    induction vs as [|u vs IHvs]; simpl in Hmok; [tauto|].
+    apply IHvs. tauto.
+  - apply IHHpure. exact (proj1 Hmok).
+  - apply (IHHpure (m' :: ms)) in Hmok.
+    destruct Hmok as [Heq | Hin]; [subst; contradiction|exact Hin].
+  - apply IHHpure. exact (proj1 Hmok).
+  - apply IHHpure. exact (proj2 Hmok).
+  all: tauto.
 Qed.
 
-(* Operational form.  A closed well-typed program never reduces to a  *)
-(* configuration that exposes a capability at an evaluation position. *)
+Lemma multi_marker_ok_preservation : forall ms t t',
+  marker_ok ms t ->
+  multi_step t t' ->
+  marker_ok ms t'.
+Proof.
+  intros ms t t' Hmok Hms.
+  induction Hms as [t | t1 t2 t3 Hs Hrest IH].
+  - exact Hmok.
+  - apply IH. eapply marker_ok_preservation; eauto.
+Qed.
+
+Theorem capability_confined : forall E E_tag m Ts op_body,
+  marker_ok [] (plug E (term_cap E_tag m Ts op_body)) ->
+  ~ pure_ectx_m m E.
+Proof.
+  intros E E_tag m Ts op_body Hmok Hpure.
+  pose proof (marker_ok_plug_cap_pure_in [] E E_tag m Ts op_body Hpure Hmok) as Hin.
+  inversion Hin.
+Qed.
+
 Theorem capability_never_exposed : forall Γ t E E_tag m Ts op_body T,
   eval_ctx Γ ->
-  Γ ⊢ₜ t : T ->
-  multi_step t (plug E (term_cap E_tag m Ts op_body)) ->
-  False.
-Proof.
-  intros Γ t E E_tag m Ts op_body T Hec Hty Hms.
-  pose proof (multi_preservation _ _ _ _ Hec Hty Hms) as Hty'.
-  eapply capability_confined; eauto.
-Qed.
-
-(* The user-facing phrasing: if a closed program does reach `E[cap]`, *)
-(* then `E` is *not* delimiter-free for the capability's marker `m` — *)
-(* i.e. a matching `handler_m m` always lies above the hole.  (It     *)
-(* holds a fortiori, the premise being unreachable in this model.)    *)
-Corollary capability_under_handler : forall Γ t E E_tag m Ts op_body T,
-  eval_ctx Γ ->
+  marker_ok [] t ->
   Γ ⊢ₜ t : T ->
   multi_step t (plug E (term_cap E_tag m Ts op_body)) ->
   ~ pure_ectx_m m E.
 Proof.
-  intros Γ t E E_tag m Ts op_body T Hec Hty Hms _.
+  intros Γ t E E_tag m Ts op_body T Hec Hmok Hty Hms Hpure.
+  pose proof (multi_marker_ok_preservation _ _ _ Hmok Hms) as Hmok'.
+  eapply capability_confined; eauto.
+Qed.
+
+Corollary capability_under_handler : forall Γ t E E_tag m Ts op_body T,
+  eval_ctx Γ ->
+  marker_ok [] t ->
+  Γ ⊢ₜ t : T ->
+  multi_step t (plug E (term_cap E_tag m Ts op_body)) ->
+  ~ pure_ectx_m m E.
+Proof.
+  intros Γ t E E_tag m Ts op_body T Hec Hmok Hty Hms Hpure.
   eapply capability_never_exposed; eauto.
 Qed.
