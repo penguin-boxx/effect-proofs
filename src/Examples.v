@@ -316,9 +316,9 @@ Definition readerExample : term :=
    Encoded State uses Cmd<s> -> s; Put returns the written state. *)
 Definition state_op_body : term :=
   λ: `T 0 \\
-    term_match ($$ 1) get_tag 0
+    term_match ($$ 1) get_tag 0 0
       (($$ 2) @· ($$ 0) @· ($$ 0))
-      (term_match ($$ 1) put_tag 1
+      (term_match ($$ 1) put_tag 0 1
          (($$ 3) @· ($$ 0) @· ($$ 0))
          ($$ 0)).
 
@@ -360,9 +360,9 @@ Definition exampleException : term :=
    The core calculus has no fixpoint; this is the open recursive body
    under a self binder at de Bruijn index 2. *)
 Definition lazyMap_body : term :=
-  term_match ($$ 1) lnil_tag 0
+  term_match ($$ 1) lnil_tag 1 0
     (term_ctor lnil_tag (`L 1 +l `L 2) [`L 1 +l `L 2] [`T 0] [])
-    (term_match ($$ 1) lcons_tag 2
+    (term_match ($$ 1) lcons_tag 4 2
        (term_ctor lcons_tag (`L 1 +l `L 2)
           [`L 1 +l `L 2; `L 1 +l `L 2; `L 1 +l `L 2; `L 1 +l `L 2]
           [`T 0]
@@ -382,7 +382,7 @@ Definition mapFirst : term :=
   Λt: T_Any (`L 0) \\
     λ: T_Pair (`L 2 +l `L 1) (`T 2) (`T 1) \\
     λ: (`T 2 -{ `Ll }-> `T 0) \\
-      term_match ($$ 1) pair_tag 2
+      term_match ($$ 1) pair_tag 1 2
         (term_ctor pair_tag (`L 0 +l `L 1) [`L 0 +l `L 1] [`T 0; `T 1]
            [($$ 3) @· ($$ 1); $$ 0])
         (term_ctor pair_tag (`L 0 +l `L 1) [`L 0 +l `L 1] [`T 0; `T 1]
@@ -394,7 +394,7 @@ Definition foldEndo : term :=
   Λl \\
     λ: T_Int (`L 0) \\
     λ: T_EndoI (`L 0) \\
-      term_match ($$ 0) endoi_tag 1 (($$ 0) @· int42_v) ($$ 1).
+      term_match ($$ 0) endoi_tag 1 1 (($$ 0) @· int42_v) ($$ 1).
 
 (* error: crashEndo uses an existentially forgotten local Int lifetime contravariantly. *)
 Definition crashEndo_variance_witness : Prop :=

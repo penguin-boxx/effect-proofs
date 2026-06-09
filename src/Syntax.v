@@ -62,10 +62,11 @@ Inductive term : Type :=
   | term_lt_lam : term -> term
   (* ctor, resulting lifetime (min of all), argument lifetimes, argument types, argument terms *)
   | term_ctor : ctor_tag -> lifetime -> list lifetime -> list type -> list term -> term
-  (* match scrutinee against one constructor; yes_body binds each      *)
-  (* constructor argument (variables 0..arity-1, outermost-first);     *)
-  (* no_body is the else branch (no new binders).                      *)
-  | term_match : term -> ctor_tag -> nat -> term -> term -> term
+  (* match scrutinee against one constructor. yes_body binds n_lt      *)
+  (* constructor lifetime parameters and arity constructor arguments   *)
+  (* (term variables 0..arity-1, outermost-first). no_body has no new  *)
+  (* binders.                                                          *)
+  | term_match : term -> ctor_tag -> nat -> nat -> term -> term -> term
   (* ----- effect handlers -----                                       *)
   (* handle cap : E Ts { op_body } in body                             *)
   (* The body has 1 extra term-binder for the cap value (variable 0).  *)

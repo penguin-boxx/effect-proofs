@@ -100,11 +100,11 @@ Proof.
   - injection Hs; intros; subst. eexists; eassumption.
 Qed.
 
-Lemma typed_match_inv : forall Γ scrut K arity yes no T,
-  Γ ⊢ₜ term_match scrut K arity yes no : T -> exists T0, Γ ⊢ₜ scrut : T0.
+Lemma typed_match_inv : forall Γ scrut K n_lt arity yes no T,
+  Γ ⊢ₜ term_match scrut K n_lt arity yes no : T -> exists T0, Γ ⊢ₜ scrut : T0.
 Proof.
-  intros Γ scrut K arity yes no T H.
-  remember (term_match scrut K arity yes no) as s eqn:Hs.
+  intros Γ scrut K n_lt arity yes no T H.
+  remember (term_match scrut K n_lt arity yes no) as s eqn:Hs.
   revert Hs. induction H; intros Hs; try discriminate Hs.
   - apply IHtyping; exact Hs.
   - injection Hs; intros; subst. eexists; eassumption.
@@ -514,7 +514,7 @@ Lemma typing_ind2 :
      P (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) yes_body eta ->
      elim_ty_n n_lt (shift_lt n_lt 0 Delta) var_pos eta = Some elim_result ->
      Γ ⊢ₜ no_body : elim_result -> P Γ no_body elim_result ->
-     P Γ (term_match scrut K arity yes_body no_body) elim_result) ->
+    P Γ (term_match scrut K n_lt arity yes_body no_body) elim_result) ->
   (forall Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β,
      ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
      List.length Ts = n_α ->
@@ -679,9 +679,9 @@ Proof.
   - (* T_Ctor *)
         intros Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields
           result_ty result_tag l vs
-           Hlk Heff Hlen_lts Hwflts Hrho Hlen_Ts HwfTs Hresult Hshape Hwfl Hlt Hlen_vs HF HFP Hec.
+           Hlk Heff Hlen_lts Hwflts Hrho Hlen_Ts HwfTs Hresult Hshape Hwfl Hlt Hlen_vs HF HFP HargsIH Hec.
     assert (Hforall : Forall (fun v => value v \/ exists v', v ==> v') vs).
-    { eapply Forall2_Forall_left; [ exact HFP | ].
+    { eapply Forall2_Forall_left; [ exact HargsIH | ].
       intros a b Hab. apply Hab; exact Hec. }
     destruct (split_values_or_step _ Hforall) as
       [Hall | [vsl [tm [tm' [vsr [Hallvl [Heq Hst]]]]]]].
@@ -707,7 +707,7 @@ Proof.
         subst n_lt' n_ty' sig' res'.
         eexists.
         match goal with
-        | |- term_match _ _ ?a _ _ ==> _ => replace a with (@length term vs)
+        | |- term_match _ _ _ ?a _ _ ==> _ => replace a with (@length term vs)
         end.
         2:{ rewrite List.length_map. exact Hlen. }
         apply S_MatchYes. auto.
@@ -2178,13 +2178,14 @@ Qed.
 (* Inversion lemmas for T_Match and T_Ctor                            *)
 (* ------------------------------------------------------------------ *)
 
-Lemma match_typing_inv : forall Γ scrut K arity yes_body no_body T,
-  Γ ⊢ₜ term_match scrut K arity yes_body no_body : T ->
+Lemma match_typing_inv : forall Γ scrut K n_lt0 arity yes_body no_body T,
+  Γ ⊢ₜ term_match scrut K n_lt0 arity yes_body no_body : T ->
   exists n_lt n_ty sigma_fields result_ty_schema Ts Delta scrut_result_ty
          result_tag result_l eta elim_result,
     K <> any_tag /\
     ctx_lookup_ctor Γ K = Some (n_lt, n_ty, sigma_fields, result_ty_schema) /\
     ctx_lookup_eff Γ K = None /\
+    n_lt0 = n_lt /\
     List.length Ts = n_ty /\
     scrut_result_ty = inst_ctor_type n_lt n_ty (List.repeat Delta n_lt) Ts result_ty_schema /\
     scrut_result_ty = type_ctor result_tag result_l Ts /\
@@ -2201,16 +2202,17 @@ Lemma match_typing_inv : forall Γ scrut K arity yes_body no_body T,
     Γ ⊢ₜ no_body : elim_result /\
     (elim_result = T \/ Γ ⊢ elim_result <:: T).
 Proof.
-  intros Γ scrut K arity yes_body no_body T Hty.
-  remember (term_match scrut K arity yes_body no_body) as t eqn:Ht.
+  intros Γ scrut K n_lt0 arity yes_body no_body T Hty.
+  remember (term_match scrut K n_lt0 arity yes_body no_body) as t eqn:Ht.
   induction Hty; try discriminate.
   - (* T_Sub *) subst.
     destruct (IHHty eq_refl) as
       [n_lt [n_ty [sig [res [Ts0 [Delta0 [scrut_result_ty0
        [result_tag0 [result_l0 [eta0 [elim_r Hinv]]]]]]]]]]].
     destruct Hinv as
-      [HK [Hlk [Heff [HTs [Hscrut_result [Hscrut_shape [Hresult_ne
-      [HwfDelta [Hresult_l [Hscrut [Har [Hbody [Helim [Hno HsubOr]]]]]]]]]]]]]].
+      (HK & Hlk & Heff & Hnlt_eq & HTs & Hscrut_result & Hscrut_shape &
+       Hresult_ne & HwfDelta & Hresult_l & Hscrut & Har & Hbody & Helim &
+       Hno & HsubOr).
     exists n_lt, n_ty, sig, res, Ts0, Delta0, scrut_result_ty0,
       result_tag0, result_l0, eta0, elim_r.
     repeat split; auto.
@@ -2306,7 +2308,7 @@ Proof.
     intros K l lts Ts ts IH c y. simpl.
     rewrite !free_tm_vars_go_eq_concat. apply IH.
   - (* match *)
-    intros scrut tag arity yes_body no_body IHs IHy IHn c y. simpl.
+    intros scrut tag n_lt arity yes_body no_body IHs IHy IHn c y. simpl.
     rewrite !List.in_app_iff. intros [H|[H|H]].
     + left. apply IHs; exact H.
     + right; left. apply IHy; exact H.
@@ -2415,10 +2417,15 @@ Proof.
     intros Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields
            result_ty result_tag l vs
            Hlk Heff Hlts HwfLts Hrho HTs HwfTs Hres Hshape Hwfl Hltsub Hvslen
-           Hf2ty Hf2P x Hin.
-    simpl in Hin. rewrite free_tm_vars_go_eq_concat in Hin.
-    clear - Hf2P Hin.
-    revert Hin. induction Hf2P as [|v rho vs0 rhos0 Hp Hf2P' IH]; intros Hin.
+          Hf2ty Hf2P Hf2IH x Hin.
+    change (In x ((fix go ts :=
+      match ts with
+      | [] => []
+      | u :: rest => free_tm_vars 0 u ++ go rest
+      end) vs)) in Hin.
+    rewrite free_tm_vars_go_eq_concat in Hin.
+    clear - Hf2IH Hin.
+    revert Hin. induction Hf2IH as [|v rho vs0 rhos0 Hp Hf2P' IH]; intros Hin.
     + simpl in Hin. contradiction.
     + simpl in Hin. rewrite List.in_app_iff in Hin.
       destruct Hin as [H|H]; [apply Hp; exact H | apply IH; exact H].
@@ -2669,20 +2676,21 @@ Qed.
 (* Match-yes preservation                                             *)
 (* ------------------------------------------------------------------ *)
 
-Lemma match_yes_preservation : forall Γ K Delta lts Ts vs arity yes_body no_body T,
+Lemma match_yes_preservation : forall Γ K Delta lts Ts vs n_lt arity yes_body no_body T,
   eval_ctx Γ ->
-  Γ ⊢ₜ term_match (term_ctor K Delta lts Ts vs) K arity yes_body no_body : T ->
+  Γ ⊢ₜ term_match (term_ctor K Delta lts Ts vs) K n_lt arity yes_body no_body : T ->
   Forall value vs ->
   arity = List.length vs ->
   Γ ⊢ₜ subst_list_tm vs (subst_list_lt_in_tm lts yes_body) : T.
 Proof.
-  intros Γ K Delta lts Ts vs arity yes_body no_body T Hec Hmatch Hvals Harity_vs.
-  destruct (match_typing_inv _ _ _ _ _ _ _ Hmatch) as
-    (n_lt & n_ty & sigma & result & Ts_m & Delta_m & scrut_result_ty &
+  intros Γ K Delta lts Ts vs n_lt arity yes_body no_body T Hec Hmatch Hvals Harity_vs.
+  destruct (match_typing_inv _ _ _ _ _ _ _ _ Hmatch) as
+    (n_lt_m & n_ty & sigma & result & Ts_m & Delta_m & scrut_result_ty &
      result_tag & result_l & eta & elim_result & Hinv).
   destruct Hinv as
-    (HKne & Hctor_lk & Heff & HTs_len & Hscrut_result & Hscrut_shape &
+    (HKne & Hctor_lk & Heff & Hnlt_eq & HTs_len & Hscrut_result & Hscrut_shape &
      Hresult_ne & HwfDelta_m & Hresult_l & Hscrut & Harity_sigma & Hyes & Helim & Hno & HsubT).
+  subst n_lt_m.
   simpl in Hscrut.
   destruct (ctor_typing_inv _ _ _ _ _ _ _ Hscrut) as
     [n_lt' [n_ty' [sigma' [result' [actual_result_tag Hctor_inv]]]]].
@@ -2837,20 +2845,20 @@ Proof.
       intros Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields
         result_ty result_tag l vs
         Hlk Heff Hlen_lts HwfLts Hrho Hlen_Ts HwfTs Hresult Hshape Hwfl Hlt Hlen_vs
-        HF HFP Hec t'' Hstep.
+        HF HFP HargsIH Hec t'' Hstep.
     apply step_ctor_inv in Hstep.
     destruct Hstep as (vs0 & t0 & t0' & tsr0 & Hvs0 & Eargs & Hs0 & Et).
     subst t''.
-    rewrite Eargs in HF, HFP, Hlen_vs.
+    rewrite Eargs in HF, HFP, HargsIH.
     assert (HF' : Forall2 (fun v rho => Γ ⊢ₜ v : rho)
                           (vs0 ++ t0' :: tsr0) rho_fields).
     { eapply ctor_args_preserve;
-        [ exact HF | exact HFP | exact Hec | exact Hs0 ]. }
+      [ exact HFP | exact HargsIH | exact Hec | exact Hs0 ]. }
     eapply T_Ctor; try eassumption.
     assert (Hlen' : @length term (vs0 ++ t0' :: tsr0)
                   = @length term (vs0 ++ t0 :: tsr0)).
     { rewrite !List.length_app. reflexivity. }
-    rewrite Hlen'. exact Hlen_vs.
+    rewrite Hlen'. exact HF.
   - (* T_Match *)
     intros Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
            rho_fields scrut_result_ty result_tag result_l
@@ -2946,25 +2954,26 @@ Qed.
 (* has no top-level `local`, then neither does any of its subtypes.   *)
 (* This is the monotonicity engine behind non-escaping.               *)
 Lemma lt_sub_no_local_mono : forall Γ l1 l2,
+  eval_ctx Γ ->
   Γ ⊢ₗ l1 <: l2 ->
   no_local_lt l2 = true ->
   no_local_lt l1 = true.
 Proof.
-  intros Γ l1 l2 H. induction H; intros Hsup; simpl in *.
+  intros Γ l1 l2 Hec H. induction H; intros Hsup; simpl in *.
   - (* LS_Free  : free <: l   — free has no local *) reflexivity.
   - (* LS_Local : l <: local  — supertype IS local, premise absurd *)
     discriminate Hsup.
-  - (* LS_Var   : lt_var x <: Δ — a bare var has no top-level local *)
-    reflexivity.
+  - (* LS_Var   : impossible under eval_ctx, which has no lt binders. *)
+    rewrite (eval_ctx_no_lt _ x Hec) in H. discriminate.
   - (* LS_Refl  *) exact Hsup.
-  - (* LS_Trans *) apply IHlt_sub1. apply IHlt_sub2. exact Hsup.
+  - (* LS_Trans *) apply IHlt_sub1. exact Hec. apply IHlt_sub2. exact Hec. exact Hsup.
   - (* LS_MinL  : lt_min l1 l2 <: l *)
-    rewrite (IHlt_sub1 Hsup). rewrite (IHlt_sub2 Hsup). reflexivity.
+    rewrite (IHlt_sub1 Hec Hsup). rewrite (IHlt_sub2 Hec Hsup). reflexivity.
   - (* LS_MinR1 : l <: lt_min l1 l2 *)
-    apply IHlt_sub.
+    apply IHlt_sub. exact Hec.
     destruct (no_local_lt l1) eqn:E1; simpl in Hsup; [reflexivity | discriminate].
   - (* LS_MinR2 : l <: lt_min l1 l2 *)
-    apply IHlt_sub.
+    apply IHlt_sub. exact Hec.
     destruct (no_local_lt l2) eqn:E2;
       [reflexivity | destruct (no_local_lt l1); simpl in Hsup; discriminate].
 Qed.
@@ -2973,10 +2982,11 @@ Qed.
 (* `free`.  Holds in *any* context (no `eval_ctx` needed): even       *)
 (* context-bounded lt-variables cannot bridge `local` to `free`.      *)
 Theorem lt_local_not_escapes : forall Γ,
+  eval_ctx Γ ->
   ~ (Γ ⊢ₗ lt_local <: lt_free).
 Proof.
-  intros Γ H.
-  pose proof (lt_sub_no_local_mono _ _ _ H (eq_refl : no_local_lt lt_free = true))
+  intros Γ Hec H.
+  pose proof (lt_sub_no_local_mono _ _ _ Hec H (eq_refl : no_local_lt lt_free = true))
     as Hcontra.
   simpl in Hcontra. discriminate.
 Qed.
@@ -2992,7 +3002,7 @@ Proof.
   intros Γ K Ts Hec HK H.
   destruct (sub_ctor_inv _ _ _ _ _ Hec H HK) as [l' [Heq Hlsub]].
   injection Heq as Hl'. subst l'.
-  exact (lt_local_not_escapes _ Hlsub).
+  exact (lt_local_not_escapes _ Hec Hlsub).
 Qed.
 
 (* ================================================================== *)
@@ -3049,7 +3059,7 @@ Proof.
   subst result_tag. subst Ts'.
   exists K', l', lts', vs. split; [reflexivity|].
   rewrite Hleq.
-  apply (lt_sub_no_local_mono _ _ _ Hlsub).
+  apply (lt_sub_no_local_mono _ _ _ Hec Hlsub).
   reflexivity.
 Qed.
 

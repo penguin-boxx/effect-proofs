@@ -330,6 +330,7 @@ Definition lt_of_ty_G (Γ : ctx) (T : type) : lifetime :=
 
 Fixpoint no_local_lt (l : lifetime) : bool :=
   match l with
+  | lt_var _        => false
   | lt_local      => false
   | lt_min l1 l2  => andb (no_local_lt l1) (no_local_lt l2)
   | _             => true
@@ -343,7 +344,7 @@ Fixpoint no_local_ty (T : type) : bool :=
     end
   in
   match T with
-  | type_var _        => true
+  | type_var _        => false
   | type_fun A l B    => andb (no_local_ty A) (andb (no_local_lt l) (no_local_ty B))
   | type_ctor _ l Ts  => andb (no_local_lt l) (go Ts)
   | type_lt_all A     => no_local_ty A
@@ -378,7 +379,7 @@ Fixpoint free_tm_vars (cutoff : nat) (t : term) : list nat :=
   | term_lt_app t _      => free_tm_vars cutoff t
   | term_lt_lam body     => free_tm_vars cutoff body
   | term_ctor _ _ _ _ ts => go ts
-  | term_match scrut _ arity y n =>
+  | term_match scrut _ _ arity y n =>
       free_tm_vars cutoff scrut
         ++ free_tm_vars (cutoff + arity) y
         ++ free_tm_vars cutoff n
@@ -666,10 +667,13 @@ Definition inst_lt_vars (_n : nat) (lts : list lifetime) (T : type) : type :=
   multi_subst_lt_in_ty 0 lts T.
 
 (* Instantiate a constructor field/result type: first type vars, then  *)
-(* lt vars.                                                            *)
+(* lt vars. Type arguments live outside the constructor's lifetime     *)
+(* schema binders, so lift them over that binder block before type     *)
+(* substitution; otherwise the later lifetime substitution would       *)
+(* capture free lifetimes in the type arguments.                       *)
 Definition inst_ctor_type (n_lt n_ty : nat) (lts : list lifetime) (Ts : list type)
     (T : type) : type :=
-  inst_lt_vars n_lt lts (inst_ty_vars n_ty Ts T).
+  inst_lt_vars n_lt lts (inst_ty_vars n_ty (List.map (shift_lt_in_ty n_lt 0) Ts) T).
 
 (* Push n fresh bind_lt entries (all bounded by `bound`) onto Γ.      *)
 Fixpoint push_lt_vars (n : nat) (bound : lifetime) (Γ : ctx) : ctx :=
@@ -853,7 +857,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       (* positive-position bound for elimination.                       *)
       elim_ty_n n_lt (shift_lt n_lt 0 Delta) var_pos eta = Some elim_result ->
       Γ ⊢ₜ no_body : elim_result ->
-      Γ ⊢ₜ term_match scrut K arity yes_body no_body : elim_result
+      Γ ⊢ₜ term_match scrut K n_lt arity yes_body no_body : elim_result
 
   (* ================================================================ *)
   (* Effect-handler typing (paper one-plus-one §3)                    *)

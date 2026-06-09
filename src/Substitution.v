@@ -89,11 +89,11 @@ Fixpoint shift_tm (amount cutoff : nat) (t : term) : term :=
   | term_lt_app t l        => term_lt_app (shift_tm amount cutoff t) l
   | term_lt_lam body     => term_lt_lam (shift_tm amount cutoff body)
   | term_ctor K l lts Ts ts  => term_ctor K l lts Ts (go ts)
-  (* yes_body is under arity extra term binders; no_body is not *)
-  | term_match scrut tag arity yes_body no_body =>
-      term_match (shift_tm amount cutoff scrut) tag arity
-                 (shift_tm amount (cutoff + arity) yes_body)
-                 (shift_tm amount cutoff no_body)
+    (* yes_body is under n_lt lifetime binders and arity term binders. *)
+    | term_match scrut tag n_lt arity yes_body no_body =>
+      term_match (shift_tm amount cutoff scrut) tag n_lt arity
+                    (shift_tm amount (cutoff + arity) yes_body)
+                    (shift_tm amount cutoff no_body)
   (* handle: body under +1 term binder; op_body under +2 (arg + k);   *)
   (* the n_β outer type-binders of op_body don't bind term vars.       *)
   | term_handle E Ts op_body body =>
@@ -133,11 +133,11 @@ Fixpoint shift_ty_in_tm (amount cutoff : nat) (t : term) : term :=
   (* lt binder does not bind type vars *)
   | term_lt_lam body     => term_lt_lam (shift_ty_in_tm amount cutoff body)
   | term_ctor K l lts Ts ts  => term_ctor K l lts (shift_ty_list amount cutoff Ts) (go ts)
-  (* match introduces no type binder; arity term binders do not affect type indices *)
-  | term_match scrut tag arity yes_body no_body =>
-      term_match (shift_ty_in_tm amount cutoff scrut) tag arity
-                 (shift_ty_in_tm amount cutoff yes_body)
-                 (shift_ty_in_tm amount cutoff no_body)
+    (* match introduces no type binder; lifetime/term binders do not affect type indices *)
+    | term_match scrut tag n_lt arity yes_body no_body =>
+      term_match (shift_ty_in_tm amount cutoff scrut) tag n_lt arity
+                    (shift_ty_in_tm amount cutoff yes_body)
+                    (shift_ty_in_tm amount cutoff no_body)
   (* handle/perform/cap: shift Ts and recurse; no type binder        *)
   (* (the n_β type-binders of op_body shift the cutoff inside).       *)
   | term_handle E Ts op_body body =>
@@ -183,11 +183,10 @@ Fixpoint shift_lt_in_tm (amount cutoff : nat) (t : term) : term :=
                                         (List.map (shift_lt amount cutoff) lts)
                                         (shift_lt_in_ty_list amount cutoff Ts)
                                         (go ts)
-  (* match introduces no lifetime binder; arity term binders do not affect lifetime indices *)
-  | term_match scrut tag arity yes_body no_body =>
-      term_match (shift_lt_in_tm amount cutoff scrut) tag arity
-                 (shift_lt_in_tm amount cutoff yes_body)
-                 (shift_lt_in_tm amount cutoff no_body)
+    | term_match scrut tag n_lt arity yes_body no_body =>
+      term_match (shift_lt_in_tm amount cutoff scrut) tag n_lt arity
+                    (shift_lt_in_tm amount (cutoff + n_lt) yes_body)
+                    (shift_lt_in_tm amount cutoff no_body)
   | term_handle E Ts op_body body =>
       term_handle E (shift_lt_in_ty_list amount cutoff Ts)
                   (shift_lt_in_tm amount cutoff op_body)
@@ -307,10 +306,12 @@ Fixpoint subst_tm (var : nat) (replacement t : term) : term :=
   | term_ctor K l lts Ts ts => term_ctor K l lts Ts (go ts)
   (* yes_body is under arity term binders: var shifts up by arity,       *)
   (* and term vars in replacement shift up by arity to avoid capture     *)
-  | term_match scrut tag arity yes_body no_body =>
-      term_match (subst_tm var replacement scrut) tag arity
-                 (subst_tm (var + arity) (shift_tm arity 0 replacement) yes_body)
-                 (subst_tm var replacement no_body)
+    | term_match scrut tag n_lt arity yes_body no_body =>
+      term_match (subst_tm var replacement scrut) tag n_lt arity
+                    (subst_tm (var + arity)
+                       (shift_tm arity 0 (shift_lt_in_tm n_lt 0 replacement))
+                       yes_body)
+                    (subst_tm var replacement no_body)
   | term_handle E Ts op_body body =>
       term_handle E Ts
                   (subst_tm (var + 2) (shift_tm 2 0 replacement) op_body)
@@ -353,11 +354,10 @@ Fixpoint subst_ty_in_tm (var : nat) (replacement : type) (t : term) : term :=
   | term_lt_lam body    => term_lt_lam
                              (subst_ty_in_tm var (shift_lt_in_ty 1 0 replacement) body)
   | term_ctor K l lts Ts ts => term_ctor K l lts (subst_ty_list var replacement Ts) (go ts)
-  (* match introduces no type binder; arity term binders do not affect type var index *)
-  | term_match scrut tag arity yes_body no_body =>
-      term_match (subst_ty_in_tm var replacement scrut) tag arity
-                 (subst_ty_in_tm var replacement yes_body)
-                 (subst_ty_in_tm var replacement no_body)
+    | term_match scrut tag n_lt arity yes_body no_body =>
+      term_match (subst_ty_in_tm var replacement scrut) tag n_lt arity
+                    (subst_ty_in_tm var (shift_lt_in_ty n_lt 0 replacement) yes_body)
+                    (subst_ty_in_tm var replacement no_body)
   | term_handle E Ts op_body body =>
       term_handle E (subst_ty_list var replacement Ts)
                   (subst_ty_in_tm var replacement op_body)
@@ -403,10 +403,10 @@ Fixpoint subst_lt_in_tm (var : nat) (replacement : lifetime) (t : term) : term :
                                        (subst_lt_in_ty_list var replacement Ts)
                                        (go ts)
   (* match introduces no lifetime binder; arity term binders do not affect lifetime var index *)
-  | term_match scrut tag arity yes_body no_body =>
-      term_match (subst_lt_in_tm var replacement scrut) tag arity
-                 (subst_lt_in_tm var replacement yes_body)
-                 (subst_lt_in_tm var replacement no_body)
+    | term_match scrut tag n_lt arity yes_body no_body =>
+      term_match (subst_lt_in_tm var replacement scrut) tag n_lt arity
+                    (subst_lt_in_tm (n_lt + var) (shift_lt n_lt 0 replacement) yes_body)
+                    (subst_lt_in_tm var replacement no_body)
   | term_handle E Ts op_body body =>
       term_handle E (subst_lt_in_ty_list var replacement Ts)
                   (subst_lt_in_tm var replacement op_body)

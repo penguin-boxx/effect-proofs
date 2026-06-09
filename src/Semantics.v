@@ -33,7 +33,7 @@ Inductive ectx : Type :=
   | EC_lt_app     : ectx -> lifetime -> ectx
   | EC_ctor       : ctor_tag -> lifetime -> list lifetime -> list type ->
                     list term -> ectx -> list term -> ectx
-  | EC_match      : ectx -> ctor_tag -> nat -> term -> term -> ectx
+  | EC_match      : ectx -> ctor_tag -> nat -> nat -> term -> term -> ectx
   | EC_handler_m  : marker -> ectx -> ectx
   | EC_perform_r  : ectx -> list type -> term -> ectx
   | EC_perform_a  : term -> list type -> ectx -> ectx.
@@ -46,7 +46,7 @@ Fixpoint plug (E : ectx) (t : term) : term :=
   | EC_ty_app E1 T                => term_ty_app (plug E1 t) T
   | EC_lt_app E1 l                => term_lt_app (plug E1 t) l
   | EC_ctor K l lts Ts vs E1 ts   => term_ctor K l lts Ts (vs ++ plug E1 t :: ts)
-  | EC_match E1 K ar y n          => term_match (plug E1 t) K ar y n
+  | EC_match E1 K nlt ar y n      => term_match (plug E1 t) K nlt ar y n
   | EC_handler_m m E1             => term_handler_m m (plug E1 t)
   | EC_perform_r E1 Ss arg        => term_perform (plug E1 t) Ss arg
   | EC_perform_a v Ss E1          => term_perform v Ss (plug E1 t)
@@ -70,8 +70,8 @@ Inductive pure_ectx_m (m : marker) : ectx -> Prop :=
       pure_ectx_m m E -> pure_ectx_m m (EC_lt_app E l)
   | pem_ctor      : forall K l lts Ts vs E ts,
       pure_ectx_m m E -> pure_ectx_m m (EC_ctor K l lts Ts vs E ts)
-  | pem_match     : forall E K ar y n,
-      pure_ectx_m m E -> pure_ectx_m m (EC_match E K ar y n)
+  | pem_match     : forall E K nlt ar y n,
+      pure_ectx_m m E -> pure_ectx_m m (EC_match E K nlt ar y n)
   | pem_handler_m : forall m' E,
       m <> m' ->
       pure_ectx_m m E -> pure_ectx_m m (EC_handler_m m' E)
@@ -98,7 +98,7 @@ Fixpoint shift_ectx_tm (amount cutoff : nat) (E : ectx) : ectx :=
                                     (List.map (shift_tm amount cutoff) vs)
                                     (shift_ectx_tm amount cutoff E1)
                                     (List.map (shift_tm amount cutoff) ts)
-  | EC_match E1 K ar y n        => EC_match (shift_ectx_tm amount cutoff E1) K ar
+  | EC_match E1 K nlt ar y n    => EC_match (shift_ectx_tm amount cutoff E1) K nlt ar
                                     (shift_tm amount (cutoff + ar) y)
                                     (shift_tm amount cutoff n)
   | EC_handler_m m E1           => EC_handler_m m (shift_ectx_tm amount cutoff E1)
@@ -128,15 +128,15 @@ Inductive head_step : term -> term -> Prop :=
   | H_LtBeta : forall body l,
       term_lt_app (term_lt_lam body) l -->h subst_lt_in_tm 0 l body
 
-  | H_MatchYes : forall K l lts Ts vs yes_body no_body,
+    | H_MatchYes : forall K l lts Ts vs n_lt yes_body no_body,
       Forall value vs ->
-      term_match (term_ctor K l lts Ts vs) K (List.length vs) yes_body no_body
+      term_match (term_ctor K l lts Ts vs) K n_lt (List.length vs) yes_body no_body
         -->h subst_list_tm vs (subst_list_lt_in_tm lts yes_body)
 
-  | H_MatchNo : forall K K' l lts Ts vs arity yes_body no_body,
+    | H_MatchNo : forall K K' l lts Ts vs n_lt arity yes_body no_body,
       Forall value vs ->
       K <> K' ->
-      term_match (term_ctor K' l lts Ts vs) K arity yes_body no_body -->h no_body
+      term_match (term_ctor K' l lts Ts vs) K n_lt arity yes_body no_body -->h no_body
 
   (* (handle): allocate a fresh marker m, install a delimiter,        *)
   (* and substitute the capability for the handler-bound variable.    *)
@@ -197,8 +197,8 @@ Inductive ectx_wf : ectx -> Prop :=
   | wf_ctor       : forall K l lts Ts vs E ts,
       Forall value vs -> ectx_wf E ->
       ectx_wf (EC_ctor K l lts Ts vs E ts)
-  | wf_match      : forall E K ar y n,
-      ectx_wf E -> ectx_wf (EC_match E K ar y n)
+  | wf_match      : forall E K nlt ar y n,
+      ectx_wf E -> ectx_wf (EC_match E K nlt ar y n)
   | wf_handler_m  : forall m E,
       ectx_wf E -> ectx_wf (EC_handler_m m E)
   | wf_perform_r  : forall E Ss arg,
@@ -283,9 +283,9 @@ Proof.
   apply (S_step (EC_ctor K l lts Ts vs E ts)); auto.
 Qed.
 
-Lemma S_MatchYes : forall K l lts Ts vs yes_body no_body,
+Lemma S_MatchYes : forall K l lts Ts vs n_lt yes_body no_body,
   Forall value vs ->
-  term_match (term_ctor K l lts Ts vs) K (List.length vs) yes_body no_body
+  term_match (term_ctor K l lts Ts vs) K n_lt (List.length vs) yes_body no_body
     ==> subst_list_tm vs (subst_list_lt_in_tm lts yes_body).
 Proof.
   intros. apply (S_step EC_hole).
@@ -293,23 +293,23 @@ Proof.
   - apply H_MatchYes; auto.
 Qed.
 
-Lemma S_MatchNo : forall K K' l lts Ts vs arity yes_body no_body,
+Lemma S_MatchNo : forall K K' l lts Ts vs n_lt arity yes_body no_body,
   Forall value vs ->
   K <> K' ->
-  term_match (term_ctor K' l lts Ts vs) K arity yes_body no_body ==> no_body.
+  term_match (term_ctor K' l lts Ts vs) K n_lt arity yes_body no_body ==> no_body.
 Proof.
   intros. apply (S_step EC_hole).
   - constructor.
   - apply H_MatchNo; auto.
 Qed.
 
-Lemma S_Match : forall scrutinee scrutinee' tag arity yes_body no_body,
+Lemma S_Match : forall scrutinee scrutinee' tag n_lt arity yes_body no_body,
   scrutinee ==> scrutinee' ->
-  term_match scrutinee tag arity yes_body no_body
-    ==> term_match scrutinee' tag arity yes_body no_body.
+  term_match scrutinee tag n_lt arity yes_body no_body
+    ==> term_match scrutinee' tag n_lt arity yes_body no_body.
 Proof.
-  intros s s' tag ar y n H. inversion H; subst.
-  apply (S_step (EC_match E tag ar y n)); auto.
+  intros s s' tag nlt ar y n H. inversion H; subst.
+  apply (S_step (EC_match E tag nlt ar y n)); auto.
 Qed.
 
 Lemma S_Handle : forall E_tag Ts op_body body m,
@@ -493,8 +493,8 @@ Proof.
   - discriminate.
 Qed.
 
-Lemma step_match_inv : forall scrut tag ar y n t',
-  term_match scrut tag ar y n ==> t' ->
+Lemma step_match_inv : forall scrut tag n_lt ar y n t',
+  term_match scrut tag n_lt ar y n ==> t' ->
     (exists K l lts Ts vs,
        scrut = term_ctor K l lts Ts vs
        /\ Forall value vs
@@ -508,10 +508,10 @@ Lemma step_match_inv : forall scrut tag ar y n t',
        /\ t' = n)
     \/ (exists scrut',
        scrut ==> scrut'
-       /\ t' = term_match scrut' tag ar y n).
+       /\ t' = term_match scrut' tag n_lt ar y n).
 Proof.
-  intros scrut tag ar y n t' H. inversion H as [E r r' Hwf Hh Heq Heq']; subst.
-  destruct E as [ | | | | | | E0 K0 ar0 y0 n0 | | | ]; simpl in Heq; try discriminate.
+  intros scrut tag n_lt ar y n t' H. inversion H as [E r r' Hwf Hh Heq Heq']; subst.
+  destruct E as [ | | | | | | E0 K0 nlt0 ar0 y0 n0 | | | ]; simpl in Heq; try discriminate.
   - (* EC_hole *) subst r. inversion Hh; subst.
     + left. do 5 eexists. repeat split; eauto.
     + right. left. do 5 eexists. repeat split; eauto.
