@@ -360,6 +360,35 @@ Fixpoint no_local_ty (T : type) : bool :=
   | type_ty_all B A   => andb (no_local_ty B) (no_local_ty A)
   end.
 
+Definition is_any_at_free_bound (T : type) : bool :=
+  match T with
+  | type_ctor K lt_free [] => Nat.eqb K any_tag
+  | _ => false
+  end.
+
+Fixpoint no_local_ty_G (Γ : ctx) (T : type) : bool :=
+  let fix go (Γ : ctx) (Ts : list type) : bool :=
+    match Ts with
+    | []        => true
+    | A :: rest => andb (no_local_ty_G Γ A) (go Γ rest)
+    end
+  in
+  match T with
+  | type_var α =>
+      match ctx_lookup_ty Γ α with
+      | Some B => is_any_at_free_bound B
+      | None => false
+      end
+  | type_fun A l B =>
+      andb (no_local_ty_G Γ A) (andb (no_local_lt l) (no_local_ty_G Γ B))
+  | type_ctor _ l Ts => andb (no_local_lt l) (go Γ Ts)
+  | type_lt_all A => no_local_ty_G (bind_lt lt_local :: Γ) A
+  | type_ty_all B A => andb (no_local_ty_G Γ B) (no_local_ty_G (bind_ty B :: Γ) A)
+  end.
+
+Definition ty_app_arg_no_local (Γ : ctx) (B S : type) : bool :=
+  if is_any_at_free_bound B then no_local_ty_G Γ S else true.
+
 (* ================================================================== *)
 (* Free term variables and capture lifetime                           *)
 (*                                                                    *)
@@ -804,6 +833,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       Γ ⊢ₜ t : type_ty_all B U ->
       ty_wf Γ S ->
       Γ ⊢ S <:: B ->
+      ty_app_arg_no_local Γ B S = true ->
       Γ ⊢ₜ term_ty_app t S : subst_ty 0 S U
 
   (* --- Lifetime abstraction and application ----------------------- *)
@@ -921,7 +951,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       List.length Ts = n_α ->
       types_wf Γ Ts ->
       ty_wf Γ T_R ->
-      no_local_ty T_R = true ->
+      no_local_ty_G Γ T_R = true ->
       sig_β = inst_op_alpha n_α Ts n_β sig ->
       ret_β = inst_op_alpha n_α Ts n_β ret ->
       (bind_tm sig_β
@@ -940,8 +970,9 @@ Inductive typing : ctx -> term -> type -> Prop :=
       List.length Ts = n_α ->
       List.length Ss = n_β ->
       types_wf Γ Ss ->
+      forallb (no_local_ty_G Γ) Ss = true ->
       sig_inst = inst_op_arg n_α Ts n_β Ss sig ->
-      no_local_ty sig_inst = true ->
+      no_local_ty_G Γ sig_inst = true ->
       ret_inst = inst_op_arg n_α Ts n_β Ss ret ->
       ty_wf Γ ret_inst ->
       Γ ⊢ₜ arg : sig_inst ->

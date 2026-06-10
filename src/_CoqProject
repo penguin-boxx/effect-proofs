@@ -6,3 +6,5 @@ Typing.v
 SubstitutionTheory.v
 Safety.v
 Sugar.v
+Examples.v
+ExamplesProofs.v

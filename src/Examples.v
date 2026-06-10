@@ -288,7 +288,7 @@ Definition downcast : term :=
     λ: `T 0 \\
       $$ 0.
 
-(* fun withReader[lr]<e, r <: Any'lr>(
+(* fun withReader[lr]<e, r <: Any'free>(
      f: context(Reader<e>) ()'local -> r): (e)'lr -> r = ... *)
 Definition withReader_op_body : term :=
   λ: `T 1 \\
@@ -297,9 +297,9 @@ Definition withReader_op_body : term :=
 Definition withReader : term :=
   Λl \\
   Λt: T_Any `Ll \\
-  Λt: T_Any (`L 0) \\
+  Λt: T_Any `Lf \\
     λ: (T_Reader `Ll (`T 1) -{ `Ll }-> `T 0) \\
-      term_handle Reader_tag [`T 1] withReader_op_body
+      term_handle Reader_tag 0 [`T 1] (`T 0) withReader_op_body
         (let: `T 0 <- (($$ 1) @· ($$ 0)) in
          λ: `T 1 \\
            $$ 1).
@@ -309,7 +309,7 @@ Definition withReader : term :=
      perform r.ask() *)
 Definition readerExample_op_body : term := ($$ 1) @· int2_v.
 Definition readerExample : term :=
-  term_handle Reader_tag [T_Int `Lf] readerExample_op_body
+  term_handle Reader_tag 0 [T_Int `Lf] (T_Int `Lf) readerExample_op_body
     (term_perform ($$ 0) [] unit_v).
 
 (* fun withState ...
@@ -325,9 +325,9 @@ Definition state_op_body : term :=
 Definition withState : term :=
   Λl \\
   Λt: T_Any `Lf \\
-  Λt: T_Any (`L 0) \\
+  Λt: T_Any `Lf \\
     λ: (T_State `Ll (`T 1) -{ `Ll }-> `T 0) \\
-      term_handle State_tag [`T 1] state_op_body
+      term_handle State_tag 0 [`T 1] (`T 0) state_op_body
         (let: `T 0 <- (($$ 1) @· ($$ 0)) in
          λ: `T 1 \\
            $$ 1).
@@ -342,9 +342,9 @@ Definition withException_op_body : term :=
 
 Definition withException : term :=
   Λt: T_Any `Lf \\
-  Λt: T_Any `Ll \\
+  Λt: T_Any `Lf \\
     λ: (T_Exception `Ll (`T 1) -{ `Lf }-> `T 0) \\
-      term_handle Exception_tag [`T 1] withException_op_body
+      term_handle Exception_tag 1 [`T 1] (T_Result `Lf (`T 1) (`T 0)) withException_op_body
         (ok_v `Lf (`T 1) (`T 0) (($$ 0) @· ($$ 0))).
 
 (* let exampleException = withException<Int, File>(context(h) fun() perform h.throw<File>(42)) *)
@@ -412,9 +412,9 @@ Definition clash_ignored_local_witness : Prop :=
      handle h: Id { op id(x) resume(x) } f() *)
 Definition withId_op_body : term := ($$ 1) @· ($$ 0).
 Definition withId : term :=
-  Λt: T_Any `Ll \\
+  Λt: T_Any `Lf \\
     λ: (T_Id `Ll -{ `Lf }-> `T 0) \\
-      term_handle Id_tag [] withId_op_body (($$ 1) @· ($$ 0)).
+      term_handle Id_tag 1 [] (`T 0) withId_op_body (($$ 1) @· ($$ 0)).
 
 (* let exampleOptionality =
      handle o: Optionality { op mkSome<b>(x) resume(Some<b>(x)) }
@@ -423,7 +423,7 @@ Definition optionality_op_body : term :=
   ($$ 1) @· (some_v `Lf (`T 0) ($$ 0)).
 
 Definition exampleOptionality : term :=
-  term_handle Optionality_tag [] optionality_op_body
+  term_handle Optionality_tag 1 [] (T_Option `Lf (T_Int `Lf)) optionality_op_body
     (term_perform ($$ 0) [T_Int `Lf] int42_v).
 
 (* ================================================================== *)

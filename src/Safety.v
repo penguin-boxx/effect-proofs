@@ -1422,6 +1422,7 @@ Lemma typing_ind2 :
      Γ ⊢ₜ t : type_ty_all B U -> P Γ t (type_ty_all B U) ->
     ty_wf Γ S ->
      Γ ⊢ S <:: B ->
+      ty_app_arg_no_local Γ B S = true ->
      P Γ (term_ty_app t S) (subst_ty 0 S U)) ->
   (forall Γ body T,
     ty_wf (bind_lt lt_local :: Γ) T ->
@@ -1494,7 +1495,7 @@ Lemma typing_ind2 :
      List.length Ts = n_α ->
     types_wf Γ Ts ->
     ty_wf Γ T_R ->
-    no_local_ty T_R = true ->
+    no_local_ty_G Γ T_R = true ->
       sig_β = inst_op_alpha n_α Ts n_β sig ->
       ret_β = inst_op_alpha n_α Ts n_β ret ->
      (bind_tm sig_β
@@ -1512,8 +1513,9 @@ Lemma typing_ind2 :
      List.length Ts = n_α ->
      List.length Ss = n_β ->
     types_wf Γ Ss ->
+    forallb (no_local_ty_G Γ) Ss = true ->
      sig_inst = inst_op_arg n_α Ts n_β Ss sig ->
-    no_local_ty sig_inst = true ->
+      no_local_ty_G Γ sig_inst = true ->
      ret_inst = inst_op_arg n_α Ts n_β Ss ret ->
     ty_wf Γ ret_inst ->
      Γ ⊢ₜ arg : sig_inst -> P Γ arg sig_inst ->
@@ -1666,7 +1668,7 @@ Proof.
   - (* T_TyLam *)
     intros Γ bound body T HwfBound HwfT Hbody IHbody ms Hmok Hec. left; constructor.
   - (* T_TyApp *)
-    intros Γ t B U S Ht IH HwfS Hsub ms Hmok Hec.
+    intros Γ t B U S Ht IH HwfS Hsub HnlArg ms Hmok Hec.
     simpl in Hmok. specialize (IH ms Hmok Hec).
     destruct IH as [Hv | [[t' Hs] | Hesc]].
     + destruct (canonical_ty_all _ _ _ _ Hec Ht Hv) as [bnd [body Heq]]; subst.
@@ -1755,7 +1757,7 @@ Proof.
     unfold m. apply S_Handle. apply marker_bound_fresh.
   - (* T_Perform *)
     intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
-      Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs Hsi HnoSig Hri HwfRet Harg IHarg ms Hmok Hec.
+      Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs HnoSs Hsi HnoSig Hri HwfRet Harg IHarg ms Hmok Hec.
     simpl in Hmok. destruct Hmok as [Hmok_recv Hmok_arg].
     specialize (IHrecv ms Hmok_recv Hec).
     destruct IHrecv as [Hvrecv | [[recv' Hsrecv] | Hescrecv]].
@@ -1841,7 +1843,7 @@ Proof.
   - (* T_TyLam *)
     intros Γ bound body T HwfBound HwfT Hbody IHbody ms Hmok Hsafe Hec. left; constructor.
   - (* T_TyApp *)
-    intros Γ t B U S Ht IH HwfS Hsub ms Hmok Hsafe Hec.
+    intros Γ t B U S Ht IH HwfS Hsub HnlArg ms Hmok Hsafe Hec.
     simpl in Hmok. specialize (IH ms Hmok Hsafe Hec).
     destruct IH as [Hv | [[t' Hs] | Hesc]].
     + destruct (canonical_ty_all _ _ _ _ Hec Ht Hv) as [bnd [body Heq]]; subst.
@@ -1933,7 +1935,7 @@ Proof.
     unfold m. apply S_Handle. apply marker_bound_fresh.
   - (* T_Perform *)
     intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
-      Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs Hsi HnoSig Hri HwfRet Harg IHarg ms Hmok Hsafe Hec.
+      Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs HnoSs Hsi HnoSig Hri HwfRet Harg IHarg ms Hmok Hsafe Hec.
     simpl in Hmok. destruct Hmok as [Hmok_recv Hmok_arg].
     specialize (IHrecv ms Hmok_recv (marker_types_safe_perform_recv _ _ _ Hsafe) Hec).
     destruct IHrecv as [Hvrecv | [[recv' Hsrecv] | Hescrecv]].
@@ -3677,7 +3679,7 @@ Proof.
     simpl in Hin. specialize (IH x Hin).
     intros Hnone. apply IH. simpl. rewrite Hnone. reflexivity.
   - (* T_TyApp *)
-    intros Γ t B U S Ht IH HwfS Hsub x Hin. apply IH; exact Hin.
+    intros Γ t B U S Ht IH HwfS Hsub HnlArg x Hin. apply IH; exact Hin.
   - (* T_LtLam *)
     intros Γ body T HwfT Hbody IH x Hin.
     simpl in Hin. specialize (IH x Hin).
@@ -3733,7 +3735,7 @@ Proof.
       simpl in IHbody. exact IHbody.
   - (* T_Perform *)
         intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
-          H1 IHrecv H3 H4 H5 H6 H7 HnoSig H8 HwfRet H9 IHarg x Hin.
+          H1 IHrecv H3 H4 H5 H6 HnoSs H7 HnoSig H8 HwfRet H9 IHarg x Hin.
     simpl in Hin. rewrite List.in_app_iff in Hin.
     destruct Hin as [H|H]; [apply IHrecv | apply IHarg]; exact H.
   - (* T_HandlerM *)
@@ -4131,7 +4133,7 @@ Proof.
   - (* T_TyLam *)
     intros Γ bound body T HwfBound HwfT Hbody IHbody Hec t'' Hstep. no_step.
   - (* T_TyApp *)
-    intros Γ t B U S Ht IH HwfS Hsub Hec t'' Hstep.
+    intros Γ t B U S Ht IH HwfS Hsub HnlArg Hec t'' Hstep.
     specialize (IH Hec).
     apply step_ty_app_inv in Hstep.
     destruct Hstep as [(bound0 & body0 & E1 & E2) | (t0' & Hs & E2)].
@@ -4217,7 +4219,7 @@ Proof.
     + exact Hcap.
   - (* T_Perform *)
         intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
-          Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs Hsi HnoSig Hri HwfRet Harg IHarg Hec t'' Hstep.
+          Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs HnoSs Hsi HnoSig Hri HwfRet Harg IHarg Hec t'' Hstep.
     apply step_perform_inv in Hstep.
     destruct Hstep as [(recv' & Hsrecv & Heq) | (arg' & Hvrecv & Hsarg & Heq)].
     + subst t''. eapply T_Perform; eauto.

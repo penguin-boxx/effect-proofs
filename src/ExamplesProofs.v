@@ -40,9 +40,38 @@ Proof. unfold some_v. constructor. repeat constructor; apply int42_v_value. Qed.
 
 Hint Resolve unit_v_value file_v_value int2_v_value int42_v_value some_int42_value : core.
 
+Ltac solve_wf :=
+  repeat match goal with
+  | |- ty_wf _ (type_var _) => econstructor; [cbn; reflexivity |]
+  | |- lt_wf _ (lt_var _) => econstructor; [cbn; reflexivity]
+  | |- ty_wf _ _ => constructor
+  | |- types_wf _ _ => constructor
+  | |- lifetimes_wf _ _ => constructor
+  | |- lt_wf _ _ => constructor
+  | |- ctx_lookup_ty _ _ = Some _ => cbn; reflexivity
+  | |- ctx_lookup_lt _ _ = Some _ => cbn; reflexivity
+  end.
+
+Ltac solve_var :=
+  apply T_Var; [reflexivity | solve_wf].
+
+Ltac solve_free_sub :=
+  apply LS_Free; solve_wf.
+
+Ltac solve_lt_sub :=
+  match goal with
+  | |- _ ⊢ₗ lt_min _ _ <: _ => apply LS_MinL; solve_lt_sub
+  | |- _ ⊢ₗ lt_free <: _ => apply LS_Free; solve_wf
+  | |- _ ⊢ₗ ?l <: ?l => apply LS_Refl; solve_wf
+  | |- _ ⊢ₗ _ <: lt_local => apply LS_Local; solve_wf
+  end.
+
 Ltac solve_nullary_ctor :=
   eapply T_Ctor with (lts := []) (Ts := []) (rho_fields := []);
-  cbn; try reflexivity; try constructor; try apply LS_Free.
+  cbn; try reflexivity;
+  try solve [ repeat constructor
+            | apply LS_Free; repeat constructor
+            | apply LS_Refl; repeat constructor ].
 
 (* ================================================================== *)
 (* Constructor/value typing statements                                 *)
@@ -64,7 +93,9 @@ Lemma typed_file_local : data_ctx ⊢ₜ file_v : T_File `Ll.
 Proof.
   eapply T_Sub.
   - exact typed_file_proof.
-  - apply SA_Data. apply LS_Free.
+  - apply SA_Data.
+    + apply LS_Free. constructor.
+    + constructor.
 Qed.
 
 (* ================================================================== *)
@@ -75,17 +106,99 @@ Theorem typed_withFile_proof : typed_withFile.
 Proof.
   unfold typed_withFile, withFile.
   apply T_TyLam.
+  - solve_wf.
+  - solve_wf.
+  - reflexivity.
+  - apply T_Lam.
+    + solve_wf.
+    + solve_wf.
+    + eapply T_App.
+      * solve_var.
+      * eapply T_Sub.
+        -- unfold file_v, data_ctx; solve_nullary_ctor.
+        -- apply SA_Data.
+           ++ solve_free_sub.
+           ++ constructor.
+    + cbn. solve_free_sub.
+Qed.
+
+Theorem typed_id_proof : typed_id.
+Proof.
+  unfold typed_id, id_poly.
+  apply T_TyLam.
+  - solve_wf.
+  - solve_wf.
+  - reflexivity.
+  - apply T_Lam.
+    + solve_wf.
+    + solve_wf.
+    + solve_var.
+    + cbn. solve_free_sub.
+Qed.
+
+Theorem typed_downcast_proof : typed_downcast.
+Proof.
+  unfold typed_downcast, downcast.
+  apply T_TyLam.
+  - solve_wf.
+  - solve_wf.
+  - reflexivity.
+  - apply T_Lam.
+    + solve_wf.
+    + solve_wf.
+    + solve_var.
+    + cbn. solve_free_sub.
+Qed.
+
+Theorem typed_cons_proof : typed_cons.
+Proof.
+  unfold typed_cons, cons_fn.
+  apply T_LtLam.
+  - solve_wf.
+  - reflexivity.
+  - apply T_TyLam.
+    + solve_wf.
+    + solve_wf.
+    + reflexivity.
+    + apply T_Lam.
+      * solve_wf.
+      * solve_wf.
+      * apply T_Lam.
+        -- solve_wf.
+        -- solve_wf.
+        -- unfold cons_v.
+           eapply T_Ctor with
+             (lts := [`L 0]) (Ts := [`T 0])
+             (rho_fields := [`T 0; T_List (`L 0) (`T 0)]);
+             cbn; try reflexivity; try solve [solve_wf].
+            ++ solve_lt_sub.
+            ++ constructor; [solve_lt_sub | constructor].
+            ++ constructor; [solve_var|].
+              constructor; [solve_var|constructor].
+          -- cbn. solve_lt_sub.
+      * cbn. solve_free_sub.
+Qed.
+
+(* Legacy versions kept out of the checked script after T_Lam/T_TyLam gained
+   explicit well-formedness premises. *)
+(*
+Theorem typed_withFile_proof_old : typed_withFile.
+Proof.
+  unfold typed_withFile, withFile.
+  apply T_TyLam.
   apply T_Lam.
   - eapply T_App.
     + apply T_Var. reflexivity.
     + eapply T_Sub.
       * unfold file_v, data_ctx; solve_nullary_ctor.
-      * apply SA_Data. apply LS_Free.
+      * apply SA_Data.
+        -- apply LS_Free. constructor.
+        -- constructor.
   - cbn. apply LS_Free.
   - reflexivity.
 Qed.
 
-Theorem typed_id_proof : typed_id.
+Theorem typed_id_proof_old : typed_id.
 Proof.
   unfold typed_id, id_poly.
   apply T_TyLam.
@@ -95,7 +208,7 @@ Proof.
   - reflexivity.
 Qed.
 
-Theorem typed_downcast_proof : typed_downcast.
+Theorem typed_downcast_proof_old : typed_downcast.
 Proof.
   unfold typed_downcast, downcast.
   apply T_TyLam.
@@ -105,7 +218,7 @@ Proof.
   - reflexivity.
 Qed.
 
-Theorem typed_cons_proof : typed_cons.
+Theorem typed_cons_proof_old : typed_cons.
 Proof.
   unfold typed_cons, cons_fn.
   apply T_LtLam.
@@ -124,6 +237,7 @@ Proof.
   - cbn. apply LS_Free.
   - reflexivity.
 Qed.
+*)
 
 Theorem typed_list_example_proof : typed_list_example.
 Proof.
@@ -211,13 +325,13 @@ Theorem red_readerExample_proof : red_readerExample.
 Proof.
   unfold red_readerExample, readerExample, readerExample_op_body.
   eapply ms_step.
-  { apply (S_step EC_hole). constructor.
-    apply (H_Handle Reader_tag [T_Int `Lf] (($$ 1) @· int2_v)
-             (term_perform ($$ 0) [] unit_v) 0). }
+  { apply (S_Handle Reader_tag 0 [T_Int `Lf] (T_Int `Lf) (($$ 1) @· int2_v)
+             (term_perform ($$ 0) [] unit_v) 0).
+    cbn. intros H. inversion H. }
   cbn.
   eapply ms_step.
   { apply (S_step EC_hole). constructor.
-    apply (H_Perform Reader_tag 0 [T_Int `Lf] (($$ 1) @· int2_v) [] unit_v EC_hole);
+    apply (H_Perform Reader_tag 0 0 [T_Int `Lf] (T_Int `Lf) (($$ 1) @· int2_v) [] unit_v EC_hole);
       [apply unit_v_value | constructor]. }
   cbn.
   eapply ms_step.
@@ -232,13 +346,15 @@ Theorem red_exampleOptionality_proof : red_exampleOptionality.
 Proof.
   unfold red_exampleOptionality, exampleOptionality, optionality_op_body, some_v.
   eapply ms_step.
-  { apply (S_step EC_hole). constructor.
-    apply (H_Handle Optionality_tag [] (($$ 1) @· term_ctor some_tag `Lf [`Lf] [`T 0] [$$ 0])
-             (term_perform ($$ 0) [T_Int `Lf] int42_v) 0). }
+  { apply (S_Handle Optionality_tag 1 [] (T_Option `Lf (T_Int `Lf))
+             (($$ 1) @· term_ctor some_tag `Lf [`Lf] [`T 0] [$$ 0])
+             (term_perform ($$ 0) [T_Int `Lf] int42_v) 0).
+    cbn. intros H. inversion H. }
   cbn.
   eapply ms_step.
   { apply (S_step EC_hole). constructor.
-    apply (H_Perform Optionality_tag 0 [] (($$ 1) @· term_ctor some_tag `Lf [`Lf] [`T 0] [$$ 0])
+    apply (H_Perform Optionality_tag 0 1 [] (T_Option `Lf (T_Int `Lf))
+             (($$ 1) @· term_ctor some_tag `Lf [`Lf] [`T 0] [$$ 0])
              [T_Int `Lf] int42_v EC_hole);
       [apply int42_v_value | constructor]. }
   cbn.
