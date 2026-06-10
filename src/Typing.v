@@ -383,14 +383,14 @@ Fixpoint free_tm_vars (cutoff : nat) (t : term) : list nat :=
       free_tm_vars cutoff scrut
         ++ free_tm_vars (cutoff + arity) y
         ++ free_tm_vars cutoff n
-  | term_handle _ _ _ op_body body =>
+  | term_handle _ _ _ _ op_body body =>
       free_tm_vars (cutoff + 2) op_body
         ++ free_tm_vars (S cutoff) body
   | term_perform t _ arg =>
       free_tm_vars cutoff t ++ free_tm_vars cutoff arg
-  | term_cap _ _ _ _ op_body => free_tm_vars (cutoff + 2) op_body
-  | term_handler_m _ t => free_tm_vars cutoff t
-  | term_resume _ b => free_tm_vars (S cutoff) b
+  | term_cap _ _ _ _ _ op_body => free_tm_vars (cutoff + 2) op_body
+  | term_handler_m _ _ t => free_tm_vars cutoff t
+  | term_resume _ _ b => free_tm_vars (S cutoff) b
   end.
 
 Definition capture_lt (Γ : ctx) (body : term) : lifetime :=
@@ -819,6 +819,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       types_wf Γ Ts ->
       result_ty = inst_ctor_type n_lt n_ty lts Ts result_ty_schema ->
       result_ty = type_ctor result_tag l Ts ->
+      ctx_lookup_eff Γ result_tag = None ->
       lt_wf Γ l ->
       Γ ⊢ₗ lt_of_ty_list rho_fields <: l ->
       Forall (fun l0 => Γ ⊢ₗ l0 <: l) lts ->
@@ -845,6 +846,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       types_wf Γ Ts ->
       scrut_result_ty = inst_ctor_type n_lt n_ty (List.repeat Delta n_lt) Ts result_ty_schema ->
       scrut_result_ty = type_ctor result_tag result_l Ts ->
+      ctx_lookup_eff Γ result_tag = None ->
       result_tag <> any_tag ->
       lt_wf Γ Delta ->
       Γ ⊢ₗ result_l <: Delta ->
@@ -881,7 +883,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
         :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
         :: push_ty_vars n_β any_at_free Γ)
         ⊢ₜ op_body : shift_ty n_β 0 T_R ->
-      Γ ⊢ₜ term_cap E_tag m n_β Ts op_body : type_ctor E_tag lt_local Ts
+      Γ ⊢ₜ term_cap E_tag m n_β Ts T_R op_body : type_ctor E_tag lt_local Ts
 
   (* NOTE on op-body variable convention (matching H_Perform):         *)
   (* subst_list_tm [v; resume] op_body substitutes:                    *)
@@ -906,7 +908,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
         :: push_ty_vars n_β any_at_free Γ)
         ⊢ₜ op_body : shift_ty n_β 0 T_R ->
       (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) ⊢ₜ body : T_R ->
-      Γ ⊢ₜ term_handle E_tag n_β Ts op_body body : T_R
+      Γ ⊢ₜ term_handle E_tag n_β Ts T_R op_body body : T_R
 
   (* (Perform): invoke the (single) operation on a capability value.   *)
   (* Caller supplies the β-type-arguments Ss at the perform site.      *)
@@ -926,7 +928,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
   (* (HandlerM, runtime): a delimiter is transparent to typing.        *)
   | T_HandlerM : forall Γ m t T,
       Γ ⊢ₜ t : T ->
-      Γ ⊢ₜ term_handler_m m t : T
+      Γ ⊢ₜ term_handler_m m T t : T
 
   (* (Resume, runtime): a reified resumption is a function value.     *)
   (* Applying it (later) re-installs a delimiter around its body.     *)
@@ -934,7 +936,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       ty_wf Γ A ->
       ty_wf Γ T_R ->
       (bind_tm A :: Γ) ⊢ₜ b : T_R ->
-      Γ ⊢ₜ term_resume m b : type_fun A lt_local T_R
+      Γ ⊢ₜ term_resume m T_R b : type_fun A lt_local T_R
 
 with args_typed : ctx -> list term -> list type -> Prop :=
   | AT_nil  : forall Γ, args_typed Γ [] []
