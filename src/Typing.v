@@ -260,13 +260,22 @@ Hint Constructors lt_sub : core.
 (*                                                                    *)
 (* lt_∅(τ) is the minimum of all lifetime restrictions in τ when      *)
 (* evaluated at the empty context (type variables have no bound →     *)
-(* contribute nothing; quantified lt/ty vars are excluded).           *)
+(* contribute nothing).                                               *)
 (*                                                                    *)
 (*   lt_∅(α)           = free          (no bound in empty ctx)        *)
 (*   lt_∅(T Δ τ̄)       = lt_min Δ      (lt_min of lt_∅(τ̄))            *)
 (*   lt_∅(τ̄ Δ → σ)     = Δ             (only the closure lt matters)  *)
-(*   lt_∅(∀l.τ)        = free          (quantified lt removed)        *)
-(*   lt_∅(∀(α<:B).τ)   = free          (quantified ty var removed)    *)
+(*   lt_∅(∀l.τ)        = local         (conservative top)             *)
+(*   lt_∅(∀(α<:B).τ)   = local         (conservative top)             *)
+(*                                                                    *)
+(* The ∀-cases are read as `local` (top of the lattice).  Reading     *)
+(* them as plain `free` (the previous behaviour) under-approximates:  *)
+(* a type abstraction can wrap a local-tainted closure, and the       *)
+(* ∀-type would hide that taint from capture_lt / SA_Any / T_Ctor     *)
+(* (see CounterexampleTmSubst.v).  `local` is the unique choice that  *)
+(* is stable under lifetime substitution (a more precise bound that   *)
+(* looks under the binder is not: instantiating a quantified          *)
+(* lifetime with `local` can raise the body's true bound).            *)
 (* ================================================================== *)
 
 Fixpoint lt_of_ty (T : type) : lifetime :=
@@ -280,8 +289,8 @@ Fixpoint lt_of_ty (T : type) : lifetime :=
   | type_var _        => lt_free
   | type_fun _ l _    => l
   | type_ctor _ l Ts  => lt_min l (go_list Ts)
-  | type_lt_all _     => lt_free
-  | type_ty_all _ _   => lt_free
+  | type_lt_all A     => lt_local
+  | type_ty_all _ A   => lt_local
   end.
 
 Definition lt_of_ty_list (Ts : list type) : lifetime :=
@@ -316,8 +325,8 @@ Fixpoint lt_of_ty_ctx (fuel : nat) (Γ : ctx) (T : type) : lifetime :=
                      | []        => lt_free
                      | A :: rest => lt_min (go A) (gol rest)
                      end) Ts)
-    | type_lt_all _     => lt_free
-    | type_ty_all _ _   => lt_free
+    | type_lt_all A     => lt_local
+    | type_ty_all _ A   => lt_local
     end
   in go T.
 
@@ -360,6 +369,10 @@ Fixpoint no_local_ty (T : type) : bool :=
 (*                                                                    *)
 (* capture_lt Γ body : +lt_Γ(τ̄) over captured variables' types —      *)
 (*   the paper's closure-lifetime bound in the Lam rule.              *)
+(*   Cap-aware: a literal runtime capability form (term_cap /         *)
+(*   term_handler_m / term_resume) anywhere in the body forces the    *)
+(*   closure lifetime to lt_local, since free_tm_vars cannot see      *)
+(*   literal capabilities (see CounterexampleMarkerReturn.v).         *)
 (* ================================================================== *)
 
 Fixpoint free_tm_vars (cutoff : nat) (t : term) : list nat :=
@@ -394,15 +407,17 @@ Fixpoint free_tm_vars (cutoff : nat) (t : term) : list nat :=
   end.
 
 Definition capture_lt (Γ : ctx) (body : term) : lifetime :=
-  fold_right (fun x acc =>
-    lt_min
-      match ctx_lookup_tm Γ x with
-      | Some T => lt_of_ty_G Γ T
-      | None   => lt_free
-      end
-      acc)
-    lt_free
-    (free_tm_vars 1 body).
+  if has_rt_cap body then lt_local
+  else
+    fold_right (fun x acc =>
+      lt_min
+        match ctx_lookup_tm Γ x with
+        | Some T => lt_of_ty_G Γ T
+        | None   => lt_free
+        end
+        acc)
+      lt_free
+      (free_tm_vars 1 body).
 
 (* ================================================================== *)
 (* Variance positions for elim                                        *)
@@ -773,9 +788,13 @@ Inductive typing : ctx -> term -> type -> Prop :=
 
   (* Introduce a type variable α bounded by `bound`.                  *)
   (* Body is typed with α in scope as the innermost bind_ty entry.    *)
+  (* Prenex-Λ restriction: the body must itself be an abstraction, so *)
+  (* every Λ-chain bottoms out at a λ whose capture_lt records any    *)
+  (* captured capability (∀-types have no closure-lifetime slot).     *)
   | T_TyLam : forall Γ bound body T,
       ty_wf Γ bound ->
       ty_wf (bind_ty bound :: Γ) T ->
+      is_abs body = true ->
       (bind_ty bound :: Γ) ⊢ₜ body : T ->
       Γ ⊢ₜ term_ty_lam bound body : type_ty_all bound T
 
@@ -790,8 +809,10 @@ Inductive typing : ctx -> term -> type -> Prop :=
   (* --- Lifetime abstraction and application ----------------------- *)
 
   (* Fresh lifetime variable with no constraint (bound lt_local = ⊤). *)
+  (* Prenex-Λ restriction: see T_TyLam.                               *)
   | T_LtLam : forall Γ body T,
       ty_wf (bind_lt lt_local :: Γ) T ->
+      is_abs body = true ->
       (bind_lt lt_local :: Γ) ⊢ₜ body : T ->
       Γ ⊢ₜ term_lt_lam body : type_lt_all T
 
@@ -920,6 +941,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       List.length Ss = n_β ->
       types_wf Γ Ss ->
       sig_inst = inst_op_arg n_α Ts n_β Ss sig ->
+      no_local_ty sig_inst = true ->
       ret_inst = inst_op_arg n_α Ts n_β Ss ret ->
       ty_wf Γ ret_inst ->
       Γ ⊢ₜ arg : sig_inst ->

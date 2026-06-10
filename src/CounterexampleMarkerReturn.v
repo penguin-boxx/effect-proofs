@@ -47,12 +47,12 @@ Require Import Safety.
 (* Concrete witnesses                                                 *)
 (* ------------------------------------------------------------------ *)
 
-(* A capability with marker 7 (effect tag 1, no type args). *)
-Definition cap7 : term := term_cap 1 7 0 [] (term_var 0).
-
 (* Two simple closed `no_local` types. *)
 Definition TyUnit : type := type_ctor 2 lt_free [].
 Definition TyA    : type := type_ctor 3 lt_free [].
+
+(* A capability with marker 7 (effect tag 1, no type args). *)
+Definition cap7 : term := term_cap 1 7 0 [] TyUnit (term_var 0).
 
 (* A closed unit value (nullary constructor). *)
 Definition unitVal : term := term_ctor 2 lt_free [] [] [].
@@ -65,7 +65,7 @@ Definition body_value : term :=
   term_lam (term_app (term_lam unitVal TyUnit) cap7) TyA.
 
 (* The runtime delimiter around it. *)
-Definition pre : term := term_handler_m 7 body_value.
+Definition pre : term := term_handler_m 7 (type_fun TyA lt_free TyUnit) body_value.
 
 (* ------------------------------------------------------------------ *)
 (* The reduction and the marker facts                                 *)

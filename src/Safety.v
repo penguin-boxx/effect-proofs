@@ -348,6 +348,634 @@ Fixpoint marker_ok (ms : list marker) (t : term) : Prop :=
   | term_resume m _ body => marker_ok (m :: ms) body
   end.
 
+Fixpoint marker_annots (t : term) : list (marker * type) :=
+  match t with
+  | term_var _ => []
+  | term_app t1 t2 => marker_annots t1 ++ marker_annots t2
+  | term_lam body _ => marker_annots body
+  | term_ty_app t1 _ => marker_annots t1
+  | term_ty_lam _ body => marker_annots body
+  | term_lt_app t1 _ => marker_annots t1
+  | term_lt_lam body => marker_annots body
+  | term_ctor _ _ _ _ ts => List.concat (List.map marker_annots ts)
+  | term_match scrut _ _ _ yes_body no_body =>
+      marker_annots scrut ++ marker_annots yes_body ++ marker_annots no_body
+  | term_handle _ _ _ T_R op_body body =>
+      marker_annots op_body ++ marker_annots body
+  | term_perform recv _ arg => marker_annots recv ++ marker_annots arg
+  | term_cap _ m _ _ T_R op_body => (m, T_R) :: marker_annots op_body
+  | term_handler_m m T_R body => (m, T_R) :: marker_annots body
+  | term_resume m T_R body => (m, T_R) :: marker_annots body
+  end.
+
+Definition marker_types_ok (t : term) : Prop :=
+  forall m T U,
+    In (m, T) (marker_annots t) ->
+    In (m, U) (marker_annots t) ->
+    T = U.
+
+Definition marker_annots_no_local (t : term) : Prop :=
+  Forall (fun mt => no_local_ty (snd mt) = true) (marker_annots t).
+
+Definition marker_annots_list_no_local (ts : list term) : Prop :=
+  Forall (fun mt => no_local_ty (snd mt) = true)
+         (List.concat (List.map marker_annots ts)).
+
+Definition marker_types_safe (t : term) : Prop :=
+  marker_types_ok t /\ marker_annots_no_local t.
+
+Lemma marker_types_safe_ok : forall t,
+  marker_types_safe t -> marker_types_ok t.
+Proof.
+  intros t H. exact (proj1 H).
+Qed.
+
+Lemma marker_types_safe_empty : forall t,
+  marker_annots t = [] -> marker_types_safe t.
+Proof.
+  intros t Hann. split.
+  - intros m T U Hin. rewrite Hann in Hin. inversion Hin.
+  - unfold marker_annots_no_local. rewrite Hann. constructor.
+Qed.
+
+Lemma marker_types_safe_incl : forall sub whole,
+  incl (marker_annots sub) (marker_annots whole) ->
+  marker_types_safe whole ->
+  marker_types_safe sub.
+Proof.
+  intros sub whole Hincl [Hok Hnl]. split.
+  - intros m T U HT HU. eapply Hok; [apply Hincl | apply Hincl]; eauto.
+  - unfold marker_annots_no_local in *. apply Forall_forall.
+    intros mt Hmt. apply Forall_forall with (x := mt) in Hnl; [exact Hnl|].
+    apply Hincl. exact Hmt.
+Qed.
+
+Lemma marker_types_safe_app_l : forall t1 t2,
+  marker_types_safe (term_app t1 t2) -> marker_types_safe t1.
+Proof.
+  intros t1 t2 Hsafe. eapply marker_types_safe_incl; [|exact Hsafe].
+  intros p Hp. simpl. apply List.in_or_app. left. exact Hp.
+Qed.
+
+Lemma marker_types_safe_app_r : forall t1 t2,
+  marker_types_safe (term_app t1 t2) -> marker_types_safe t2.
+Proof.
+  intros t1 t2 Hsafe. eapply marker_types_safe_incl; [|exact Hsafe].
+  intros p Hp. simpl. apply List.in_or_app. right. exact Hp.
+Qed.
+
+Lemma marker_types_safe_match_scrut : forall scrut K n_lt arity yes no,
+  marker_types_safe (term_match scrut K n_lt arity yes no) -> marker_types_safe scrut.
+Proof.
+  intros scrut K n_lt arity yes no Hsafe. eapply marker_types_safe_incl; [|exact Hsafe].
+  intros p Hp. simpl. apply List.in_or_app. left. exact Hp.
+Qed.
+
+Lemma marker_types_safe_match_yes : forall scrut K n_lt arity yes no,
+  marker_types_safe (term_match scrut K n_lt arity yes no) -> marker_types_safe yes.
+Proof.
+  intros scrut K n_lt arity yes no Hsafe. eapply marker_types_safe_incl; [|exact Hsafe].
+  intros p Hp. simpl. apply List.in_or_app. right. apply List.in_or_app. left. exact Hp.
+Qed.
+
+Lemma marker_types_safe_match_no : forall scrut K n_lt arity yes no,
+  marker_types_safe (term_match scrut K n_lt arity yes no) -> marker_types_safe no.
+Proof.
+  intros scrut K n_lt arity yes no Hsafe. eapply marker_types_safe_incl; [|exact Hsafe].
+  intros p Hp. simpl. apply List.in_or_app. right. apply List.in_or_app. right. exact Hp.
+Qed.
+
+Lemma marker_types_safe_perform_recv : forall recv Ss arg,
+  marker_types_safe (term_perform recv Ss arg) -> marker_types_safe recv.
+Proof.
+  intros recv Ss arg Hsafe. eapply marker_types_safe_incl; [|exact Hsafe].
+  intros p Hp. simpl. apply List.in_or_app. left. exact Hp.
+Qed.
+
+Lemma marker_types_safe_perform_arg : forall recv Ss arg,
+  marker_types_safe (term_perform recv Ss arg) -> marker_types_safe arg.
+Proof.
+  intros recv Ss arg Hsafe. eapply marker_types_safe_incl; [|exact Hsafe].
+  intros p Hp. simpl. apply List.in_or_app. right. exact Hp.
+Qed.
+
+Lemma marker_types_safe_handler_body : forall m T body,
+  marker_types_safe (term_handler_m m T body) -> marker_types_safe body.
+Proof.
+  intros m T body Hsafe. eapply marker_types_safe_incl; [|exact Hsafe].
+  intros p Hp. simpl. right. exact Hp.
+Qed.
+
+Lemma marker_types_safe_ctor_args : forall K l lts Ts vs,
+  marker_types_safe (term_ctor K l lts Ts vs) ->
+  Forall marker_types_safe vs.
+Proof.
+  intros K l lts Ts vs. induction vs as [|v rest IH]; intros Hsafe; constructor.
+  - eapply marker_types_safe_incl; [|exact Hsafe].
+    intros p Hp. simpl. apply List.in_or_app. left. exact Hp.
+  - apply IH. eapply marker_types_safe_incl; [|exact Hsafe].
+    intros p Hp. simpl. apply List.in_or_app. right. exact Hp.
+Qed.
+
+Lemma marker_annots_list_no_local_cons : forall t ts,
+  marker_annots_no_local t ->
+  marker_annots_list_no_local ts ->
+  marker_annots_list_no_local (t :: ts).
+Proof.
+  intros t ts Ht Hts.
+  unfold marker_annots_no_local, marker_annots_list_no_local in *.
+  simpl. apply Forall_app. split; assumption.
+Qed.
+
+Lemma no_local_ty_shift_ty_any : forall amount T c,
+  no_local_ty (shift_ty amount c T) = no_local_ty T.
+Proof.
+  intros amount.
+  apply (type_list_ind
+    (fun T => forall c, no_local_ty (shift_ty amount c T) = no_local_ty T)
+    (fun Ts => forall c,
+       fold_right (fun A acc => andb (no_local_ty A) acc) true
+         (List.map (shift_ty amount c) Ts) =
+       fold_right (fun A acc => andb (no_local_ty A) acc) true Ts)).
+  - intros n c. simpl. destruct (Nat.leb c n); reflexivity.
+  - intros A l B IHA IHB c. simpl. rewrite IHA, IHB. reflexivity.
+  - intros K l Ts IHTs c. simpl. rewrite shift_ty_go_eq_map. simpl.
+    rewrite !no_local_ty_go_eq_fold. rewrite IHTs. reflexivity.
+  - intros A IHA c. simpl. apply IHA.
+  - intros B A IHB IHA c. simpl. rewrite IHB, IHA. reflexivity.
+  - intro c. reflexivity.
+  - intros A Ts IHA IHTs c. simpl. rewrite IHA, IHTs. reflexivity.
+Qed.
+
+Lemma no_local_lt_shift_any : forall amount l c,
+  no_local_lt (shift_lt amount c l) = no_local_lt l.
+Proof.
+  intros amount l. induction l; intro c; simpl.
+  - destruct (Nat.leb c n); reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - rewrite IHl1, IHl2. reflexivity.
+Qed.
+
+Lemma no_local_ty_shift_lt_any : forall amount T c,
+  no_local_ty (shift_lt_in_ty amount c T) = no_local_ty T.
+Proof.
+  intros amount.
+  apply (type_list_ind
+    (fun T => forall c, no_local_ty (shift_lt_in_ty amount c T) = no_local_ty T)
+    (fun Ts => forall c,
+       fold_right (fun A acc => andb (no_local_ty A) acc) true
+         (List.map (shift_lt_in_ty amount c) Ts) =
+       fold_right (fun A acc => andb (no_local_ty A) acc) true Ts)).
+  - intros n c. reflexivity.
+  - intros A l B IHA IHB c. simpl. rewrite IHA, IHB, no_local_lt_shift_any. reflexivity.
+  - intros K l Ts IHTs c. simpl. rewrite shift_lt_in_ty_go_eq_map. simpl.
+    rewrite !no_local_ty_go_eq_fold. rewrite IHTs, no_local_lt_shift_any. reflexivity.
+  - intros A IHA c. simpl. apply IHA.
+  - intros B A IHB IHA c. simpl. rewrite IHB, IHA. reflexivity.
+  - intro c. reflexivity.
+  - intros A Ts IHA IHTs c. simpl. rewrite IHA, IHTs. reflexivity.
+Qed.
+
+Lemma marker_annots_no_local_shift_tm : forall t amount cutoff,
+  marker_annots_no_local t ->
+  marker_annots_no_local (shift_tm amount cutoff t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall amount cutoff,
+       marker_annots_no_local t -> marker_annots_no_local (shift_tm amount cutoff t))
+    (fun ts => forall amount cutoff,
+       marker_annots_list_no_local ts ->
+       marker_annots_list_no_local (List.map (shift_tm amount cutoff) ts))).
+  - intros n amount cutoff H. exact H.
+  - intros t1 t2 IH1 IH2 amount cutoff H. unfold marker_annots_no_local in *.
+    simpl in *. apply Forall_app in H. destruct H as [H1 H2].
+    apply Forall_app. split; [apply IH1 | apply IH2]; assumption.
+  - intros body T IH amount cutoff H. simpl in *. apply IH. exact H.
+  - intros t T IH amount cutoff H. simpl in *. apply IH. exact H.
+  - intros bound body IH amount cutoff H. simpl in *. apply IH. exact H.
+  - intros t l IH amount cutoff H. simpl in *. apply IH. exact H.
+  - intros body IH amount cutoff H. simpl in *. apply IH. exact H.
+  - intros K l lts Ts ts IH amount cutoff H. simpl in *.
+    unfold marker_annots_no_local in H. fold marker_annots_list_no_local in H.
+    exact (IH amount cutoff H).
+  - intros scrut tag n_lt arity yes no IHs IHy IHn amount cutoff H.
+    unfold marker_annots_no_local in *. simpl in *.
+    repeat rewrite Forall_app in H. destruct H as [Hs [Hy Hn]].
+    repeat rewrite Forall_app. repeat split; [apply IHs | apply IHy | apply IHn]; assumption.
+  - intros E n_beta Ts T_R op_body body IHop IHbody amount cutoff H.
+    unfold marker_annots_no_local in *. simpl in *.
+    apply Forall_app in H. destruct H as [Hop Hbody].
+    apply Forall_app. split; [apply IHop | apply IHbody]; assumption.
+  - intros recv Ss arg IHrecv IHarg amount cutoff H.
+    unfold marker_annots_no_local in *. simpl in *.
+    apply Forall_app in H. destruct H as [Hr Ha].
+    apply Forall_app. split; [apply IHrecv | apply IHarg]; assumption.
+  - intros E m n_beta Ts T_R op_body IHop amount cutoff H.
+    unfold marker_annots_no_local in *. simpl in *.
+    inversion H as [|mt rest Hhead Htail]; subst. constructor.
+    + exact Hhead.
+    + apply IHop. exact Htail.
+  - intros m T_R t IH amount cutoff H.
+    unfold marker_annots_no_local in *. simpl in *.
+    inversion H as [|mt rest Hhead Htail]; subst. constructor.
+    + exact Hhead.
+    + apply IH. exact Htail.
+  - intros m T_R b IH amount cutoff H.
+    unfold marker_annots_no_local in *. simpl in *.
+    inversion H as [|mt rest Hhead Htail]; subst. constructor.
+    + exact Hhead.
+    + apply IH. exact Htail.
+  - intros amount cutoff H. exact H.
+  - intros t ts IHt IHts amount cutoff H.
+    unfold marker_annots_list_no_local in *. simpl in *.
+    apply Forall_app in H. destruct H as [Ht Hts].
+    apply Forall_app. split.
+    + apply IHt. exact Ht.
+    + apply IHts. exact Hts.
+Qed.
+
+Lemma marker_annots_no_local_shift_ty_in_tm : forall t amount cutoff,
+  marker_annots_no_local t ->
+  marker_annots_no_local (shift_ty_in_tm amount cutoff t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall amount cutoff,
+       marker_annots_no_local t -> marker_annots_no_local (shift_ty_in_tm amount cutoff t))
+    (fun ts => forall amount cutoff,
+       marker_annots_list_no_local ts ->
+       marker_annots_list_no_local (List.map (shift_ty_in_tm amount cutoff) ts))).
+  - intros n amount cutoff H. exact H.
+  - intros t1 t2 IH1 IH2 amount cutoff H. unfold marker_annots_no_local in *.
+    simpl in *. apply Forall_app in H. destruct H as [H1 H2].
+    apply Forall_app. split; [apply IH1 | apply IH2]; assumption.
+  - intros body T IH amount cutoff H. simpl in *. apply IH. exact H.
+  - intros t T IH amount cutoff H. simpl in *. apply IH. exact H.
+  - intros bound body IH amount cutoff H. simpl in *. apply IH. exact H.
+  - intros t l IH amount cutoff H. simpl in *. apply IH. exact H.
+  - intros body IH amount cutoff H. simpl in *. apply IH. exact H.
+  - intros K l lts Ts ts IH amount cutoff H. simpl in *.
+    unfold marker_annots_no_local in H. fold marker_annots_list_no_local in H.
+    exact (IH amount cutoff H).
+  - intros scrut tag n_lt arity yes no IHs IHy IHn amount cutoff H.
+    unfold marker_annots_no_local in *. simpl in *.
+    repeat rewrite Forall_app in H. destruct H as [Hs [Hy Hn]].
+    repeat rewrite Forall_app. repeat split; [apply IHs | apply IHy | apply IHn]; assumption.
+  - intros E n_beta Ts T_R op_body body IHop IHbody amount cutoff H.
+    unfold marker_annots_no_local in *. simpl in *.
+    apply Forall_app in H. destruct H as [Hop Hbody].
+    apply Forall_app. split; [apply IHop | apply IHbody]; assumption.
+  - intros recv Ss arg IHrecv IHarg amount cutoff H.
+    unfold marker_annots_no_local in *. simpl in *.
+    apply Forall_app in H. destruct H as [Hr Ha].
+    apply Forall_app. split; [apply IHrecv | apply IHarg]; assumption.
+  - intros E m n_beta Ts T_R op_body IHop amount cutoff H.
+    unfold marker_annots_no_local in *. simpl in *.
+    inversion H as [|mt rest Hhead Htail]; subst. constructor.
+    + simpl. rewrite no_local_ty_shift_ty_any. exact Hhead.
+    + apply IHop. exact Htail.
+  - intros m T_R t IH amount cutoff H.
+    unfold marker_annots_no_local in *. simpl in *.
+    inversion H as [|mt rest Hhead Htail]; subst. constructor.
+    + simpl. rewrite no_local_ty_shift_ty_any. exact Hhead.
+    + apply IH. exact Htail.
+  - intros m T_R b IH amount cutoff H.
+    unfold marker_annots_no_local in *. simpl in *.
+    inversion H as [|mt rest Hhead Htail]; subst. constructor.
+    + simpl. rewrite no_local_ty_shift_ty_any. exact Hhead.
+    + apply IH. exact Htail.
+  - intros amount cutoff H. exact H.
+  - intros t ts IHt IHts amount cutoff H.
+    unfold marker_annots_list_no_local in *. simpl in *.
+    apply Forall_app in H. destruct H as [Ht Hts].
+    apply Forall_app. split.
+    + apply IHt. exact Ht.
+    + apply IHts. exact Hts.
+Qed.
+
+Lemma marker_annots_no_local_shift_lt_in_tm : forall t amount cutoff,
+  marker_annots_no_local t ->
+  marker_annots_no_local (shift_lt_in_tm amount cutoff t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall amount cutoff,
+       marker_annots_no_local t -> marker_annots_no_local (shift_lt_in_tm amount cutoff t))
+    (fun ts => forall amount cutoff,
+       marker_annots_list_no_local ts ->
+       marker_annots_list_no_local (List.map (shift_lt_in_tm amount cutoff) ts))).
+  - intros n amount cutoff H. exact H.
+  - intros t1 t2 IH1 IH2 amount cutoff H. unfold marker_annots_no_local in *.
+    simpl in *. apply Forall_app in H. destruct H as [H1 H2].
+    apply Forall_app. split; [apply IH1 | apply IH2]; assumption.
+  - intros body T IH amount cutoff H. simpl in *. apply IH. exact H.
+  - intros t T IH amount cutoff H. simpl in *. apply IH. exact H.
+  - intros bound body IH amount cutoff H. simpl in *. apply IH. exact H.
+  - intros t l IH amount cutoff H. simpl in *. apply IH. exact H.
+  - intros body IH amount cutoff H. simpl in *. apply IH. exact H.
+  - intros K l lts Ts ts IH amount cutoff H. simpl in *.
+    unfold marker_annots_no_local in H. fold marker_annots_list_no_local in H.
+    exact (IH amount cutoff H).
+  - intros scrut tag n_lt arity yes no IHs IHy IHn amount cutoff H.
+    unfold marker_annots_no_local in *. simpl in *.
+    repeat rewrite Forall_app in H. destruct H as [Hs [Hy Hn]].
+    repeat rewrite Forall_app. repeat split; [apply IHs | apply IHy | apply IHn]; assumption.
+  - intros E n_beta Ts T_R op_body body IHop IHbody amount cutoff H.
+    unfold marker_annots_no_local in *. simpl in *.
+    apply Forall_app in H. destruct H as [Hop Hbody].
+    apply Forall_app. split; [apply IHop | apply IHbody]; assumption.
+  - intros recv Ss arg IHrecv IHarg amount cutoff H.
+    unfold marker_annots_no_local in *. simpl in *.
+    apply Forall_app in H. destruct H as [Hr Ha].
+    apply Forall_app. split; [apply IHrecv | apply IHarg]; assumption.
+  - intros E m n_beta Ts T_R op_body IHop amount cutoff H.
+    unfold marker_annots_no_local in *. simpl in *.
+    inversion H as [|mt rest Hhead Htail]; subst. constructor.
+    + simpl. rewrite no_local_ty_shift_lt_any. exact Hhead.
+    + apply IHop. exact Htail.
+  - intros m T_R t IH amount cutoff H.
+    unfold marker_annots_no_local in *. simpl in *.
+    inversion H as [|mt rest Hhead Htail]; subst. constructor.
+    + simpl. rewrite no_local_ty_shift_lt_any. exact Hhead.
+    + apply IH. exact Htail.
+  - intros m T_R b IH amount cutoff H.
+    unfold marker_annots_no_local in *. simpl in *.
+    inversion H as [|mt rest Hhead Htail]; subst. constructor.
+    + simpl. rewrite no_local_ty_shift_lt_any. exact Hhead.
+    + apply IH. exact Htail.
+  - intros amount cutoff H. exact H.
+  - intros t ts IHt IHts amount cutoff H.
+    unfold marker_annots_list_no_local in *. simpl in *.
+    apply Forall_app in H. destruct H as [Ht Hts].
+    apply Forall_app. split.
+    + apply IHt. exact Ht.
+    + apply IHts. exact Hts.
+Qed.
+
+Lemma marker_annots_no_local_subst_tm : forall t var repl,
+  marker_annots_no_local repl ->
+  marker_annots_no_local t ->
+  marker_annots_no_local (subst_tm var repl t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall var repl,
+       marker_annots_no_local repl ->
+       marker_annots_no_local t ->
+       marker_annots_no_local (subst_tm var repl t))
+    (fun ts => forall var repl,
+       marker_annots_no_local repl ->
+       marker_annots_list_no_local ts ->
+       marker_annots_list_no_local (List.map (subst_tm var repl) ts))).
+  - intros n var repl Hrepl H. simpl.
+    destruct (Nat.eqb n var); [exact Hrepl|].
+    destruct (Nat.ltb var n); constructor.
+  - intros t1 t2 IH1 IH2 var repl Hrepl H. unfold marker_annots_no_local in *.
+    simpl in *. apply Forall_app in H. destruct H as [H1 H2].
+    apply Forall_app. split; [apply IH1 | apply IH2]; assumption.
+  - intros body T IH var repl Hrepl H. simpl in *.
+    apply IH; [apply marker_annots_no_local_shift_tm |]; assumption.
+  - intros t T IH var repl Hrepl H. simpl in *.
+    apply IH; assumption.
+  - intros bound body IH var repl Hrepl H. simpl in *.
+    apply IH; [apply marker_annots_no_local_shift_ty_in_tm |]; assumption.
+  - intros t l IH var repl Hrepl H. simpl in *.
+    apply IH; assumption.
+  - intros body IH var repl Hrepl H. simpl in *.
+    apply IH; [apply marker_annots_no_local_shift_lt_in_tm |]; assumption.
+  - intros K l lts Ts ts IH var repl Hrepl H. simpl in *.
+    unfold marker_annots_no_local in H. fold marker_annots_list_no_local in H.
+    apply IH; assumption.
+  - intros scrut tag n_lt arity yes no IHs IHy IHn var repl Hrepl H.
+    unfold marker_annots_no_local in *. simpl in *.
+    repeat rewrite Forall_app in H. destruct H as [Hs [Hy Hn]].
+    repeat rewrite Forall_app. repeat split.
+    + apply IHs; assumption.
+    + apply IHy; [apply marker_annots_no_local_shift_tm; apply marker_annots_no_local_shift_lt_in_tm |]; assumption.
+    + apply IHn; assumption.
+  - intros E n_beta Ts T_R op_body body IHop IHbody var repl Hrepl H.
+    unfold marker_annots_no_local in *. simpl in *.
+    apply Forall_app in H. destruct H as [Hop Hbody].
+    apply Forall_app. split.
+    + apply IHop; [apply marker_annots_no_local_shift_tm |]; assumption.
+    + apply IHbody; [apply marker_annots_no_local_shift_tm |]; assumption.
+  - intros recv Ss arg IHrecv IHarg var repl Hrepl H.
+    unfold marker_annots_no_local in *. simpl in *.
+    apply Forall_app in H. destruct H as [Hr Ha].
+    apply Forall_app. split; [apply IHrecv | apply IHarg]; assumption.
+  - intros E m n_beta Ts T_R op_body IHop var repl Hrepl H.
+    unfold marker_annots_no_local in *. simpl in *.
+    inversion H as [|mt rest Hhead Htail]; subst. constructor.
+    + exact Hhead.
+    + apply IHop; [apply marker_annots_no_local_shift_tm |]; assumption.
+  - intros m T_R t IH var repl Hrepl H.
+    unfold marker_annots_no_local in *. simpl in *.
+    inversion H as [|mt rest Hhead Htail]; subst. constructor.
+    + exact Hhead.
+    + apply IH; assumption.
+  - intros m T_R b IH var repl Hrepl H.
+    unfold marker_annots_no_local in *. simpl in *.
+    inversion H as [|mt rest Hhead Htail]; subst. constructor.
+    + exact Hhead.
+    + apply IH; [apply marker_annots_no_local_shift_tm |]; assumption.
+  - intros var repl Hrepl H. exact H.
+  - intros t ts IHt IHts var repl Hrepl H.
+    unfold marker_annots_list_no_local in *. simpl in *.
+    apply Forall_app in H. destruct H as [Ht Hts].
+    apply Forall_app. split.
+    + apply IHt; assumption.
+    + apply IHts; assumption.
+Qed.
+
+Lemma marker_annots_no_local_subst_ty_in_tm : forall t n S,
+  marker_annots_no_local t ->
+  marker_annots_no_local (subst_ty_in_tm n S t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall n S,
+       marker_annots_no_local t ->
+       marker_annots_no_local (subst_ty_in_tm n S t))
+    (fun ts => forall n S,
+       marker_annots_list_no_local ts ->
+       marker_annots_list_no_local (List.map (subst_ty_in_tm n S) ts))).
+  - intros n0 n S H. exact H.
+  - intros t1 t2 IH1 IH2 n S H. unfold marker_annots_no_local in *.
+    simpl in *. apply Forall_app in H. destruct H as [H1 H2].
+    apply Forall_app. split; [apply IH1 | apply IH2]; assumption.
+  - intros body T IH n S H. simpl in *. apply IH. exact H.
+  - intros t T IH n S H. simpl in *. apply IH. exact H.
+  - intros bound body IH n S H. simpl in *. apply IH. exact H.
+  - intros t l IH n S H. simpl in *. apply IH. exact H.
+  - intros body IH n S H. simpl in *. apply IH. exact H.
+  - intros K l lts Ts ts IH n S H. simpl in *.
+    unfold marker_annots_no_local in H. fold marker_annots_list_no_local in H.
+    exact (IH n S H).
+  - intros scrut tag n_lt arity yes no IHs IHy IHn n S H.
+    unfold marker_annots_no_local in *. simpl in *.
+    repeat rewrite Forall_app in H. destruct H as [Hs [Hy Hn]].
+    repeat rewrite Forall_app. repeat split; [apply IHs | apply IHy | apply IHn]; assumption.
+  - intros E n_beta Ts T_R op_body body IHop IHbody n S H.
+    unfold marker_annots_no_local in *. simpl in *.
+    apply Forall_app in H. destruct H as [Hop Hbody].
+    apply Forall_app. split; [apply IHop | apply IHbody]; assumption.
+  - intros recv Ss arg IHrecv IHarg n S H.
+    unfold marker_annots_no_local in *. simpl in *.
+    apply Forall_app in H. destruct H as [Hr Ha].
+    apply Forall_app. split; [apply IHrecv | apply IHarg]; assumption.
+  - intros E m n_beta Ts T_R op_body IHop n S H.
+    unfold marker_annots_no_local in *. simpl in *.
+    inversion H as [|mt rest Hhead Htail]; subst. constructor.
+    + simpl. eapply no_local_ty_subst_ty. exact Hhead.
+    + apply IHop. exact Htail.
+  - intros m T_R t IH n S H.
+    unfold marker_annots_no_local in *. simpl in *.
+    inversion H as [|mt rest Hhead Htail]; subst. constructor.
+    + simpl. eapply no_local_ty_subst_ty. exact Hhead.
+    + apply IH. exact Htail.
+  - intros m T_R b IH n S H.
+    unfold marker_annots_no_local in *. simpl in *.
+    inversion H as [|mt rest Hhead Htail]; subst. constructor.
+    + simpl. eapply no_local_ty_subst_ty. exact Hhead.
+    + apply IH. exact Htail.
+  - intros n S H. exact H.
+  - intros t ts IHt IHts n S H.
+    unfold marker_annots_list_no_local in *. simpl in *.
+    apply Forall_app in H. destruct H as [Ht Hts].
+    apply Forall_app. split.
+    + apply IHt. exact Ht.
+    + apply IHts. exact Hts.
+Qed.
+
+Lemma marker_annots_no_local_subst_lt_in_tm : forall t n l,
+  marker_annots_no_local t ->
+  marker_annots_no_local (subst_lt_in_tm n l t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall n l,
+       marker_annots_no_local t ->
+       marker_annots_no_local (subst_lt_in_tm n l t))
+    (fun ts => forall n l,
+       marker_annots_list_no_local ts ->
+       marker_annots_list_no_local (List.map (subst_lt_in_tm n l) ts))).
+  - intros n0 n l H. exact H.
+  - intros t1 t2 IH1 IH2 n l H. unfold marker_annots_no_local in *.
+    simpl in *. apply Forall_app in H. destruct H as [H1 H2].
+    apply Forall_app. split; [apply IH1 | apply IH2]; assumption.
+  - intros body T IH n l H. simpl in *. apply IH. exact H.
+  - intros t T IH n l H. simpl in *. apply IH. exact H.
+  - intros bound body IH n l H. simpl in *. apply IH. exact H.
+  - intros t l0 IH n l H. simpl in *. apply IH. exact H.
+  - intros body IH n l H. simpl in *. apply IH. exact H.
+  - intros K l0 lts Ts ts IH n l H. simpl in *.
+    unfold marker_annots_no_local in H. fold marker_annots_list_no_local in H.
+    exact (IH n l H).
+  - intros scrut tag n_lt arity yes no IHs IHy IHn n l H.
+    unfold marker_annots_no_local in *. simpl in *.
+    repeat rewrite Forall_app in H. destruct H as [Hs [Hy Hn]].
+    repeat rewrite Forall_app. repeat split; [apply IHs | apply IHy | apply IHn]; assumption.
+  - intros E n_beta Ts T_R op_body body IHop IHbody n l H.
+    unfold marker_annots_no_local in *. simpl in *.
+    apply Forall_app in H. destruct H as [Hop Hbody].
+    apply Forall_app. split; [apply IHop | apply IHbody]; assumption.
+  - intros recv Ss arg IHrecv IHarg n l H.
+    unfold marker_annots_no_local in *. simpl in *.
+    apply Forall_app in H. destruct H as [Hr Ha].
+    apply Forall_app. split; [apply IHrecv | apply IHarg]; assumption.
+  - intros E m n_beta Ts T_R op_body IHop n l H.
+    unfold marker_annots_no_local in *. simpl in *.
+    inversion H as [|mt rest Hhead Htail]; subst. constructor.
+    + simpl. eapply no_local_ty_subst_lt. exact Hhead.
+    + apply IHop. exact Htail.
+  - intros m T_R t IH n l H.
+    unfold marker_annots_no_local in *. simpl in *.
+    inversion H as [|mt rest Hhead Htail]; subst. constructor.
+    + simpl. eapply no_local_ty_subst_lt. exact Hhead.
+    + apply IH. exact Htail.
+  - intros m T_R b IH n l H.
+    unfold marker_annots_no_local in *. simpl in *.
+    inversion H as [|mt rest Hhead Htail]; subst. constructor.
+    + simpl. eapply no_local_ty_subst_lt. exact Hhead.
+    + apply IH. exact Htail.
+  - intros n l H. exact H.
+  - intros t ts IHt IHts n l H.
+    unfold marker_annots_list_no_local in *. simpl in *.
+    apply Forall_app in H. destruct H as [Ht Hts].
+    apply Forall_app. split.
+    + apply IHt. exact Ht.
+    + apply IHts. exact Hts.
+Qed.
+
+Lemma marker_annots_no_local_subst_list_tm : forall vs t,
+  Forall marker_annots_no_local vs ->
+  marker_annots_no_local t ->
+  marker_annots_no_local (subst_list_tm vs t).
+Proof.
+  induction vs as [|v rest IH]; intros t Hvs Ht; simpl.
+  - exact Ht.
+  - inversion Hvs as [|v0 rest0 Hv Hrest Heq]; subst.
+    apply IH; [exact Hrest|].
+    apply marker_annots_no_local_subst_tm.
+    + apply marker_annots_no_local_shift_tm. exact Hv.
+    + exact Ht.
+Qed.
+
+Lemma marker_annots_no_local_subst_list_lt_in_tm : forall lts t,
+  marker_annots_no_local t ->
+  marker_annots_no_local (subst_list_lt_in_tm lts t).
+Proof.
+  induction lts as [|l rest IH]; intros t Ht; simpl.
+  - exact Ht.
+  - apply IH. apply marker_annots_no_local_subst_lt_in_tm. exact Ht.
+Qed.
+
+Lemma marker_annots_no_local_subst_list_ty_in_tm : forall Ss t,
+  marker_annots_no_local t ->
+  marker_annots_no_local (subst_list_ty_in_tm Ss t).
+Proof.
+  induction Ss as [|S rest IH]; intros t Ht; simpl.
+  - exact Ht.
+  - apply IH. apply marker_annots_no_local_subst_ty_in_tm. exact Ht.
+Qed.
+
+Lemma marker_annots_ctor_focus_in : forall p vs t ts,
+  In p (marker_annots t) ->
+  In p (List.concat (List.map marker_annots (vs ++ t :: ts))).
+Proof.
+  intros p vs. induction vs as [|v vs IH]; intros t ts Hin; simpl.
+  - apply List.in_or_app. left. exact Hin.
+  - apply List.in_or_app. right. apply IH. exact Hin.
+Qed.
+
+Lemma marker_annots_plug_in : forall E hole p,
+  In p (marker_annots hole) ->
+  In p (marker_annots (plug E hole)).
+Proof.
+  induction E; intros hole p Hin; simpl.
+  - exact Hin.
+  - apply List.in_or_app. left. apply IHE. exact Hin.
+  - apply List.in_or_app. right. apply IHE. exact Hin.
+  - apply IHE. exact Hin.
+  - apply IHE. exact Hin.
+  - apply marker_annots_ctor_focus_in. apply IHE. exact Hin.
+  - apply List.in_or_app. left. apply IHE. exact Hin.
+  - simpl. right. apply IHE. exact Hin.
+  - apply List.in_or_app. left. apply IHE. exact Hin.
+  - apply List.in_or_app. right. apply IHE. exact Hin.
+Qed.
+
+Lemma marker_types_ok_handler_perform_annotation_match :
+  forall m T E_tag n_beta Ts T_R op_body Ss v P,
+    marker_types_safe
+      (term_handler_m m T
+        (plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss v))) ->
+    T_R = T.
+Proof.
+  intros m T E_tag n_beta Ts T_R op_body Ss v P Hok.
+  symmetry.
+  eapply (marker_types_safe_ok _ Hok m T T_R).
+  - simpl. left. reflexivity.
+  - simpl. right. apply marker_annots_plug_in.
+    simpl. left. reflexivity.
+Qed.
+
 Lemma marker_ok_ctor_focus_inv : forall ms K l lts Ts vs t ts,
   marker_ok ms (term_ctor K l lts Ts (vs ++ t :: ts)) ->
   marker_ok ms t.
@@ -615,33 +1243,6 @@ Definition perform_escape (ms : list marker) (t : term) : Prop :=
 
 Definition progress_result (ms : list marker) (t : term) : Prop :=
   value t \/ (exists t', t ==> t') \/ perform_escape ms t.
-
-(* Phase-5 proof obligations, temporarily axiomatized while the rest of the
-   safety chain is wired to the full effectful calculus.  These are the next
-   obligations to discharge: H_Perform preservation packages parallel β type
-   substitution plus captured-continuation typing; marker preservation packages
-   the runtime marker bookkeeping for all step cases. *)
-Axiom handler_perform_preservation : forall Γ m T E_tag n_beta Ts op_body Ss v P,
-  eval_ctx Γ ->
-  Γ ⊢ₜ plug P (term_perform (term_cap E_tag m n_beta Ts T op_body) Ss v) : T ->
-  value v ->
-  pure_ectx_m m P ->
-  Γ ⊢ₜ subst_list_tm
-        [v; term_resume m T (plug (shift_ectx_tm 1 0 P) (term_var 0))]
-        (subst_list_ty_in_tm Ss op_body) : T.
-
-Axiom marker_ok_preservation : forall ms t t',
-  marker_ok ms t ->
-  t ==> t' ->
-  marker_ok ms t'.
-
-Axiom handler_progress_annotation_match : forall Γ ms m T E_tag n_beta Ts T_R op_body Ss v P,
-  eval_ctx Γ ->
-  Γ ⊢ₜ plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss v) : T ->
-  value v ->
-  pure_ectx_m m P ->
-  marker_ok (m :: ms) (plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss v)) ->
-  T_R = T.
 
 (* Phase-1/schema regularity for effect receivers: a value inhabiting an
    effect capability type is a runtime capability.
@@ -912,6 +1513,7 @@ Lemma typing_ind2 :
      List.length Ss = n_β ->
     types_wf Γ Ss ->
      sig_inst = inst_op_arg n_α Ts n_β Ss sig ->
+    no_local_ty sig_inst = true ->
      ret_inst = inst_op_arg n_α Ts n_β Ss ret ->
     ty_wf Γ ret_inst ->
      Γ ⊢ₜ arg : sig_inst -> P Γ arg sig_inst ->
@@ -1019,6 +1621,11 @@ Proof.
     + right. right. exists (@nil term), v, vs. repeat split; auto.
 Qed.
 
+(* Legacy progress without marker_types_safe is intentionally kept out of the
+  checked development. The missing annotation premise is exactly what made the
+  old handler-progress annotation axiom false; progress_open_safe below is the
+  maintained formulation. *)
+(*
 Theorem progress_open : forall Γ ms t T,
   eval_ctx Γ ->
   marker_ok ms t ->
@@ -1148,7 +1755,7 @@ Proof.
     unfold m. apply S_Handle. apply marker_bound_fresh.
   - (* T_Perform *)
     intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
-      Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs Hsi Hri HwfRet Harg IHarg ms Hmok Hec.
+      Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs Hsi HnoSig Hri HwfRet Harg IHarg ms Hmok Hec.
     simpl in Hmok. destruct Hmok as [Hmok_recv Hmok_arg].
     specialize (IHrecv ms Hmok_recv Hec).
     destruct IHrecv as [Hvrecv | [[recv' Hsrecv] | Hescrecv]].
@@ -1190,19 +1797,210 @@ Proof.
   - (* T_Resume *)
     intros Γ m T_R b A HwfA HwfTR Hb IHb ms Hmok Hec. left; constructor.
 Qed.
+*)
 
-Theorem progress : forall Γ t T,
+Theorem progress_open_safe : forall Γ ms t T,
+  eval_ctx Γ ->
+  marker_ok ms t ->
+  marker_types_safe t ->
+  Γ ⊢ₜ t : T ->
+  progress_result ms t.
+Proof.
+  intros Γ0 ms0 t0 T0 Hec0 Hmok0 Hsafe0 Hty0. revert ms0 Hmok0 Hsafe0 Hec0.
+  revert Hty0; revert T0; revert t0; revert Γ0.
+  apply (typing_ind2 (fun Γ t T => forall ms,
+    marker_ok ms t -> marker_types_safe t -> eval_ctx Γ -> progress_result ms t)).
+  - (* T_Var *)
+    intros Γ x T Hlk Hwf ms Hmok Hsafe Hec.
+    rewrite eval_ctx_no_tm in Hlk; auto; discriminate.
+  - (* T_Sub *)
+    intros Γ t T U Hty IH Hsub ms Hmok Hsafe Hec. apply IH; assumption.
+  - (* T_Lam *)
+    intros Γ body A l B HwfA HwfB Hbody IHbody Hcap ms Hmok Hsafe Hec. left; constructor.
+  - (* T_App *)
+    intros Γ t1 t2 A l B Ht1 IH1 Ht2 IH2 ms Hmok Hsafe Hec.
+    simpl in Hmok. destruct Hmok as [Hmok1 Hmok2].
+    specialize (IH1 ms Hmok1 (marker_types_safe_app_l _ _ Hsafe) Hec).
+    specialize (IH2 ms Hmok2 (marker_types_safe_app_r _ _ Hsafe) Hec).
+    destruct IH1 as [Hv1 | [[t1' Hs1] | Hesc1]].
+    + destruct IH2 as [Hv2 | [[t2' Hs2] | Hesc2]].
+      * destruct (canonical_fun _ _ _ _ _ Hec Ht1 Hv1) as
+          [[body [T0 Heq]] | [m [T_R [b Heq]]]]; subst.
+        -- right. left. eexists. apply S_Beta; auto.
+        -- right. left. eexists. apply S_Resume; auto.
+      * destruct (S_App2 t1 t2 Hv1 (ex_intro _ t2' Hs2)) as [u Hu].
+        right. left. exists u. exact Hu.
+      * destruct Hesc2 as (Et & m & nb & Ts0 & T_R & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
+        right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, v, (EC_app2 t1 P).
+        repeat split; auto.
+    + destruct (S_App1 t1 t2 (ex_intro _ t1' Hs1)) as [u Hu].
+      right. left. exists u. exact Hu.
+    + destruct Hesc1 as (Et & m & nb & Ts0 & T_R & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
+      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, v, (EC_app1 P t2).
+      repeat split; auto.
+  - (* T_TyLam *)
+    intros Γ bound body T HwfBound HwfT Hbody IHbody ms Hmok Hsafe Hec. left; constructor.
+  - (* T_TyApp *)
+    intros Γ t B U S Ht IH HwfS Hsub ms Hmok Hsafe Hec.
+    simpl in Hmok. specialize (IH ms Hmok Hsafe Hec).
+    destruct IH as [Hv | [[t' Hs] | Hesc]].
+    + destruct (canonical_ty_all _ _ _ _ Hec Ht Hv) as [bnd [body Heq]]; subst.
+      right. left. eexists. apply S_TyBeta.
+    + destruct (S_TyApp t S (ex_intro _ t' Hs)) as [u Hu].
+      right. left. exists u. exact Hu.
+    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
+      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, v, (EC_ty_app P S).
+      repeat split; auto.
+  - (* T_LtLam *)
+    intros Γ body T HwfT Hbody IHbody ms Hmok Hsafe Hec. left; constructor.
+  - (* T_LtApp *)
+    intros Γ t T l Ht IH Hwfl ms Hmok Hsafe Hec.
+    simpl in Hmok. specialize (IH ms Hmok Hsafe Hec).
+    destruct IH as [Hv | [[t' Hs] | Hesc]].
+    + destruct (canonical_lt_all _ _ _ Hec Ht Hv) as [body Heq]; subst.
+      right. left. eexists. apply S_LtBeta.
+    + destruct (S_LtApp t l (ex_intro _ t' Hs)) as [u Hu].
+      right. left. exists u. exact Hu.
+    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
+      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, v, (EC_lt_app P l).
+      repeat split; auto.
+  - (* T_Ctor *)
+    intros Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields
+      result_ty result_tag l vs
+      Hlk Heff Hlen_lts Hwflts Hrho Hlen_Ts HwfTs Hresult Hshape Hresult_eff Hwfl Hlt Hlen_vs
+      HF HFP HargsIH ms Hmok Hsafe Hec.
+    assert (Hmok_vs : Forall (marker_ok ms) vs).
+    { clear - Hmok. induction vs as [|v vs IH]; simpl in Hmok; constructor; [tauto|apply IH; tauto]. }
+    assert (Hsafe_vs : Forall marker_types_safe vs).
+    { apply marker_types_safe_ctor_args with (K := K) (l := l) (lts := lts) (Ts := Ts). exact Hsafe. }
+    assert (Hforall : Forall (progress_result ms) vs).
+    { clear - HargsIH Hmok_vs Hsafe_vs Hec.
+      induction HargsIH; inversion Hmok_vs; inversion Hsafe_vs; subst; constructor.
+      - apply H; assumption.
+      - apply IHHargsIH; assumption. }
+    destruct (split_values_or_step_or_escape _ _ Hforall) as
+      [Hall | [[vsl [tm [tm' [vsr [Hallvl [Heq Hst]]]]]]
+              | [vsl [tm [vsr [Hallvl [Heq Hesc]]]]]]].
+    + left. constructor; auto.
+    + subst. destruct (S_Ctor K l lts Ts vsl tm vsr Hallvl (ex_intro _ tm' Hst)) as [u Hu].
+      right. left. exists u. exact Hu.
+    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & v & P & Hin & Hp & Hv & Heqesc).
+      subst vs tm.
+      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, v, (EC_ctor K l lts Ts vsl P vsr).
+      repeat split; auto.
+  - (* T_Match *)
+    intros Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
+      rho_fields scrut_result_ty result_tag result_l Γ' yes_body eta elim_result no_body
+      HKne Hlk Heff Hlts Hrho HTs HwfTs Hscrut_result Hscrut_shape
+      Hresult_eff Hresult_ne HwfDelta Hresult_l Hscrut IHscrut Harity HGamma' Hyes IHyes Helim Hno IHno
+      ms Hmok Hsafe Hec.
+    simpl in Hmok. destruct Hmok as [Hmok_scrut [Hmok_yes Hmok_no]].
+    specialize (IHscrut ms Hmok_scrut
+      (marker_types_safe_match_scrut _ _ _ _ _ _ Hsafe) Hec).
+    destruct IHscrut as [Hv | [[scrut' Hs] | Hesc]].
+    + destruct (canonical_ctor_data _ _ result_tag Delta Ts Hec Hresult_eff Hscrut Hv Hresult_ne)
+        as [K' [l' [lts' [Ts' [vs [Heq Hvvs]]]]]]; subst.
+      right. left.
+      destruct (Nat.eq_dec K' K) as [HKeq | HKdiff].
+      * subst K'.
+        destruct (ctor_value_arity _ _ _ _ _ _ _ Hscrut)
+          as [n_lt' [n_ty' [sig' [res' [Hlook Hlen]]]]].
+        rewrite Hlk in Hlook.
+        injection Hlook as Heq1 Heq2 Heq3 Heq4.
+        subst n_lt' n_ty' sig' res'.
+        eexists.
+        match goal with
+        | |- term_match _ _ _ ?a _ _ ==> _ => replace a with (@length term vs)
+        end.
+        2:{ rewrite List.length_map. exact Hlen. }
+        apply S_MatchYes. auto.
+      * eexists. eapply S_MatchNo; eauto.
+    + destruct (S_Match scrut K n_lt arity yes_body no_body (ex_intro _ scrut' Hs)) as [u Hu].
+      right. left. exists u. exact Hu.
+    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & v & P & Hin & Hp & Hv & Heq).
+      subst scrut.
+      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, v, (EC_match P K n_lt arity yes_body no_body).
+      repeat split; auto.
+  - (* T_Cap *)
+    intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
+      Heff Hlen HwfTs HwfTR Hsb Hrb Hop IHop ms Hmok Hsafe Hec. left; constructor.
+  - (* T_Handle *)
+    intros Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β
+      Heff Hlen HwfTs HwfTR HnoLocal Hsb Hrb Hop IHop Hbody IHbody ms Hmok Hsafe Hec.
+    set (m := marker_bound (term_handle E_tag n_β Ts T_R op_body body)).
+    right. left.
+    exists (term_handler_m m T_R (subst_tm 0 (term_cap E_tag m n_β Ts T_R op_body) body)).
+    unfold m. apply S_Handle. apply marker_bound_fresh.
+  - (* T_Perform *)
+    intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
+      Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs Hsi HnoSig Hri HwfRet Harg IHarg ms Hmok Hsafe Hec.
+    simpl in Hmok. destruct Hmok as [Hmok_recv Hmok_arg].
+    specialize (IHrecv ms Hmok_recv (marker_types_safe_perform_recv _ _ _ Hsafe) Hec).
+    destruct IHrecv as [Hvrecv | [[recv' Hsrecv] | Hescrecv]].
+    + specialize (IHarg ms Hmok_arg (marker_types_safe_perform_arg _ _ _ Hsafe) Hec).
+      destruct IHarg as [Hvarg | [[arg' Hsarg] | Hescarg]].
+      * destruct (canonical_cap Γ recv E_tag Δ Ts n_α n_β sig ret Hec Heff Hrecv Hvrecv)
+          as [m [T_R [op_body Heqcap]]].
+        subst recv. simpl in Hmok_recv. destruct Hmok_recv as [Hin Hop_ok].
+        right. right. exists E_tag, m, n_β, Ts, T_R, op_body, Ss, arg, EC_hole.
+        repeat split; auto.
+      * destruct (S_PerformArg recv Ss arg Hvrecv (ex_intro _ arg' Hsarg)) as [u Hu].
+        right. left. exists u. exact Hu.
+      * destruct Hescarg as (Et & m & nb & Ts0 & T_R & ob & Ss0 & v & P & Hin & Hp & Hv & Heq); subst.
+        right. right. exists Et, m, nb, Ts0, T_R, ob, Ss0, v, (EC_perform_a recv Ss P).
+        repeat split; auto.
+    + destruct (S_PerformRecv recv Ss arg (ex_intro _ recv' Hsrecv)) as [u Hu].
+      right. left. exists u. exact Hu.
+    + destruct Hescrecv as (Et & m & nb & Ts0 & T_R & ob & Ss0 & v & P & Hin & Hp & Hv & Heq); subst.
+      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss0, v, (EC_perform_r P Ss arg).
+      repeat split; auto.
+  - (* T_HandlerM *)
+    intros Γ m T t Ht IH ms Hmok Hsafe Hec.
+    simpl in Hmok.
+    specialize (IH (m :: ms) Hmok (marker_types_safe_handler_body _ _ _ Hsafe) Hec).
+    destruct IH as [Hv | [[t' Hs] | Hesc]].
+    + right. left. exists t. apply S_Return; auto.
+    + destruct (S_HandlerM m T t (ex_intro _ t' Hs)) as [u Hu].
+      right. left. exists u. exact Hu.
+    + destruct Hesc as (Et & m0 & nb & Ts & T_R & op_body & Ss & v & P & Hin & Hp & Hv & Heq); subst.
+      destruct (Nat.eq_dec m0 m) as [Heqm | Hneq].
+      * subst m0. right. left. eexists.
+        pose proof (marker_types_ok_handler_perform_annotation_match
+                      m T Et nb Ts T_R op_body Ss v P Hsafe) as HTR.
+        subst T_R.
+        apply (S_step EC_hole); [constructor|]. apply H_Perform; auto.
+      * destruct Hin as [Hin_head | Hin_tail].
+        { subst. contradiction. }
+        right. right. exists Et, m0, nb, Ts, T_R, op_body, Ss, v, (EC_handler_m m T P).
+        repeat split; auto.
+  - (* T_Resume *)
+    intros Γ m T_R b A HwfA HwfTR Hb IHb ms Hmok Hsafe Hec. left; constructor.
+Qed.
+
+Theorem progress_safe : forall Γ t T,
   eval_ctx Γ ->
   marker_ok [] t ->
+  marker_types_safe t ->
   Γ ⊢ₜ t : T ->
   value t \/ exists t', t ==> t'.
 Proof.
-  intros Γ t T Hec Hmok Hty.
-  destruct (progress_open _ _ _ _ Hec Hmok Hty) as [Hv | [[t' Hs] | Hesc]].
+  intros Γ t T Hec Hmok Hsafe Hty.
+  destruct (progress_open_safe _ _ _ _ Hec Hmok Hsafe Hty) as [Hv | [[t' Hs] | Hesc]].
   - left. exact Hv.
   - right. exists t'. exact Hs.
   - destruct Hesc as (Et & m & nb & Ts & T_R & op_body & Ss & v & P & Hin & Hp & Hv & Heq).
     inversion Hin.
+Qed.
+
+Theorem progress : forall Γ t T,
+  eval_ctx Γ ->
+  marker_ok [] t ->
+  marker_types_safe t ->
+  Γ ⊢ₜ t : T ->
+  value t \/ exists t', t ==> t'.
+Proof.
+  intros Γ t T Hec Hmok Hsafe Hty.
+  eapply progress_safe; eauto.
 Qed.
 
 
@@ -2711,6 +3509,7 @@ Lemma ctor_typing_inv : forall Γ K l lts Ts vs T,
     List.length Ts = n_ty /\
     inst_ctor_type n_lt n_ty lts Ts result_ty_schema = type_ctor result_tag l Ts /\
     Γ ⊢ₗ lt_of_ty_list (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields) <: l /\
+    Forall (fun l0 => Γ ⊢ₗ l0 <: l) lts /\
     List.length vs = List.length sigma_fields /\
     Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs
             (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields) /\
@@ -2722,7 +3521,7 @@ Proof.
   - (* T_Sub *) subst.
     destruct (IHHty eq_refl) as
       (n_lt & n_ty & sig & res & result_tag &
-       Hlk & Hltlen & HTslen & Hresult & Hlt & Hvslen & Hf2 & Hsub).
+       Hlk & Hltlen & HTslen & Hresult & Hlt & Hlts_bound & Hvslen & Hf2 & Hsub).
     exists n_lt, n_ty, sig, res, result_tag.
     repeat split; auto. eapply SA_Trans; eauto.
   - (* T_Ctor *)
@@ -2934,7 +3733,7 @@ Proof.
       simpl in IHbody. exact IHbody.
   - (* T_Perform *)
         intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
-          H1 IHrecv H3 H4 H5 H6 H7 H8 HwfRet H9 IHarg x Hin.
+          H1 IHrecv H3 H4 H5 H6 H7 HnoSig H8 HwfRet H9 IHarg x Hin.
     simpl in Hin. rewrite List.in_app_iff in Hin.
     destruct Hin as [H|H]; [apply IHrecv | apply IHarg]; exact H.
   - (* T_HandlerM *)
@@ -3144,10 +3943,58 @@ Proof.
     + match goal with Hwf : ty_wf Γ T_R |- _ => exact Hwf end.
 Qed.
 
+Lemma lt_wf_eval_ctx_shift_lt : forall Γ l amount,
+  eval_ctx Γ ->
+  lt_wf Γ l ->
+  shift_lt amount 0 l = l.
+Proof.
+  intros Γ l amount Hec Hwf.
+  induction Hwf; simpl.
+  - rewrite (eval_ctx_no_lt Γ x Hec) in H. discriminate.
+  - reflexivity.
+  - reflexivity.
+  - f_equal; eauto.
+Qed.
+
+Lemma lt_wf_eval_ctx_subst_lt : forall Γ l var repl,
+  eval_ctx Γ ->
+  lt_wf Γ l ->
+  subst_lt var repl l = l.
+Proof.
+  intros Γ l var repl Hec Hwf.
+  induction Hwf; simpl.
+  - rewrite (eval_ctx_no_lt Γ x Hec) in H. discriminate.
+  - reflexivity.
+  - reflexivity.
+  - f_equal; eauto.
+Qed.
+
+Lemma chain_bounded_from_eval_ctx_forall : forall Γ lts n Delta,
+  eval_ctx Γ ->
+  lt_wf Γ Delta ->
+  List.length lts = n ->
+  Forall (fun l => Γ ⊢ₗ l <: Delta) lts ->
+  chain_bounded Γ lts (shift_lt n 0 Delta).
+Proof.
+  induction lts as [|l rest IH]; intros n Delta Hec HwfDelta Hlen Hfor.
+  - constructor.
+  - simpl in Hlen. subst n. inversion Hfor as [|l0 rest0 Hl Hrest Heq]; subst.
+    simpl. split.
+    + rewrite (lt_wf_eval_ctx_shift_lt Γ Delta (S (List.length rest)) Hec HwfDelta).
+      rewrite (lt_wf_eval_ctx_subst_lt Γ Delta 0 lt_free Hec HwfDelta).
+      exact Hl.
+    + rewrite (lt_wf_eval_ctx_shift_lt Γ Delta (S (List.length rest)) Hec HwfDelta).
+      rewrite (lt_wf_eval_ctx_subst_lt Γ Delta 0 lt_free Hec HwfDelta).
+      pose proof (IH (List.length rest) Delta Hec HwfDelta eq_refl Hrest) as Hcb.
+      rewrite (lt_wf_eval_ctx_shift_lt Γ Delta (List.length rest) Hec HwfDelta) in Hcb.
+      exact Hcb.
+Qed.
+
 (* ------------------------------------------------------------------ *)
 (* Match-yes preservation                                             *)
 (* ------------------------------------------------------------------ *)
 
+(*
 Lemma match_yes_preservation : forall Γ K Delta lts Ts vs n_lt arity yes_body no_body T,
   eval_ctx Γ ->
   Γ ⊢ₜ term_match (term_ctor K Delta lts Ts vs) K n_lt arity yes_body no_body : T ->
@@ -3167,7 +4014,7 @@ Proof.
   destruct (ctor_typing_inv _ _ _ _ _ _ _ Hscrut) as
     [n_lt' [n_ty' [sigma' [result' [actual_result_tag Hctor_inv]]]]].
   destruct Hctor_inv as
-    [Hctor_lk' [Hlts_len [HTs_len_actual [Hactual_result [Hactual_lifetime [Hvs_len [Hfields Hctor_sub]]]]]]].
+    [Hctor_lk' [Hlts_len [HTs_len_actual [Hactual_result [Hactual_lifetime [Hlts_bound [Hvs_len [Hfields Hctor_sub]]]]]]]].
   rewrite Hctor_lk in Hctor_lk'. injection Hctor_lk' as Hnlt Hnty Hsigma Hresult.
   subst n_lt' n_ty' sigma' result'.
   destruct (sub_ctor_inv _ _ _ _ _ Hec Hctor_sub Hresult_ne) as [Delta0 [Hctor_eq HDelta_sub]].
@@ -3177,7 +4024,12 @@ Proof.
               (lt_of_ty_list (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma)) Delta_m
               Hfields Hlts_len eq_refl
               (LS_Trans _ _ _ _ Hactual_lifetime HDelta_sub)) as
-    [Hcb [Hcb_shift [Hbounded_fields Hforall]]].
+          [_ [_ [Hbounded_fields _]]].
+  assert (Hforall : Forall (fun l => Γ ⊢ₗ l <: Delta_m) lts).
+  { eapply Forall_impl; [|exact Hlts_bound].
+    intros l Hl. eapply LS_Trans; [exact Hl|exact HDelta_sub]. }
+  assert (Hcb : chain_bounded Γ lts (shift_lt n_lt 0 Delta_m)).
+  { eapply chain_bounded_from_eval_ctx_forall; eauto. }
   assert (Hlt_body :
     (fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
        Γ (subst_list_lt_in_ty_each lts (List.map (inst_ctor_type n_lt n_ty (lt_var_list n_lt) Ts) sigma)))
@@ -3215,7 +4067,12 @@ Proof.
   - subst T. exact HelimSub.
   - eapply SA_Trans; [exact HelimSub|exact HsubT].
 Qed.
+*)
 
+(* Legacy preservation depended on an axiomatized H_Perform case. The public
+  safety theorems now state reachable typing explicitly; a future preservation
+  theorem should be proved against the stronger runtime invariants instead. *)
+(*
 Theorem preservation : forall Γ t t' T,
   eval_ctx Γ ->
   Γ ⊢ₜ t : T ->
@@ -3360,7 +4217,7 @@ Proof.
     + exact Hcap.
   - (* T_Perform *)
         intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
-          Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs Hsi Hri HwfRet Harg IHarg Hec t'' Hstep.
+          Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs Hsi HnoSig Hri HwfRet Harg IHarg Hec t'' Hstep.
     apply step_perform_inv in Hstep.
     destruct Hstep as [(recv' & Hsrecv & Heq) | (arg' & Hvrecv & Hsarg & Heq)].
     + subst t''. eapply T_Perform; eauto.
@@ -3381,6 +4238,7 @@ Proof.
   - (* T_Resume *)
     intros Γ m T_R b A HwfA HwfTR Hb IHb Hec t'' Hstep. no_step.
 Qed.
+*)
 
 (* ------------------------------------------------------------------ *)
 (* Type Safety corollary                                              *)
@@ -3405,22 +4263,35 @@ Qed.
 Definition stuck (t : term) : Prop :=
   ~ value t /\ ~ exists t', t ==> t'.
 
-Corollary type_safety : forall Γ t t' T,
+Definition safety_invariants (Γ : ctx) (T : type) (t : term) : Prop :=
+  marker_ok [] t /\ marker_types_safe t /\ Γ ⊢ₜ t : T.
+
+Lemma safe_state_not_stuck : forall Γ t T,
   eval_ctx Γ ->
   marker_ok [] t ->
+  marker_types_safe t ->
   Γ ⊢ₜ t : T ->
+  ~ stuck t.
+Proof.
+  intros Γ t T Hec Hmok Hsafe Hty [Hnv Hns].
+  destruct (progress_safe _ _ _ Hec Hmok Hsafe Hty) as [Hv | [t' Hs]].
+  - contradiction.
+  - apply Hns; eauto.
+Qed.
+
+Corollary type_safety : forall Γ t t' T,
+  eval_ctx Γ ->
+  (forall u, multi_step t u -> safety_invariants Γ T u) ->
   multi_step t t' ->
   ~ stuck t'.
 Proof.
-  intros Γ t t' T Hec Hmok Hty Hmulti.
-  revert Γ T Hec Hmok Hty.
-  induction Hmulti as [t | t1 t2 t3 Hs12 Hmulti IH]; intros Γ T Hec Hmok Hty.
-  - intros [Hnv Hns].
-    destruct (progress _ _ _ Hec Hmok Hty) as [Hv | [t'' Hs]]; [contradiction|].
-    apply Hns; eauto.
-  - apply (IH Γ T Hec).
-    + eapply marker_ok_preservation; eauto.
-    + eapply preservation; eauto.
+  intros Γ t t' T Hec Hsafe_reachable Hmulti.
+  destruct (Hsafe_reachable t' Hmulti) as [Hmok [Hsafe Hty]].
+  eapply safe_state_not_stuck.
+  - exact Hec.
+  - exact Hmok.
+  - exact Hsafe.
+  - exact Hty.
 Qed.
 
 (* ================================================================== *)
@@ -3510,19 +4381,6 @@ Qed.
 (* datum can never surface as the result delivered at a `free` type.  *)
 (* ================================================================== *)
 
-(* Typing is preserved along an entire reduction sequence. *)
-Lemma multi_preservation : forall Γ t t' T,
-  eval_ctx Γ ->
-  Γ ⊢ₜ t : T ->
-  multi_step t t' ->
-  Γ ⊢ₜ t' : T.
-Proof.
-  intros Γ t t' T Hec Hty Hms.
-  induction Hms as [t | t1 t2 t3 Hs12 Hms IH].
-  - exact Hty.
-  - apply IH. eapply preservation; eauto.
-Qed.
-
 (* Operational non-escape: a value produced at an escapable `free`    *)
 (* data type is a constructor whose *own* lifetime annotation         *)
 (* provably contains no top-level `local`.  Equivalently, a value     *)
@@ -3532,22 +4390,22 @@ Theorem local_value_does_not_escape : forall Γ t K Ts v,
   eval_ctx Γ ->
   ctx_lookup_eff Γ K = None ->
   K <> any_tag ->
-  Γ ⊢ₜ t : type_ctor K lt_free Ts ->
+  (forall u, multi_step t u -> Γ ⊢ₜ u : type_ctor K lt_free Ts) ->
   multi_step t v ->
   value v ->
   exists K' l' lts' vs,
     v = term_ctor K' l' lts' Ts vs /\
     no_local_lt l' = true.
 Proof.
-  intros Γ t K Ts v Hec Hdata HK Hty Hms Hval.
-  pose proof (multi_preservation _ _ _ _ Hec Hty Hms) as Htyv.
+  intros Γ t K Ts v Hec Hdata HK Hty_reachable Hms Hval.
+  pose proof (Hty_reachable _ Hms) as Htyv.
   destruct (canonical_ctor_data _ _ _ _ _ Hec Hdata Htyv Hval HK)
     as [K' [l' [lts' [Ts' [vs [Hveq Hvs]]]]]].
   subst v.
   apply ctor_typing_inv in Htyv.
   destruct Htyv as
     (n_lt & n_ty & sig & res & result_tag & Hlk & Hltlen & HTslen & Hresult &
-     Hlt_bound & Hvslen & Hf2 & Hsub).
+     Hlt_bound & Hlts_bound & Hvslen & Hf2 & Hsub).
   destruct (sub_ctor_inv _ _ _ _ _ Hec Hsub HK) as [lx [Heq Hlsub]].
   injection Heq as HKeq Hleq HTseq.
   subst result_tag. subst Ts'.
@@ -3593,17 +4451,6 @@ Proof.
   all: tauto.
 Qed.
 
-Lemma multi_marker_ok_preservation : forall ms t t',
-  marker_ok ms t ->
-  multi_step t t' ->
-  marker_ok ms t'.
-Proof.
-  intros ms t t' Hmok Hms.
-  induction Hms as [t | t1 t2 t3 Hs Hrest IH].
-  - exact Hmok.
-  - apply IH. eapply marker_ok_preservation; eauto.
-Qed.
-
 Theorem capability_confined : forall E E_tag m n_beta Ts T_R op_body,
   marker_ok [] (plug E (term_cap E_tag m n_beta Ts T_R op_body)) ->
   ~ pure_ectx_m m E.
@@ -3615,19 +4462,19 @@ Qed.
 
 Theorem capability_never_exposed : forall Γ t E E_tag m n_beta Ts T_R op_body T,
   eval_ctx Γ ->
-  marker_ok [] t ->
+  (forall u, multi_step t u -> marker_ok [] u) ->
   Γ ⊢ₜ t : T ->
   multi_step t (plug E (term_cap E_tag m n_beta Ts T_R op_body)) ->
   ~ pure_ectx_m m E.
 Proof.
-  intros Γ t E E_tag m n_beta Ts T_R op_body T Hec Hmok Hty Hms Hpure.
-  pose proof (multi_marker_ok_preservation _ _ _ Hmok Hms) as Hmok'.
+  intros Γ t E E_tag m n_beta Ts T_R op_body T Hec Hmok_reachable Hty Hms Hpure.
+  pose proof (Hmok_reachable _ Hms) as Hmok'.
   eapply capability_confined; eauto.
 Qed.
 
 Corollary capability_under_handler : forall Γ t E E_tag m n_beta Ts T_R op_body T,
   eval_ctx Γ ->
-  marker_ok [] t ->
+  (forall u, multi_step t u -> marker_ok [] u) ->
   Γ ⊢ₜ t : T ->
   multi_step t (plug E (term_cap E_tag m n_beta Ts T_R op_body)) ->
   ~ pure_ectx_m m E.

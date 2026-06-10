@@ -16,9 +16,9 @@ Definition ce_Gamma : ctx :=
    bind_eff 2 0 0 ce_any ce_any].
 
 Definition ce_arg_op : term := term_var 0.
-Definition ce_arg : term := term_cap 2 0 0 [] ce_arg_op.
+Definition ce_arg : term := term_cap 2 0 0 [] ce_any ce_arg_op.
 Definition ce_op_body : term := term_var 0.
-Definition ce_cap : term := term_cap 1 0 0 [] ce_op_body.
+Definition ce_cap : term := term_cap 1 0 0 [] ce_sig ce_op_body.
 Definition ce_perform : term := term_perform ce_cap [] ce_arg.
 
 Lemma ce_eval_ctx : eval_ctx ce_Gamma.
@@ -76,24 +76,8 @@ Proof.
     + unfold ce_sig. constructor; constructor.
 Qed.
 
-Lemma ce_perform_typed : ce_Gamma ⊢ₜ ce_perform : ce_ret.
-Proof.
-  unfold ce_perform.
-  eapply T_Perform with
-    (E_tag := 1) (Δ := lt_local) (Ts := [])
-    (n_α := 0) (n_β := 0)
-    (sig := ce_sig) (ret := ce_ret)
-    (sig_inst := ce_sig) (ret_inst := ce_ret).
-  - exact ce_cap_typed.
-  - reflexivity.
-  - reflexivity.
-  - reflexivity.
-  - constructor.
-  - reflexivity.
-  - reflexivity.
-  - exact ce_ty_wf_ret.
-  - exact ce_arg_typed.
-Qed.
+Lemma ce_bad_signature_is_local : no_local_ty ce_sig = false.
+Proof. reflexivity. Qed.
 
 Lemma ce_arg_typing_sub : forall T,
   ce_Gamma ⊢ₜ ce_arg : T -> ce_Gamma ⊢ ce_sig <:: T.
@@ -118,12 +102,8 @@ Proof.
   - discriminate Heq.
 Qed.
 
-Theorem handler_perform_preservation_counterexample : False.
+Theorem stale_handler_perform_counterexample_rejected :
+  no_local_ty ce_sig <> true.
 Proof.
-  pose proof
-    (handler_perform_preservation ce_Gamma 0 ce_ret 1 0 [] ce_op_body [] ce_arg EC_hole
-      ce_eval_ctx ce_perform_typed (value_cap 2 0 0 [] ce_arg_op) (pem_hole 0))
-    as Hbad.
-  simpl in Hbad.
-  exact (ce_arg_not_ret Hbad).
+  rewrite ce_bad_signature_is_local. discriminate.
 Qed.

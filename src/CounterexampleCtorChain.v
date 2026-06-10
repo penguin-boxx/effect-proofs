@@ -54,9 +54,38 @@ Proof.
   cbn [inst_ctor_type inst_lt_vars inst_ty_vars multi_subst_lt_in_ty
        multi_subst_lt Nat.ltb Nat.leb Nat.sub List.length List.nth shift_lt].
   apply T_Lam.
-  - apply T_Var. reflexivity.
-  - cbn. repeat (apply LS_MinL || apply LS_Free).
+  - unfold Cap. repeat constructor.
+  - unfold Res. repeat constructor.
+  - apply T_Var.
+    + reflexivity.
+    + unfold Res. repeat constructor.
+  - cbn. repeat (apply LS_MinL || apply LS_Free || constructor).
+Qed.
+
+Lemma Gz_no_lt : forall x, ctx_lookup_lt Gz x = None.
+Proof.
+  intros x. reflexivity.
+Qed.
+
+Lemma lt_sub_no_local_mono_no_lt : forall Γ l1 l2,
+  (forall x, ctx_lookup_lt Γ x = None) ->
+  Γ ⊢ₗ l1 <: l2 ->
+  no_local_lt l2 = true ->
+  no_local_lt l1 = true.
+Proof.
+  intros Γ l1 l2 Hnone H. induction H; intros Hsup; simpl in *.
   - reflexivity.
+  - discriminate Hsup.
+  - rewrite Hnone in H. discriminate.
+  - exact Hsup.
+  - apply IHlt_sub1; [exact Hnone|].
+    apply IHlt_sub2; [exact Hnone|exact Hsup].
+  - rewrite (IHlt_sub1 Hnone Hsup). rewrite (IHlt_sub2 Hnone Hsup). reflexivity.
+  - apply IHlt_sub; [exact Hnone|].
+    destruct (no_local_lt l1) eqn:E1; simpl in Hsup; [reflexivity | discriminate].
+  - apply IHlt_sub; [exact Hnone|].
+    destruct (no_local_lt l2) eqn:E2;
+      [reflexivity | destruct (no_local_lt l1); simpl in Hsup; discriminate].
 Qed.
 
 (* ------------------------------------------------------------------ *)
@@ -80,13 +109,12 @@ Proof.
                        (List.map (inst_ctor_type 1 0 [lt_local] []) [field])).
   { cbn [List.map]. apply Forall2_cons; [ exact vlam_typed | apply Forall2_nil ]. }
   assert (Hsub : Gz ⊢ₗ lt_min lt_free lt_free <: lt_free).
-  { apply LS_MinL; apply LS_Free. }
+  { apply LS_MinL; apply LS_Free; constructor. }
   pose proof (Hax Gz [lt_local] 1 0 [] [field] [vlam]
                   (lt_min lt_free lt_free) lt_free
                   Hforall2 eq_refl eq_refl Hsub) as Hconj.
   destruct Hconj as [_ [_ [_ H4]]].
-  inversion H4; subst.
-  match goal with H : _ ⊢ₗ lt_local <: lt_free |- _ =>
-    pose proof (lt_sub_no_local_mono _ _ _ H eq_refl) as Hbad end.
+  inversion H4 as [| ? ? Hlocal _]; subst.
+  pose proof (lt_sub_no_local_mono_no_lt _ _ _ Gz_no_lt Hlocal eq_refl) as Hbad.
   cbn in Hbad. discriminate Hbad.
 Qed.

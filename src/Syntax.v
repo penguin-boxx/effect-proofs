@@ -132,3 +132,60 @@ Fixpoint is_value (t : term) : bool :=
   | term_resume _ _ _     => true
   | _                     => false
   end.
+
+(* ================================================================== *)
+(* Abstraction head check (the "prenex-Λ" value restriction)          *)
+(*                                                                    *)
+(* is_abs t = true iff t is a term/type/lifetime abstraction.         *)
+(* T_TyLam / T_LtLam (Typing.v) require their body to satisfy is_abs, *)
+(* so every maximal Λ-chain bottoms out at a λ.  This keeps Λ-bodies  *)
+(* values under weak reduction, and routes every capability captured  *)
+(* under a Λ-chain through the innermost λ's (cap-aware) capture_lt,  *)
+(* which records it in the closure-lifetime slot of the type.         *)
+(* ================================================================== *)
+
+Definition is_abs (t : term) : bool :=
+  match t with
+  | term_lam _ _    => true
+  | term_ty_lam _ _ => true
+  | term_lt_lam _   => true
+  | _               => false
+  end.
+
+(* ================================================================== *)
+(* Runtime-capability occurrence check                                *)
+(*                                                                    *)
+(* has_rt_cap t = true iff a literal runtime form that mentions a     *)
+(* marker — term_cap, term_handler_m, or term_resume — occurs         *)
+(* anywhere syntactically in t (under all binders).  These are        *)
+(* exactly the constructors counted by markers_in (Semantics.v).      *)
+(* Source programs never contain them; they arise only at runtime.    *)
+(* Used by capture_lt (Typing.v) to make closure lifetimes account    *)
+(* for literal capabilities, which free_tm_vars cannot see.           *)
+(* ================================================================== *)
+
+Fixpoint has_rt_cap (t : term) : bool :=
+  let fix go (ts : list term) : bool :=
+    match ts with
+    | []        => false
+    | u :: rest => orb (has_rt_cap u) (go rest)
+    end
+  in
+  match t with
+  | term_var _                  => false
+  | term_app t1 t2              => orb (has_rt_cap t1) (has_rt_cap t2)
+  | term_lam body _             => has_rt_cap body
+  | term_ty_app t' _            => has_rt_cap t'
+  | term_ty_lam _ body          => has_rt_cap body
+  | term_lt_app t' _            => has_rt_cap t'
+  | term_lt_lam body            => has_rt_cap body
+  | term_ctor _ _ _ _ ts        => go ts
+  | term_match scrut _ _ _ y n  =>
+      orb (has_rt_cap scrut) (orb (has_rt_cap y) (has_rt_cap n))
+  | term_handle _ _ _ _ op_body body =>
+      orb (has_rt_cap op_body) (has_rt_cap body)
+  | term_perform t' _ arg       => orb (has_rt_cap t') (has_rt_cap arg)
+  | term_cap _ _ _ _ _ _        => true
+  | term_handler_m _ _ _        => true
+  | term_resume _ _ _           => true
+  end.
