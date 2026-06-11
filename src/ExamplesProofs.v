@@ -255,6 +255,7 @@ Theorem typed_readerExample_proof : typed_readerExample.
 Proof.
   unfold typed_readerExample, readerExample, readerExample_op_body.
   eapply T_Handle; try (cbn; reflexivity); try solve_wf.
+  - apply SA_Refl. solve_wf.
   - cbn. eapply T_App.
     + solve_var.
     + unfold int2_v. solve_ctor.
@@ -273,10 +274,71 @@ Proof.
 Qed.
 
 Theorem typed_withReader_proof : typed_withReader.
-Proof. unfold typed_withReader, withReader, withReader_op_body. admit. Admitted.
+Proof.
+  unfold typed_withReader, withReader, withReader_op_body.
+  apply T_LtLam; [ solve_wf | reflexivity |].
+  apply T_TyLam; [ solve_wf | solve_wf | reflexivity |].
+  apply T_TyLam; [ solve_wf | solve_wf | reflexivity |].
+  apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
+  eapply T_Handle with
+    (T_B := `T 1 -{ `Lf }-> `T 0)
+    (T_R := `T 1 -{ `Ll }-> `T 0);
+    try (cbn; reflexivity); try solve_wf.
+  - eapply SA_Fun; [ apply SA_Refl; solve_wf | solve_lt | apply SA_Refl; solve_wf ].
+  - cbn. apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
+    eapply T_App with (A := `T 1) (l := `Ll) (B := `T 0).
+    + eapply T_App with (A := `T 1) (l := `Ll) (B := `T 1 -{ `Ll }-> `T 0).
+      * solve_var.
+      * solve_var.
+    + solve_var.
+  - cbn. eapply T_App with (A := `T 0) (l := `Lf) (B := `T 1 -{ `Lf }-> `T 0).
+    + apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
+      apply T_Lam; [ solve_wf | solve_wf | solve_var | cbn; solve_lt ].
+    + eapply T_App with (A := T_Reader `Ll (`T 1)) (l := `Ll) (B := `T 0).
+      * solve_var.
+      * solve_var.
+Qed.
+
+Ltac solve_state_k_app :=
+  eapply T_App with (A := `T 1) (l := `Ll) (B := `T 0);
+  [ eapply T_App with (A := `T 1) (l := `Ll) (B := `T 1 -{ `Ll }-> `T 0);
+    [ solve_var | solve_var ]
+  | solve_var ].
 
 Theorem typed_withState_proof : typed_withState.
-Proof. unfold typed_withState, withState, state_op_body. admit. Admitted.
+Proof.
+  unfold typed_withState, withState, state_op_body.
+  apply T_LtLam; [ solve_wf | reflexivity |].
+  apply T_TyLam; [ solve_wf | solve_wf | reflexivity |].
+  apply T_TyLam; [ solve_wf | solve_wf | reflexivity |].
+  apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
+  eapply T_Handle with
+    (T_B := `T 1 -{ `Lf }-> `T 0)
+    (T_R := `T 1 -{ `Ll }-> `T 0);
+    try (cbn; reflexivity); try solve_wf.
+  - eapply SA_Fun; [ apply SA_Refl; solve_wf | solve_lt | apply SA_Refl; solve_wf ].
+  - cbn. apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
+    eapply T_Match with
+      (Ts := [`T 1]) (Delta := `Lf) (arity := 0) (lts := [])
+      (rho_fields := []) (scrut_result_ty := T_Cmd `Lf (`T 1))
+      (result_tag := cmd_tag) (result_l := `Lf)
+      (eta := `T 0) (elim_result := `T 0);
+      cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt
+                      | solve_var | solve_state_k_app ].
+    eapply T_Match with
+      (Ts := [`T 1]) (Delta := `Lf) (arity := 1) (lts := [])
+      (rho_fields := [`T 1]) (scrut_result_ty := T_Cmd `Lf (`T 1))
+      (result_tag := cmd_tag) (result_l := `Lf)
+      (eta := `T 0) (elim_result := `T 0);
+      cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt
+                      | solve_var | solve_state_k_app ].
+  - cbn. eapply T_App with (A := `T 0) (l := `Lf) (B := `T 1 -{ `Lf }-> `T 0).
+    + apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
+      apply T_Lam; [ solve_wf | solve_wf | solve_var | cbn; solve_lt ].
+    + eapply T_App with (A := T_State `Ll (`T 1)) (l := `Ll) (B := `T 0).
+      * solve_var.
+      * solve_var.
+Qed.
 
 Theorem typed_withException_proof : typed_withException.
 Proof.
@@ -285,6 +347,7 @@ Proof.
   apply T_TyLam; [ solve_wf | solve_wf | reflexivity |].
   apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
   eapply T_Handle; try (cbn; reflexivity); try solve_wf.
+  - apply SA_Refl. solve_wf.
   - (* op_body: re-raise the caught value as [Error]. *)
     cbn. unfold error_v. solve_ctor.
   - (* body: wrap the handled computation's result in [Ok]. *)
@@ -342,6 +405,7 @@ Proof.
   apply T_TyLam; [ solve_wf | solve_wf | reflexivity |].
   apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
   eapply T_Handle; try (cbn; reflexivity); try solve_wf.
+  - apply SA_Refl. solve_wf.
   - cbn. eapply T_App; [ solve_var | solve_var ].
   - cbn. eapply T_App; [ solve_var | solve_var ].
 Qed.
@@ -350,6 +414,7 @@ Theorem typed_exampleOptionality_proof : typed_exampleOptionality.
 Proof.
   unfold typed_exampleOptionality, exampleOptionality, optionality_op_body.
   eapply T_Handle; try (cbn; reflexivity); try solve_wf.
+  - apply SA_Refl. solve_wf.
   - cbn. eapply T_App; [ solve_var | unfold some_v; solve_ctor ].
   - cbn. eapply T_Perform with (Ss := [T_Int `Lf]).
     + solve_var.
@@ -416,13 +481,13 @@ Theorem red_readerExample_proof : red_readerExample.
 Proof.
   unfold red_readerExample, readerExample, readerExample_op_body.
   eapply ms_step.
-  { apply (S_Handle Reader_tag 0 [T_Int `Lf] (T_Int `Lf) (($$ 1) @· int2_v)
+  { apply (S_Handle Reader_tag 0 [T_Int `Lf] (T_Int `Lf) (T_Int `Lf) (($$ 1) @· int2_v)
              (term_perform ($$ 0) [] unit_v) 0).
     cbn. intros H. inversion H. }
   cbn.
   eapply ms_step.
   { apply (S_step EC_hole). constructor.
-    apply (H_Perform Reader_tag 0 0 [T_Int `Lf] (T_Int `Lf) (($$ 1) @· int2_v) [] unit_v EC_hole);
+    apply (H_Perform Reader_tag 0 0 [T_Int `Lf] (T_Int `Lf) (T_Int `Lf) (($$ 1) @· int2_v) [] unit_v EC_hole);
       [apply unit_v_value | constructor]. }
   cbn.
   eapply ms_step.
@@ -437,14 +502,14 @@ Theorem red_exampleOptionality_proof : red_exampleOptionality.
 Proof.
   unfold red_exampleOptionality, exampleOptionality, optionality_op_body, some_v.
   eapply ms_step.
-  { apply (S_Handle Optionality_tag 1 [] (T_Option `Lf (T_Int `Lf))
+  { apply (S_Handle Optionality_tag 1 [] (T_Option `Lf (T_Int `Lf)) (T_Option `Lf (T_Int `Lf))
              (($$ 1) @· term_ctor some_tag `Lf [`Lf] [`T 0] [$$ 0])
              (term_perform ($$ 0) [T_Int `Lf] int42_v) 0).
     cbn. intros H. inversion H. }
   cbn.
   eapply ms_step.
   { apply (S_step EC_hole). constructor.
-    apply (H_Perform Optionality_tag 0 1 [] (T_Option `Lf (T_Int `Lf))
+    apply (H_Perform Optionality_tag 0 1 [] (T_Option `Lf (T_Int `Lf)) (T_Option `Lf (T_Int `Lf))
              (($$ 1) @· term_ctor some_tag `Lf [`Lf] [`T 0] [$$ 0])
              [T_Int `Lf] int42_v EC_hole);
       [apply int42_v_value | constructor]. }

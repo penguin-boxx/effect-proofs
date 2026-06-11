@@ -288,18 +288,19 @@ Definition downcast : term :=
     λ: `T 0 \\
       $$ 0.
 
-(* fun withReader[lr]<e, r <: Any'free>(
-     f: context(Reader<e>) ()'local -> r): (e)'lr -> r = ... *)
+(* fun withReader[lr]<e <: Any'free, r <: Any'free>(
+  f: context(Reader<e>) ()'local -> r): (e)'local -> r = ... *)
 Definition withReader_op_body : term :=
   λ: `T 1 \\
     (($$ 2) @· ($$ 0)) @· ($$ 0).
 
 Definition withReader : term :=
   Λl \\
-  Λt: T_Any `Ll \\
+  Λt: T_Any `Lf \\
   Λt: T_Any `Lf \\
     λ: (T_Reader `Ll (`T 1) -{ `Ll }-> `T 0) \\
-      term_handle Reader_tag 0 [`T 1] (`T 1 -{ `Lf }-> `T 0) withReader_op_body
+      term_handle Reader_tag 0 [`T 1]
+        (`T 1 -{ `Lf }-> `T 0) (`T 1 -{ `Ll }-> `T 0) withReader_op_body
         (let: `T 0 <- (($$ 1) @· ($$ 0)) in
          λ: `T 1 \\
            $$ 1).
@@ -309,25 +310,26 @@ Definition withReader : term :=
      perform r.ask() *)
 Definition readerExample_op_body : term := ($$ 1) @· int2_v.
 Definition readerExample : term :=
-  term_handle Reader_tag 0 [T_Int `Lf] (T_Int `Lf) readerExample_op_body
+  term_handle Reader_tag 0 [T_Int `Lf] (T_Int `Lf) (T_Int `Lf) readerExample_op_body
     (term_perform ($$ 0) [] unit_v).
 
 (* fun withState ...
    Encoded State uses Cmd<s> -> s; Put returns the written state. *)
 Definition state_op_body : term :=
-  λ: `T 0 \\
+  λ: `T 1 \\
     term_match ($$ 1) get_tag 0 0
       (($$ 2) @· ($$ 0) @· ($$ 0))
       (term_match ($$ 1) put_tag 0 1
          (($$ 3) @· ($$ 0) @· ($$ 0))
-         ($$ 0)).
+        (($$ 2) @· ($$ 0) @· ($$ 0))).
 
 Definition withState : term :=
   Λl \\
   Λt: T_Any `Lf \\
   Λt: T_Any `Lf \\
     λ: (T_State `Ll (`T 1) -{ `Ll }-> `T 0) \\
-      term_handle State_tag 0 [`T 1] (`T 1 -{ `Lf }-> `T 0) state_op_body
+      term_handle State_tag 0 [`T 1]
+        (`T 1 -{ `Lf }-> `T 0) (`T 1 -{ `Ll }-> `T 0) state_op_body
         (let: `T 0 <- (($$ 1) @· ($$ 0)) in
          λ: `T 1 \\
            $$ 1).
@@ -344,7 +346,8 @@ Definition withException : term :=
   Λt: T_Any `Lf \\
   Λt: T_Any `Lf \\
     λ: (T_Exception `Ll (`T 1) -{ `Lf }-> `T 0) \\
-      term_handle Exception_tag 1 [`T 1] (T_Result `Lf (`T 1) (`T 0)) withException_op_body
+      term_handle Exception_tag 1 [`T 1]
+        (T_Result `Lf (`T 1) (`T 0)) (T_Result `Lf (`T 1) (`T 0)) withException_op_body
         (ok_v `Lf (`T 1) (`T 0) (($$ 1) @· ($$ 0))).
 
 (* let exampleException = withException<Int, File>(context(h) fun() perform h.throw<File>(42)) *)
@@ -414,7 +417,7 @@ Definition withId_op_body : term := ($$ 1) @· ($$ 0).
 Definition withId : term :=
   Λt: T_Any `Lf \\
     λ: (T_Id `Ll -{ `Lf }-> `T 0) \\
-      term_handle Id_tag 1 [] (`T 0) withId_op_body (($$ 1) @· ($$ 0)).
+      term_handle Id_tag 1 [] (`T 0) (`T 0) withId_op_body (($$ 1) @· ($$ 0)).
 
 (* let exampleOptionality =
      handle o: Optionality { op mkSome<b>(x) resume(Some<b>(x)) }
@@ -423,7 +426,8 @@ Definition optionality_op_body : term :=
   ($$ 1) @· (some_v `Lf (`T 0) ($$ 0)).
 
 Definition exampleOptionality : term :=
-  term_handle Optionality_tag 1 [] (T_Option `Lf (T_Int `Lf)) optionality_op_body
+  term_handle Optionality_tag 1 []
+    (T_Option `Lf (T_Int `Lf)) (T_Option `Lf (T_Int `Lf)) optionality_op_body
     (term_perform ($$ 0) [T_Int `Lf] int42_v).
 
 (* ================================================================== *)
@@ -466,15 +470,15 @@ Definition typed_readerExample : Prop :=
 
 Definition typed_withReader : Prop :=
   full_ctx ⊢ₜ withReader
-    : type_lt_all (type_ty_all (T_Any `Ll) (type_ty_all (T_Any `Lf)
+    : type_lt_all (type_ty_all (T_Any `Lf) (type_ty_all (T_Any `Lf)
         ((T_Reader `Ll (`T 1) -{ `Ll }-> `T 0) -{ `Lf }->
-         `T 1 -{ `Lf }-> `T 0))).
+         `T 1 -{ `Ll }-> `T 0))).
 
 Definition typed_withState : Prop :=
   full_ctx ⊢ₜ withState
     : type_lt_all (type_ty_all (T_Any `Lf) (type_ty_all (T_Any `Lf)
         ((T_State `Ll (`T 1) -{ `Ll }-> `T 0) -{ `Lf }->
-         `T 1 -{ `Lf }-> `T 0))).
+         `T 1 -{ `Ll }-> `T 0))).
 
 Definition typed_withException : Prop :=
   full_ctx ⊢ₜ withException

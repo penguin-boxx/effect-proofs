@@ -23,12 +23,6 @@ Require Import SubstitutionTheory.
 (* contribution.                                                      *)
 (* ================================================================== *)
 
-(* `eval_ctx` and the `eval_ctx_no_tm/ty/eff` lookup lemmas are now    *)
-(* defined in `SubstitutionTheory.v` (so that `subst_tm_lemma` can be   *)
-(* stated directly against the program-level invariant).  The `ec_lt`  *)
-(* constructor has been removed: an `eval_ctx` now contains only        *)
-(* constructor bindings, so terms typed under it are fully closed.      *)
-
 (* ------------------------------------------------------------------ *)
 (* Effect-handler invariant                                           *)
 (*                                                                    *)
@@ -110,11 +104,11 @@ Proof.
   - injection Hs; intros; subst. eexists; eassumption.
 Qed.
 
-Lemma typed_handler_m_inv : forall Γ m T_R t T,
-  Γ ⊢ₜ term_handler_m m T_R t : T -> exists T0, Γ ⊢ₜ t : T0.
+Lemma typed_handler_m_inv : forall Γ m T_B T_R t T,
+  Γ ⊢ₜ term_handler_m m T_B T_R t : T -> exists T0, Γ ⊢ₜ t : T0.
 Proof.
-  intros Γ m T_R t T H.
-  remember (term_handler_m m T_R t) as s eqn:Hs.
+  intros Γ m T_B T_R t T H.
+  remember (term_handler_m m T_B T_R t) as s eqn:Hs.
   revert Hs. induction H; intros Hs; try discriminate Hs.
   - apply IHtyping; exact Hs.
   - injection Hs; intros; subst. eexists; eassumption.
@@ -299,7 +293,7 @@ Lemma canonical_fun : forall Γ v A l B,
   Γ ⊢ₜ v : type_fun A l B ->
   value v ->
   (exists body T, v = term_lam body T)
-  \/ (exists m T_R b, v = term_resume m T_R b).
+  \/ (exists m T_B T_R b, v = term_resume m T_B T_R b).
 Proof.
   intros Γ v A l B Hec Hty Hval.
   remember (type_fun A l B) as T0 eqn:HT.
@@ -341,11 +335,11 @@ Fixpoint marker_ok (ms : list marker) (t : term) : Prop :=
   | term_ctor _ _ _ _ ts => marker_ok_list ts
   | term_match scrut _ _ _ yes_body no_body =>
       marker_ok ms scrut /\ marker_ok ms yes_body /\ marker_ok ms no_body
-  | term_handle _ _ _ _ op_body body => marker_ok ms op_body /\ marker_ok ms body
+  | term_handle _ _ _ _ _ op_body body => marker_ok ms op_body /\ marker_ok ms body
   | term_perform recv _ arg => marker_ok ms recv /\ marker_ok ms arg
   | term_cap _ m _ _ _ op_body => In m ms /\ marker_ok (m :: ms) op_body
-  | term_handler_m m _ body => marker_ok (m :: ms) body
-  | term_resume m _ body => marker_ok (m :: ms) body
+  | term_handler_m m _ _ body => marker_ok (m :: ms) body
+  | term_resume m _ _ body => marker_ok (m :: ms) body
   end.
 
 Fixpoint marker_annots (t : term) : list (marker * type) :=
@@ -360,12 +354,12 @@ Fixpoint marker_annots (t : term) : list (marker * type) :=
   | term_ctor _ _ _ _ ts => List.concat (List.map marker_annots ts)
   | term_match scrut _ _ _ yes_body no_body =>
       marker_annots scrut ++ marker_annots yes_body ++ marker_annots no_body
-  | term_handle _ _ _ T_R op_body body =>
+  | term_handle _ _ _ _ _ op_body body =>
       marker_annots op_body ++ marker_annots body
   | term_perform recv _ arg => marker_annots recv ++ marker_annots arg
   | term_cap _ m _ _ T_R op_body => (m, T_R) :: marker_annots op_body
-  | term_handler_m m T_R body => (m, T_R) :: marker_annots body
-  | term_resume m T_R body => (m, T_R) :: marker_annots body
+  | term_handler_m m _ T_R body => (m, T_R) :: marker_annots body
+  | term_resume m _ T_R body => (m, T_R) :: marker_annots body
   end.
 
 Definition marker_types_ok (t : term) : Prop :=
@@ -382,20 +376,18 @@ Definition marker_annots_list_no_local (ts : list term) : Prop :=
          (List.concat (List.map marker_annots ts)).
 
 Definition marker_types_safe (t : term) : Prop :=
-  marker_types_ok t /\ marker_annots_no_local t.
+  marker_types_ok t.
 
 Lemma marker_types_safe_ok : forall t,
   marker_types_safe t -> marker_types_ok t.
 Proof.
-  intros t H. exact (proj1 H).
+  intros t H. exact H.
 Qed.
 
 Lemma marker_types_safe_empty : forall t,
   marker_annots t = [] -> marker_types_safe t.
 Proof.
-  intros t Hann. split.
-  - intros m T U Hin. rewrite Hann in Hin. inversion Hin.
-  - unfold marker_annots_no_local. rewrite Hann. constructor.
+  intros t Hann m T U Hin. rewrite Hann in Hin. inversion Hin.
 Qed.
 
 Lemma marker_types_safe_incl : forall sub whole,
@@ -403,11 +395,8 @@ Lemma marker_types_safe_incl : forall sub whole,
   marker_types_safe whole ->
   marker_types_safe sub.
 Proof.
-  intros sub whole Hincl [Hok Hnl]. split.
-  - intros m T U HT HU. eapply Hok; [apply Hincl | apply Hincl]; eauto.
-  - unfold marker_annots_no_local in *. apply Forall_forall.
-    intros mt Hmt. apply Forall_forall with (x := mt) in Hnl; [exact Hnl|].
-    apply Hincl. exact Hmt.
+  intros sub whole Hincl Hok m T U HT HU.
+  eapply Hok; [apply Hincl | apply Hincl]; eauto.
 Qed.
 
 Lemma marker_types_safe_app_l : forall t1 t2,
@@ -459,10 +448,10 @@ Proof.
   intros p Hp. simpl. apply List.in_or_app. right. exact Hp.
 Qed.
 
-Lemma marker_types_safe_handler_body : forall m T body,
-  marker_types_safe (term_handler_m m T body) -> marker_types_safe body.
+Lemma marker_types_safe_handler_body : forall m T_B T_R body,
+  marker_types_safe (term_handler_m m T_B T_R body) -> marker_types_safe body.
 Proof.
-  intros m T body Hsafe. eapply marker_types_safe_incl; [|exact Hsafe].
+  intros m T_B T_R body Hsafe. eapply marker_types_safe_incl; [|exact Hsafe].
   intros p Hp. simpl. right. exact Hp.
 Qed.
 
@@ -563,7 +552,7 @@ Proof.
     unfold marker_annots_no_local in *. simpl in *.
     repeat rewrite Forall_app in H. destruct H as [Hs [Hy Hn]].
     repeat rewrite Forall_app. repeat split; [apply IHs | apply IHy | apply IHn]; assumption.
-  - intros E n_beta Ts T_R op_body body IHop IHbody amount cutoff H.
+  - intros E n_beta Ts T_B T_R op_body body IHop IHbody amount cutoff H.
     unfold marker_annots_no_local in *. simpl in *.
     apply Forall_app in H. destruct H as [Hop Hbody].
     apply Forall_app. split; [apply IHop | apply IHbody]; assumption.
@@ -576,12 +565,12 @@ Proof.
     inversion H as [|mt rest Hhead Htail]; subst. constructor.
     + exact Hhead.
     + apply IHop. exact Htail.
-  - intros m T_R t IH amount cutoff H.
+  - intros m T_B T_R t IH amount cutoff H.
     unfold marker_annots_no_local in *. simpl in *.
     inversion H as [|mt rest Hhead Htail]; subst. constructor.
     + exact Hhead.
     + apply IH. exact Htail.
-  - intros m T_R b IH amount cutoff H.
+  - intros m T_B T_R b IH amount cutoff H.
     unfold marker_annots_no_local in *. simpl in *.
     inversion H as [|mt rest Hhead Htail]; subst. constructor.
     + exact Hhead.
@@ -621,7 +610,7 @@ Proof.
     unfold marker_annots_no_local in *. simpl in *.
     repeat rewrite Forall_app in H. destruct H as [Hs [Hy Hn]].
     repeat rewrite Forall_app. repeat split; [apply IHs | apply IHy | apply IHn]; assumption.
-  - intros E n_beta Ts T_R op_body body IHop IHbody amount cutoff H.
+  - intros E n_beta Ts T_B T_R op_body body IHop IHbody amount cutoff H.
     unfold marker_annots_no_local in *. simpl in *.
     apply Forall_app in H. destruct H as [Hop Hbody].
     apply Forall_app. split; [apply IHop | apply IHbody]; assumption.
@@ -634,12 +623,12 @@ Proof.
     inversion H as [|mt rest Hhead Htail]; subst. constructor.
     + simpl. rewrite no_local_ty_shift_ty_any. exact Hhead.
     + apply IHop. exact Htail.
-  - intros m T_R t IH amount cutoff H.
+  - intros m T_B T_R t IH amount cutoff H.
     unfold marker_annots_no_local in *. simpl in *.
     inversion H as [|mt rest Hhead Htail]; subst. constructor.
     + simpl. rewrite no_local_ty_shift_ty_any. exact Hhead.
     + apply IH. exact Htail.
-  - intros m T_R b IH amount cutoff H.
+  - intros m T_B T_R b IH amount cutoff H.
     unfold marker_annots_no_local in *. simpl in *.
     inversion H as [|mt rest Hhead Htail]; subst. constructor.
     + simpl. rewrite no_local_ty_shift_ty_any. exact Hhead.
@@ -679,7 +668,7 @@ Proof.
     unfold marker_annots_no_local in *. simpl in *.
     repeat rewrite Forall_app in H. destruct H as [Hs [Hy Hn]].
     repeat rewrite Forall_app. repeat split; [apply IHs | apply IHy | apply IHn]; assumption.
-  - intros E n_beta Ts T_R op_body body IHop IHbody amount cutoff H.
+  - intros E n_beta Ts T_B T_R op_body body IHop IHbody amount cutoff H.
     unfold marker_annots_no_local in *. simpl in *.
     apply Forall_app in H. destruct H as [Hop Hbody].
     apply Forall_app. split; [apply IHop | apply IHbody]; assumption.
@@ -692,12 +681,12 @@ Proof.
     inversion H as [|mt rest Hhead Htail]; subst. constructor.
     + simpl. rewrite no_local_ty_shift_lt_any. exact Hhead.
     + apply IHop. exact Htail.
-  - intros m T_R t IH amount cutoff H.
+  - intros m T_B T_R t IH amount cutoff H.
     unfold marker_annots_no_local in *. simpl in *.
     inversion H as [|mt rest Hhead Htail]; subst. constructor.
     + simpl. rewrite no_local_ty_shift_lt_any. exact Hhead.
     + apply IH. exact Htail.
-  - intros m T_R b IH amount cutoff H.
+  - intros m T_B T_R b IH amount cutoff H.
     unfold marker_annots_no_local in *. simpl in *.
     inversion H as [|mt rest Hhead Htail]; subst. constructor.
     + simpl. rewrite no_local_ty_shift_lt_any. exact Hhead.
@@ -751,7 +740,7 @@ Proof.
     + apply IHs; assumption.
     + apply IHy; [apply marker_annots_no_local_shift_tm; apply marker_annots_no_local_shift_lt_in_tm |]; assumption.
     + apply IHn; assumption.
-  - intros E n_beta Ts T_R op_body body IHop IHbody var repl Hrepl H.
+  - intros E n_beta Ts T_B T_R op_body body IHop IHbody var repl Hrepl H.
     unfold marker_annots_no_local in *. simpl in *.
     apply Forall_app in H. destruct H as [Hop Hbody].
     apply Forall_app. split.
@@ -766,12 +755,12 @@ Proof.
     inversion H as [|mt rest Hhead Htail]; subst. constructor.
     + exact Hhead.
     + apply IHop; [apply marker_annots_no_local_shift_tm |]; assumption.
-  - intros m T_R t IH var repl Hrepl H.
+  - intros m T_B T_R t IH var repl Hrepl H.
     unfold marker_annots_no_local in *. simpl in *.
     inversion H as [|mt rest Hhead Htail]; subst. constructor.
     + exact Hhead.
     + apply IH; assumption.
-  - intros m T_R b IH var repl Hrepl H.
+  - intros m T_B T_R b IH var repl Hrepl H.
     unfold marker_annots_no_local in *. simpl in *.
     inversion H as [|mt rest Hhead Htail]; subst. constructor.
     + exact Hhead.
@@ -812,7 +801,7 @@ Proof.
     unfold marker_annots_no_local in *. simpl in *.
     repeat rewrite Forall_app in H. destruct H as [Hs [Hy Hn]].
     repeat rewrite Forall_app. repeat split; [apply IHs | apply IHy | apply IHn]; assumption.
-  - intros E n_beta Ts T_R op_body body IHop IHbody n S H.
+  - intros E n_beta Ts T_B T_R op_body body IHop IHbody n S H.
     unfold marker_annots_no_local in *. simpl in *.
     apply Forall_app in H. destruct H as [Hop Hbody].
     apply Forall_app. split; [apply IHop | apply IHbody]; assumption.
@@ -825,12 +814,12 @@ Proof.
     inversion H as [|mt rest Hhead Htail]; subst. constructor.
     + simpl. eapply no_local_ty_subst_ty. exact Hhead.
     + apply IHop. exact Htail.
-  - intros m T_R t IH n S H.
+  - intros m T_B T_R t IH n S H.
     unfold marker_annots_no_local in *. simpl in *.
     inversion H as [|mt rest Hhead Htail]; subst. constructor.
     + simpl. eapply no_local_ty_subst_ty. exact Hhead.
     + apply IH. exact Htail.
-  - intros m T_R b IH n S H.
+  - intros m T_B T_R b IH n S H.
     unfold marker_annots_no_local in *. simpl in *.
     inversion H as [|mt rest Hhead Htail]; subst. constructor.
     + simpl. eapply no_local_ty_subst_ty. exact Hhead.
@@ -871,7 +860,7 @@ Proof.
     unfold marker_annots_no_local in *. simpl in *.
     repeat rewrite Forall_app in H. destruct H as [Hs [Hy Hn]].
     repeat rewrite Forall_app. repeat split; [apply IHs | apply IHy | apply IHn]; assumption.
-  - intros E n_beta Ts T_R op_body body IHop IHbody n l H.
+  - intros E n_beta Ts T_B T_R op_body body IHop IHbody n l H.
     unfold marker_annots_no_local in *. simpl in *.
     apply Forall_app in H. destruct H as [Hop Hbody].
     apply Forall_app. split; [apply IHop | apply IHbody]; assumption.
@@ -884,12 +873,12 @@ Proof.
     inversion H as [|mt rest Hhead Htail]; subst. constructor.
     + simpl. eapply no_local_ty_subst_lt. exact Hhead.
     + apply IHop. exact Htail.
-  - intros m T_R t IH n l H.
+  - intros m T_B T_R t IH n l H.
     unfold marker_annots_no_local in *. simpl in *.
     inversion H as [|mt rest Hhead Htail]; subst. constructor.
     + simpl. eapply no_local_ty_subst_lt. exact Hhead.
     + apply IH. exact Htail.
-  - intros m T_R b IH n l H.
+  - intros m T_B T_R b IH n l H.
     unfold marker_annots_no_local in *. simpl in *.
     inversion H as [|mt rest Hhead Htail]; subst. constructor.
     + simpl. eapply no_local_ty_subst_lt. exact Hhead.
@@ -962,15 +951,15 @@ Proof.
 Qed.
 
 Lemma marker_types_ok_handler_perform_annotation_match :
-  forall m T E_tag n_beta Ts T_R op_body Ss v P,
+  forall m T_B T_H E_tag n_beta Ts T_R op_body Ss v P,
     marker_types_safe
-      (term_handler_m m T
+      (term_handler_m m T_B T_H
         (plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss v))) ->
-    T_R = T.
+    T_R = T_H.
 Proof.
-  intros m T E_tag n_beta Ts T_R op_body Ss v P Hok.
+  intros m T_B T_H E_tag n_beta Ts T_R op_body Ss v P Hok.
   symmetry.
-  eapply (marker_types_safe_ok _ Hok m T T_R).
+  eapply (marker_types_safe_ok _ Hok m T_H T_R).
   - simpl. left. reflexivity.
   - simpl. right. apply marker_annots_plug_in.
     simpl. left. reflexivity.
@@ -1039,7 +1028,7 @@ Proof.
     rewrite marker_ok_ctor_eq in Hm |- *. apply (HQ ms ms' Hi Hm).
   - (* match *) intros scrut tag n_lt arity yes no Hs Hy Hn ms ms' Hi Hm. simpl in *.
     destruct Hm as [H1 [H2 H3]]. repeat split; [eapply Hs | eapply Hy | eapply Hn]; eauto.
-  - (* handle *) intros E n_beta Ts T_R op body Hop Hb ms ms' Hi Hm. simpl in *.
+  - (* handle *) intros E n_beta Ts T_B T_R op body Hop Hb ms ms' Hi Hm. simpl in *.
     destruct Hm as [H1 H2]. split; [eapply Hop | eapply Hb]; eauto.
   - (* perform *) intros t Ss arg Ht Ha ms ms' Hi Hm. simpl in *.
     destruct Hm as [H1 H2]. split; [eapply Ht | eapply Ha]; eauto.
@@ -1047,9 +1036,9 @@ Proof.
     destruct Hm as [Hin Hrec]. split.
     + exact (Hi m Hin).
     + apply (Hop (m :: ms) (m :: ms')); [apply incl_same_cons; exact Hi | exact Hrec].
-  - (* handler_m *) intros m T_R t H ms ms' Hi Hm. simpl in *.
+  - (* handler_m *) intros m T_B T_R t H ms ms' Hi Hm. simpl in *.
     apply (H (m :: ms) (m :: ms')); [apply incl_same_cons; exact Hi | exact Hm].
-  - (* resume *) intros m T_R b H ms ms' Hi Hm. simpl in *.
+  - (* resume *) intros m T_B T_R b H ms ms' Hi Hm. simpl in *.
     apply (H (m :: ms) (m :: ms')); [apply incl_same_cons; exact Hi | exact Hm].
   - (* nil *) intros ms ms' Hi Hm. exact I.
   - (* cons *) intros u ts Hu Hts ms ms' Hi Hm. simpl in *.
@@ -1179,7 +1168,7 @@ Proof.
     + eapply Hy; [ apply marker_ok_shift_tm; apply marker_ok_shift_lt_in_tm; exact Hrepl
                  | exact Hye ].
     + eapply Hn; eauto.
-  - (* handle *) intros E n_beta Ts T_R op body Hop Hb ms var repl Hrepl Hm. simpl in *.
+  - (* handle *) intros E n_beta Ts T_B T_R op body Hop Hb ms var repl Hrepl Hm. simpl in *.
     destruct Hm as [Ho Hbo]. split.
     + eapply Hop; [ apply marker_ok_shift_tm; exact Hrepl | exact Ho ].
     + eapply Hb;  [ apply marker_ok_shift_tm; exact Hrepl | exact Hbo ].
@@ -1192,11 +1181,11 @@ Proof.
       * eapply marker_ok_mono; [ apply incl_tl; apply incl_refl
                                | apply marker_ok_shift_tm; exact Hrepl ].
       * exact Hrec.
-  - (* handler_m *) intros m T_R t H ms var repl Hrepl Hm. simpl in *.
+  - (* handler_m *) intros m T_B T_R t H ms var repl Hrepl Hm. simpl in *.
     apply (H (m :: ms) var repl).
     + eapply marker_ok_mono; [ apply incl_tl; apply incl_refl | exact Hrepl ].
     + exact Hm.
-  - (* resume *) intros m T_R b H ms var repl Hrepl Hm. simpl in *.
+  - (* resume *) intros m T_B T_R b H ms var repl Hrepl Hm. simpl in *.
     apply (H (m :: ms) (S var) (shift_tm 1 0 repl)).
     + eapply marker_ok_mono; [ apply incl_tl; apply incl_refl
                              | apply marker_ok_shift_tm; exact Hrepl ].
@@ -1490,12 +1479,14 @@ Lemma typing_ind2 :
         :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
         :: push_ty_vars n_β any_at_free Γ) op_body (shift_ty n_β 0 T_R) ->
     P Γ (term_cap E_tag m n_β Ts T_R op_body) (type_ctor E_tag lt_local Ts)) ->
-  (forall Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β,
+  (forall Γ E_tag Ts op_body body n_α n_β sig ret T_B T_R sig_β ret_β,
      ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
      List.length Ts = n_α ->
     types_wf Γ Ts ->
+    ty_wf Γ T_B ->
     ty_wf Γ T_R ->
-    no_local_ty_G Γ T_R = true ->
+    no_local_ty_G Γ T_B = true ->
+    Γ ⊢ T_B <:: T_R ->
       sig_β = inst_op_alpha n_α Ts n_β sig ->
       ret_β = inst_op_alpha n_α Ts n_β ret ->
      (bind_tm sig_β
@@ -1504,9 +1495,9 @@ Lemma typing_ind2 :
      P (bind_tm sig_β
         :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
         :: push_ty_vars n_β any_at_free Γ) op_body (shift_ty n_β 0 T_R) ->
-     (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) ⊢ₜ body : T_R ->
-     P (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) body T_R ->
-    P Γ (term_handle E_tag n_β Ts T_R op_body body) T_R) ->
+      (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) ⊢ₜ body : T_B ->
+      P (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) body T_B ->
+     P Γ (term_handle E_tag n_β Ts T_B T_R op_body body) T_R) ->
   (forall Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst,
      Γ ⊢ₜ recv : type_ctor E_tag Δ Ts -> P Γ recv (type_ctor E_tag Δ Ts) ->
      ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
@@ -1520,12 +1511,21 @@ Lemma typing_ind2 :
     ty_wf Γ ret_inst ->
      Γ ⊢ₜ arg : sig_inst -> P Γ arg sig_inst ->
      P Γ (term_perform recv Ss arg) ret_inst) ->
-  (forall Γ m T t, Γ ⊢ₜ t : T -> P Γ t T -> P Γ (term_handler_m m T t) T) ->
-  (forall Γ m b A T_R,
-    ty_wf Γ A ->
+  (forall Γ m T_B T_R t,
+    ty_wf Γ T_B ->
     ty_wf Γ T_R ->
-     (bind_tm A :: Γ) ⊢ₜ b : T_R -> P (bind_tm A :: Γ) b T_R ->
-    P Γ (term_resume m T_R b) (type_fun A lt_local T_R)) ->
+    no_local_ty_G Γ T_B = true ->
+    Γ ⊢ T_B <:: T_R ->
+    Γ ⊢ₜ t : T_B -> P Γ t T_B ->
+    P Γ (term_handler_m m T_B T_R t) T_R) ->
+  (forall Γ m b A T_B T_R,
+    ty_wf Γ A ->
+    ty_wf Γ T_B ->
+    ty_wf Γ T_R ->
+    no_local_ty_G Γ T_B = true ->
+    Γ ⊢ T_B <:: T_R ->
+     (bind_tm A :: Γ) ⊢ₜ b : T_B -> P (bind_tm A :: Γ) b T_B ->
+    P Γ (term_resume m T_B T_R b) (type_fun A lt_local T_R)) ->
   forall Γ t T, Γ ⊢ₜ t : T -> P Γ t T.
 Proof.
   intros P HVar HSub HLam HApp HTyLam HTyApp HLtLam HLtApp HCtor HMatch
@@ -1652,7 +1652,7 @@ Proof.
     destruct IH1 as [Hv1 | [[t1' Hs1] | Hesc1]].
     + destruct IH2 as [Hv2 | [[t2' Hs2] | Hesc2]].
         * destruct (canonical_fun _ _ _ _ _ Hec Ht1 Hv1) as
-          [[body [T0 Heq]] | [m [T_R [b Heq]]]]; subst.
+          [[body [T0 Heq]] | [m [T_B [T_R [b Heq]]]]]; subst.
         -- right. left. eexists. apply S_Beta; auto.
         -- right. left. eexists. apply S_Resume; auto.
       * destruct (S_App2 t1 t2 Hv1 (ex_intro _ t2' Hs2)) as [u Hu].
@@ -1785,7 +1785,7 @@ Proof.
     + right. left. exists t. apply S_Return; auto.
     + destruct (S_HandlerM m T t (ex_intro _ t' Hs)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m0 & nb & Ts & T_R & op_body & Ss & v & P & Hin & Hp & Hv & Heq); subst.
+    + destruct Hesc as (Et & m0 & nb & Ts & T_R0 & op_body & Ss & v & P & Hin & Hp & Hv & Heq); subst.
       destruct (Nat.eq_dec m0 m) as [Heqm | Hneq].
       * subst m0. right. left. eexists.
         pose proof (handler_progress_annotation_match Γ ms m T Et nb Ts T_R op_body Ss v P
@@ -1826,8 +1826,8 @@ Proof.
     specialize (IH2 ms Hmok2 (marker_types_safe_app_r _ _ Hsafe) Hec).
     destruct IH1 as [Hv1 | [[t1' Hs1] | Hesc1]].
     + destruct IH2 as [Hv2 | [[t2' Hs2] | Hesc2]].
-      * destruct (canonical_fun _ _ _ _ _ Hec Ht1 Hv1) as
-          [[body [T0 Heq]] | [m [T_R [b Heq]]]]; subst.
+        * destruct (canonical_fun _ _ _ _ _ Hec Ht1 Hv1) as
+          [[body [T0 Heq]] | [m [T_B [T_R [b Heq]]]]]; subst.
         -- right. left. eexists. apply S_Beta; auto.
         -- right. left. eexists. apply S_Resume; auto.
       * destruct (S_App2 t1 t2 Hv1 (ex_intro _ t2' Hs2)) as [u Hu].
@@ -1927,11 +1927,11 @@ Proof.
     intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
       Heff Hlen HwfTs HwfTR Hsb Hrb Hop IHop ms Hmok Hsafe Hec. left; constructor.
   - (* T_Handle *)
-    intros Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β
-      Heff Hlen HwfTs HwfTR HnoLocal Hsb Hrb Hop IHop Hbody IHbody ms Hmok Hsafe Hec.
-    set (m := marker_bound (term_handle E_tag n_β Ts T_R op_body body)).
+    intros Γ E_tag Ts op_body body n_α n_β sig ret T_B T_R sig_β ret_β
+      Heff Hlen HwfTs HwfTB HwfTR HnoLocal Hsub Hsb Hrb Hop IHop Hbody IHbody ms Hmok Hsafe Hec.
+    set (m := marker_bound (term_handle E_tag n_β Ts T_B T_R op_body body)).
     right. left.
-    exists (term_handler_m m T_R (subst_tm 0 (term_cap E_tag m n_β Ts T_R op_body) body)).
+    exists (term_handler_m m T_B T_R (subst_tm 0 (term_cap E_tag m n_β Ts T_R op_body) body)).
     unfold m. apply S_Handle. apply marker_bound_fresh.
   - (* T_Perform *)
     intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
@@ -1957,26 +1957,26 @@ Proof.
       right. right. exists Et, m, nb, Ts0, T_R, ob, Ss0, v, (EC_perform_r P Ss arg).
       repeat split; auto.
   - (* T_HandlerM *)
-    intros Γ m T t Ht IH ms Hmok Hsafe Hec.
+    intros Γ m T_B T_R t HwfTB HwfTR HnoLocal Hsub Ht IH ms Hmok Hsafe Hec.
     simpl in Hmok.
-    specialize (IH (m :: ms) Hmok (marker_types_safe_handler_body _ _ _ Hsafe) Hec).
+    specialize (IH (m :: ms) Hmok (marker_types_safe_handler_body _ _ _ _ Hsafe) Hec).
     destruct IH as [Hv | [[t' Hs] | Hesc]].
     + right. left. exists t. apply S_Return; auto.
-    + destruct (S_HandlerM m T t (ex_intro _ t' Hs)) as [u Hu].
+    + destruct (S_HandlerM m T_B T_R t (ex_intro _ t' Hs)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m0 & nb & Ts & T_R & op_body & Ss & v & P & Hin & Hp & Hv & Heq); subst.
+    + destruct Hesc as (Et & m0 & nb & Ts & T_R0 & op_body & Ss & v & P & Hin & Hp & Hv & Heq); subst.
       destruct (Nat.eq_dec m0 m) as [Heqm | Hneq].
       * subst m0. right. left. eexists.
         pose proof (marker_types_ok_handler_perform_annotation_match
-                      m T Et nb Ts T_R op_body Ss v P Hsafe) as HTR.
-        subst T_R.
+                      m T_B T_R Et nb Ts T_R0 op_body Ss v P Hsafe) as HTR.
+        subst T_R0.
         apply (S_step EC_hole); [constructor|]. apply H_Perform; auto.
       * destruct Hin as [Hin_head | Hin_tail].
         { subst. contradiction. }
-        right. right. exists Et, m0, nb, Ts, T_R, op_body, Ss, v, (EC_handler_m m T P).
+        right. right. exists Et, m0, nb, Ts, T_R0, op_body, Ss, v, (EC_handler_m m T_B T_R P).
         repeat split; auto.
   - (* T_Resume *)
-    intros Γ m T_R b A HwfA HwfTR Hb IHb ms Hmok Hsafe Hec. left; constructor.
+    intros Γ m T_B T_R b A HwfA HwfTB HwfTR HnoLocal Hsub Hb IHb ms Hmok Hsafe Hec. left; constructor.
 Qed.
 
 Theorem progress_safe : forall Γ t T,
@@ -2066,14 +2066,14 @@ Proof.
     match goal with HwfT : ty_wf (bind_lt lt_local :: Γ) T |- _ => exact HwfT end.
 Qed.
 
-Lemma resume_typing_inv : forall Γ m T_R b T,
-  Γ ⊢ₜ term_resume m T_R b : T ->
+Lemma resume_typing_inv : forall Γ m T_B T_R b T,
+  Γ ⊢ₜ term_resume m T_B T_R b : T ->
   exists A,
-    (bind_tm A :: Γ) ⊢ₜ b : T_R /\
+    (bind_tm A :: Γ) ⊢ₜ b : T_B /\
     Γ ⊢ type_fun A lt_local T_R <:: T.
 Proof.
-  intros Γ m T_R b T Hty.
-  remember (term_resume m T_R b) as t eqn:Ht.
+  intros Γ m T_B T_R b T Hty.
+  remember (term_resume m T_B T_R b) as t eqn:Ht.
   induction Hty; try discriminate.
   - subst. destruct (IHHty eq_refl) as [A0 [Hbody Hsub]].
     exists A0; split; auto. eapply SA_Trans; eauto.
@@ -3587,7 +3587,7 @@ Proof.
     + right; left. apply IHy; exact H.
     + right; right. apply IHn; exact H.
   - (* handle *)
-    intros E n_beta Ts T_R op_body body IHop IHb c y. simpl.
+    intros E n_beta Ts T_B T_R op_body body IHop IHb c y. simpl.
     rewrite !List.in_app_iff. intros [H|H].
     + left. apply IHop; exact H.
     + right. apply IHb; exact H.
@@ -3597,9 +3597,9 @@ Proof.
   - (* cap *)
     intros E m n_beta Ts T_R op_body IHop c y. simpl. apply IHop.
   - (* handler_m *)
-    intros m T_R t IH c y. simpl. apply IH.
+    intros m T_B T_R t IH c y. simpl. apply IH.
   - (* resume *)
-    intros m T_R b IH c y. simpl. apply IH.
+    intros m T_B T_R b IH c y. simpl. apply IH.
   - (* nil *)
     intros c y. simpl. intros [].
   - (* cons *)
@@ -3725,8 +3725,8 @@ Proof.
     replace (x + 2) with (S (S x)) in IHop by lia. simpl in IHop.
     intros Hnone. apply IHop. apply lookup_tm_push_ty_None. exact Hnone.
   - (* T_Handle *)
-    intros Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β
-           H1 H2 H3 H4 H5 H6 H7 H8 IHop H9 IHbody x Hin.
+    intros Γ E_tag Ts op_body body n_α n_β sig ret T_B T_R sig_β ret_β
+           H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 IHop H11 IHbody x Hin.
     simpl in Hin. rewrite List.in_app_iff in Hin. destruct Hin as [Hop | Hb].
     + apply (fv_add 2 op_body 0 x) in Hop. specialize (IHop (x + 2) Hop).
       replace (x + 2) with (S (S x)) in IHop by lia. simpl in IHop.
@@ -3739,9 +3739,9 @@ Proof.
     simpl in Hin. rewrite List.in_app_iff in Hin.
     destruct Hin as [H|H]; [apply IHrecv | apply IHarg]; exact H.
   - (* T_HandlerM *)
-    intros Γ m t T Ht IH x Hin. apply IH; exact Hin.
+    intros Γ m T_B T_R t HwfTB HwfTR HnoLocal Hsub Ht IH x Hin. apply IH; exact Hin.
   - (* T_Resume *)
-    intros Γ m b A T_R HwfA HwfTR Hb IH x Hin.
+    intros Γ m b A T_B T_R HwfA HwfTB HwfTR HnoLocal Hsub Hb IH x Hin.
     simpl in Hin. apply fv_succ in Hin. specialize (IH (S x) Hin).
     simpl in IH. exact IH.
 Qed.
@@ -3938,7 +3938,7 @@ Proof.
   - specialize (Hnoeff E_tag).
     match goal with Hlk : ctx_lookup_eff Γ E_tag = Some _ |- _ => rewrite Hlk in Hnoeff end.
     discriminate.
-  - apply IHHty. exact Hnoeff.
+  - match goal with Hwf : ty_wf Γ T_R |- _ => exact Hwf end.
   - constructor.
     + match goal with Hwf : ty_wf Γ A |- _ => exact Hwf end.
     + constructor.

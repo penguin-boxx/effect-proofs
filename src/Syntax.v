@@ -75,19 +75,20 @@ Inductive term : Type :=
   (*   index 0 = the (single) op argument                              *)
   (*   index 1 = the resumption k                                      *)
   (* effect, number of op's polymorphic type variables, effect type    *)
-  (* parameters, resulting handler's type, op's body, handler's body   *)
-  | term_handle : eff_tag -> nat -> list type -> type -> term -> term -> term
+  (* parameters, body's no-local type, public result type, op's body,  *)
+  (* handler's body.                                                   *)
+  | term_handle : eff_tag -> nat -> list type -> type -> type -> term -> term -> term
   (* perform x Ss arg — Ss instantiates the operation's β-args.        *)
   | term_perform : term -> list type -> term -> term
   (* runtime-only: capability value                      .             *)
   (* Carries effect tag, marker, β-arity, α-type-args, and op_body.    *)
   | term_cap : eff_tag -> marker -> nat -> list type -> type -> term -> term
-  (* runtime-only: continuation delimiter.                             *)
-  | term_handler_m : marker -> type -> term -> term
-  (* runtime-only: reified resumption value. `term_resume m b` is the  *)
-  (* one-argument resumption produced by H_Perform; `b` has +1 term    *)
-  (* binder (the slot for the resumed value).                          *)
-  | term_resume : marker -> type -> term -> term
+  (* runtime-only: continuation delimiter with body/public answers.    *)
+  | term_handler_m : marker -> type -> type -> term -> term
+  (* runtime-only: reified resumption value. Carries the delimiter's   *)
+  (* body answer and public answer annotations; `b` has +1 term binder *)
+  (* for the resumed value.                                            *)
+  | term_resume : marker -> type -> type -> term -> term
   .
 
 (* ================================================================== *)
@@ -105,8 +106,8 @@ Inductive value : term -> Prop :=
       value (term_ctor K l lts Ts vs)
   | value_cap    : forall E m n_β Ts T_R op_body,
       value (term_cap E m n_β Ts T_R op_body)
-  | value_resume : forall m T_R b,
-      value (term_resume m T_R b)
+  | value_resume : forall m T_B T_R b,
+      value (term_resume m T_B T_R b)
   .
 
 Hint Constructors value : core.
@@ -131,7 +132,7 @@ Fixpoint is_value (t : term) : bool :=
   | term_lt_lam _         => true
   | term_ctor _ _ _ _ vs  => go vs
   | term_cap _ _ _ _ _ _  => true
-  | term_resume _ _ _     => true
+  | term_resume _ _ _ _   => true
   | _                     => false
   end.
 
@@ -184,10 +185,10 @@ Fixpoint has_rt_cap (t : term) : bool :=
   | term_ctor _ _ _ _ ts        => go ts
   | term_match scrut _ _ _ y n  =>
       orb (has_rt_cap scrut) (orb (has_rt_cap y) (has_rt_cap n))
-  | term_handle _ _ _ _ op_body body =>
+  | term_handle _ _ _ _ _ op_body body =>
       orb (has_rt_cap op_body) (has_rt_cap body)
   | term_perform t' _ arg       => orb (has_rt_cap t') (has_rt_cap arg)
   | term_cap _ _ _ _ _ _        => true
-  | term_handler_m _ _ _        => true
-  | term_resume _ _ _           => true
+  | term_handler_m _ _ _ _      => true
+  | term_resume _ _ _ _         => true
   end.

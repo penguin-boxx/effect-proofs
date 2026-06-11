@@ -440,14 +440,14 @@ Fixpoint free_tm_vars (cutoff : nat) (t : term) : list nat :=
       free_tm_vars cutoff scrut
         ++ free_tm_vars (cutoff + arity) y
         ++ free_tm_vars cutoff n
-  | term_handle _ _ _ _ op_body body =>
+  | term_handle _ _ _ _ _ op_body body =>
       free_tm_vars (cutoff + 2) op_body
         ++ free_tm_vars (S cutoff) body
   | term_perform t _ arg =>
       free_tm_vars cutoff t ++ free_tm_vars cutoff arg
   | term_cap _ _ _ _ _ op_body => free_tm_vars (cutoff + 2) op_body
-  | term_handler_m _ _ t => free_tm_vars cutoff t
-  | term_resume _ _ b => free_tm_vars (S cutoff) b
+  | term_handler_m _ _ _ t => free_tm_vars cutoff t
+  | term_resume _ _ _ b => free_tm_vars (S cutoff) b
   end.
 
 Definition capture_lt (Γ : ctx) (body : term) : lifetime :=
@@ -961,24 +961,26 @@ Inductive typing : ctx -> term -> type -> Prop :=
   (*   :: push_ty_vars n_β ...      ← β type-vars above                *)
 
   (* (Handle): allocate a capability and run the body.                 *)
-  (* The answer type [T_R] must be no-local in [Γ] ([no_local_ty_G]):  *)
-  (* it may be (or mention) an [Any]'free-bounded type variable, but   *)
-  (* never a genuinely local type, since the handled result escapes    *)
-  (* the capability's local scope.                                     *)
-  | T_Handle : forall Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β,
+  (* The ordinary return path is typed at no-local [T_B], while the    *)
+  (* public handler answer [T_R] may also be produced by operation     *)
+  (* bodies. This lets deep resumptions escape through operation       *)
+  (* results without letting the handler body return its own cap.      *)
+  | T_Handle : forall Γ E_tag Ts op_body body n_α n_β sig ret T_B T_R sig_β ret_β,
       ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
       List.length Ts = n_α ->
       types_wf Γ Ts ->
+      ty_wf Γ T_B ->
       ty_wf Γ T_R ->
-      no_local_ty_G Γ T_R = true ->
+      no_local_ty_G Γ T_B = true ->
+      Γ ⊢ T_B <:: T_R ->
       sig_β = inst_op_alpha n_α Ts n_β sig ->
       ret_β = inst_op_alpha n_α Ts n_β ret ->
       (bind_tm sig_β
         :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
         :: push_ty_vars n_β any_at_free Γ)
         ⊢ₜ op_body : shift_ty n_β 0 T_R ->
-      (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) ⊢ₜ body : T_R ->
-      Γ ⊢ₜ term_handle E_tag n_β Ts T_R op_body body : T_R
+      (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) ⊢ₜ body : T_B ->
+      Γ ⊢ₜ term_handle E_tag n_β Ts T_B T_R op_body body : T_R
 
   (* (Perform): invoke the (single) operation on a capability value.   *)
   (* Caller supplies the β-type-arguments Ss at the perform site.      *)
@@ -1002,17 +1004,24 @@ Inductive typing : ctx -> term -> type -> Prop :=
       Γ ⊢ₜ term_perform recv Ss arg : ret_inst
 
   (* (HandlerM, runtime): a delimiter is transparent to typing.        *)
-  | T_HandlerM : forall Γ m t T,
-      Γ ⊢ₜ t : T ->
-      Γ ⊢ₜ term_handler_m m T t : T
+  | T_HandlerM : forall Γ m t T_B T_R,
+      ty_wf Γ T_B ->
+      ty_wf Γ T_R ->
+      no_local_ty_G Γ T_B = true ->
+      Γ ⊢ T_B <:: T_R ->
+      Γ ⊢ₜ t : T_B ->
+      Γ ⊢ₜ term_handler_m m T_B T_R t : T_R
 
   (* (Resume, runtime): a reified resumption is a function value.     *)
   (* Applying it (later) re-installs a delimiter around its body.     *)
-  | T_Resume : forall Γ m b A T_R,
+  | T_Resume : forall Γ m b A T_B T_R,
       ty_wf Γ A ->
+      ty_wf Γ T_B ->
       ty_wf Γ T_R ->
-      (bind_tm A :: Γ) ⊢ₜ b : T_R ->
-      Γ ⊢ₜ term_resume m T_R b : type_fun A lt_local T_R
+      no_local_ty_G Γ T_B = true ->
+      Γ ⊢ T_B <:: T_R ->
+      (bind_tm A :: Γ) ⊢ₜ b : T_B ->
+      Γ ⊢ₜ term_resume m T_B T_R b : type_fun A lt_local T_R
 
 with args_typed : ctx -> list term -> list type -> Prop :=
   | AT_nil  : forall Γ, args_typed Γ [] []
