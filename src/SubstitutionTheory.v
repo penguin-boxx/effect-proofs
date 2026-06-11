@@ -2936,6 +2936,19 @@ Proof.
   - apply IH. apply InsTy_lt. exact H.
 Qed.
 
+(* ================================================================== *)
+(* Stability of the context-sensitive no-local checks under weakening  *)
+(*                                                                    *)
+(* The new typing premises ([no_local_ty_G], [ty_app_arg_no_local],   *)
+(* [forallb no_local_ty_G ...]) read the bound of each type variable  *)
+(* from the context, so weakening lemmas must show they are preserved *)
+(* when a binder is inserted ([InsTm]/[InsTy]/[InsLt]).  The two      *)
+(* [is_any_at_free_bound_shift_*] lemmas establish that shifting an    *)
+(* inserted bound does not change whether it is [Any]'free, and        *)
+(* [no_local_ty_G_go_eq_fold] re-exposes the inner [go] fixpoint as a  *)
+(* [fold_right] so it can be reasoned about by [Forall]/induction.     *)
+(* ================================================================== *)
+
 Lemma shift_ty_any_at_free : forall c, shift_ty 1 c any_at_free = any_at_free.
 Proof. intros c. reflexivity. Qed.
 

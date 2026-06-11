@@ -225,7 +225,7 @@ Inductive head_step : term -> term -> Prop :=
       term_match (term_ctor K' l lts Ts vs) K n_lt arity yes_body no_body -->h no_body
 
   (* (return): a delimiter around a value collapses. *)
-    | H_Return : forall m T_R v,
+  | H_Return : forall m T_R v,
       value v ->
       term_handler_m m T_R v -->h v
 
@@ -906,9 +906,9 @@ Proof.
 Qed.
 
 (* ------------------------------------------------------------------ *)
-(* Tactic: close a typing branch when the head term is a value-shape   *)
-(* (lambda, ty-lam, lt-lam, cap) or a variable, by appealing to the    *)
-(* corresponding `no_step_*` lemma.                                    *)
+(* Tactic: close a typing branch when the head term is a value-shape  *)
+(* (lambda, ty-lam, lt-lam, cap) or a variable, by appealing to the   *)
+(* corresponding `no_step_*` lemma.                                   *)
 (* ------------------------------------------------------------------ *)
 
 Ltac no_step :=

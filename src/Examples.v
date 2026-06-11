@@ -114,9 +114,9 @@ Definition some_sig : binding :=
 
 (* data Result<e, a> = Error(e) | Ok(a) *)
 Definition error_sig : binding :=
-  bind_ctor error_tag 1 2 [`T 1] (T_Result (`L 0) (`T 1) (`T 0)).
+  bind_ctor error_tag 1 2 [`T 0] (T_Result (`L 0) (`T 0) (`T 1)).
 Definition ok_sig : binding :=
-  bind_ctor ok_tag 1 2 [`T 0] (T_Result (`L 0) (`T 1) (`T 0)).
+  bind_ctor ok_tag 1 2 [`T 1] (T_Result (`L 0) (`T 0) (`T 1)).
 
 (* data File = File *)
 Definition file_sig : binding := bind_ctor file_tag 0 0 [] (T_File `Lf).
@@ -142,7 +142,7 @@ Definition lcons_sig : binding :=
 
 (* data Pair<a, b> = Pair(a, b) *)
 Definition pair_sig : binding :=
-  bind_ctor pair_tag 1 2 [`T 1; `T 0] (T_Pair (`L 0) (`T 1) (`T 0)).
+  bind_ctor pair_tag 1 2 [`T 0; `T 1] (T_Pair (`L 0) (`T 0) (`T 1)).
 
 (* data EndoI = EndoI[l]((Int'l) -> Int'l) *)
 Definition endoi_sig : binding :=
@@ -299,7 +299,7 @@ Definition withReader : term :=
   Λt: T_Any `Ll \\
   Λt: T_Any `Lf \\
     λ: (T_Reader `Ll (`T 1) -{ `Ll }-> `T 0) \\
-      term_handle Reader_tag 0 [`T 1] (`T 0) withReader_op_body
+      term_handle Reader_tag 0 [`T 1] (`T 1 -{ `Lf }-> `T 0) withReader_op_body
         (let: `T 0 <- (($$ 1) @· ($$ 0)) in
          λ: `T 1 \\
            $$ 1).
@@ -327,7 +327,7 @@ Definition withState : term :=
   Λt: T_Any `Lf \\
   Λt: T_Any `Lf \\
     λ: (T_State `Ll (`T 1) -{ `Ll }-> `T 0) \\
-      term_handle State_tag 0 [`T 1] (`T 0) state_op_body
+      term_handle State_tag 0 [`T 1] (`T 1 -{ `Lf }-> `T 0) state_op_body
         (let: `T 0 <- (($$ 1) @· ($$ 0)) in
          λ: `T 1 \\
            $$ 1).
@@ -345,7 +345,7 @@ Definition withException : term :=
   Λt: T_Any `Lf \\
     λ: (T_Exception `Ll (`T 1) -{ `Lf }-> `T 0) \\
       term_handle Exception_tag 1 [`T 1] (T_Result `Lf (`T 1) (`T 0)) withException_op_body
-        (ok_v `Lf (`T 1) (`T 0) (($$ 0) @· ($$ 0))).
+        (ok_v `Lf (`T 1) (`T 0) (($$ 1) @· ($$ 0))).
 
 (* let exampleException = withException<Int, File>(context(h) fun() perform h.throw<File>(42)) *)
 Definition exampleException_body : term :=
@@ -452,7 +452,7 @@ Definition typed_compose : Prop :=
   data_ctx ⊢ₜ compose_fn
     : type_lt_all (type_lt_all (type_ty_all (T_Any `Ll) (type_ty_all (T_Any `Ll) (type_ty_all (T_Any `Ll)
         ((`T 1 -{ `L 1 }-> `T 0) -{ `Lf }->
-         (`T 2 -{ `L 0 }-> `T 1) -{ `Lf }->
+         (`T 2 -{ `L 0 }-> `T 1) -{ `L 1 }->
          `T 2 -{ (`L 1 +l `L 0) }-> `T 0))))).
 
 Definition typed_id : Prop :=
@@ -466,19 +466,19 @@ Definition typed_readerExample : Prop :=
 
 Definition typed_withReader : Prop :=
   full_ctx ⊢ₜ withReader
-    : type_lt_all (type_ty_all (T_Any `Ll) (type_ty_all (T_Any (`L 0))
+    : type_lt_all (type_ty_all (T_Any `Ll) (type_ty_all (T_Any `Lf)
         ((T_Reader `Ll (`T 1) -{ `Ll }-> `T 0) -{ `Lf }->
-         `T 1 -{ `L 0 }-> `T 0))).
+         `T 1 -{ `Lf }-> `T 0))).
 
 Definition typed_withState : Prop :=
   full_ctx ⊢ₜ withState
-    : type_lt_all (type_ty_all (T_Any `Lf) (type_ty_all (T_Any (`L 0))
+    : type_lt_all (type_ty_all (T_Any `Lf) (type_ty_all (T_Any `Lf)
         ((T_State `Ll (`T 1) -{ `Ll }-> `T 0) -{ `Lf }->
-         `T 1 -{ `L 0 }-> `T 0))).
+         `T 1 -{ `Lf }-> `T 0))).
 
 Definition typed_withException : Prop :=
   full_ctx ⊢ₜ withException
-    : type_ty_all (T_Any `Lf) (type_ty_all (T_Any `Ll)
+    : type_ty_all (T_Any `Lf) (type_ty_all (T_Any `Lf)
         ((T_Exception `Ll (`T 1) -{ `Lf }-> `T 0) -{ `Lf }->
          T_Result `Lf (`T 1) (`T 0))).
 
@@ -487,7 +487,7 @@ Definition typed_exampleException : Prop :=
 
 Definition typed_withId : Prop :=
   full_ctx ⊢ₜ withId
-    : type_ty_all (T_Any `Ll)
+    : type_ty_all (T_Any `Lf)
         ((T_Id `Ll -{ `Lf }-> `T 0) -{ `Lf }-> `T 0).
 
 Definition typed_exampleOptionality : Prop :=

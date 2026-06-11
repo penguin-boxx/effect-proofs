@@ -16,14 +16,12 @@ Require Import Substitution.
 (* one (`shift_ty 1 0`); walking past a `bind_lt` shifts the lifetime   *)
 (* namespace by one (`shift_lt`/`shift_lt_in_ty 1 0`).  `bind_tm`,      *)
 (* `bind_ctor`, `bind_eff` introduce no ty/lt binder, so they shift     *)
-(* nothing.  (The earlier no-shift lookups mis-scoped open bounds and   *)
-(* made context weakening unsound; for closed bounds the shifts are     *)
-(* the identity, so well-formed programs are unaffected.)               *)
+(* nothing.                                                             *)
 
 Inductive binding : Type :=
-  | bind_tm  : type     -> binding  (* x : T         *)
-  | bind_ty  : type     -> binding  (* α <: B        *)
-  | bind_lt  : lifetime -> binding  (* l <: Δ        *)
+  | bind_tm  : type     -> binding  (* x : T  *)
+  | bind_ty  : type     -> binding  (* α <: B *)
+  | bind_lt  : lifetime -> binding  (* l <: Δ *)
   (* K : ∀ l̄(n_lt vars) ᾱ(n_ty vars). τ̄ → T@(+lt_∅(τ̄))@ᾱ               *)
   (* n_lt    : number of existential lifetime binders                  *)
   (* n_ty    : number of type binders                                  *)
@@ -31,7 +29,7 @@ Inductive binding : Type :=
   (* result  : result type under those binders (de Bruijn)             *)
   | bind_ctor : ctor_tag -> nat -> nat -> list type -> type -> binding
   (* Effect declaration (single-op, single-argument):                  *)
-  (*   effect E<n_α type-params> { op : ∀n_β betas. sig → ret }        *)
+  (*   effect E<n_α type-params> { op : ∀n_β type-params. sig → ret }  *)
   (* sig is the (single) parameter type, ret is the return type;       *)
   (* both live under (n_α + n_β) type-binders, with α-vars innermost   *)
   (* (indices 0..n_α-1) and β-vars above them.                         *)
@@ -141,7 +139,7 @@ Fixpoint ctx_lookup_eff (Γ : ctx) (E : eff_tag)
 (* ================================================================== *)
 (* Lifetime subtyping                                                 *)
 (*                                                                    *)
-(* Γ ⊢ₗ Δ' <: Δ  means Δ' "outlives" Δ in the paper's lattice:        *)
+(* Γ ⊢ₗ Δ' <: Δ  means Δ' "outlives" Δ in the         lattice:        *)
 (*   free (bottom) <: local (top)                                     *)
 (*   lt_min l1 l2 is the join (= least upper bound) of l1 and l2      *)
 (*                                                                    *)
@@ -339,7 +337,7 @@ Definition lt_of_ty_G (Γ : ctx) (T : type) : lifetime :=
 
 Fixpoint no_local_lt (l : lifetime) : bool :=
   match l with
-  | lt_var _        => false
+  | lt_var _      => false
   | lt_local      => false
   | lt_min l1 l2  => andb (no_local_lt l1) (no_local_lt l2)
   | _             => true
@@ -360,12 +358,24 @@ Fixpoint no_local_ty (T : type) : bool :=
   | type_ty_all B A   => andb (no_local_ty B) (no_local_ty A)
   end.
 
+(* [is_any_at_free_bound B] holds when [B] is syntactically [Any]'free   *)
+(* ([type_ctor any_tag lt_free []]).  A type variable bounded by such a  *)
+(* [B] can only ever be instantiated with a no-local type (enforced by   *)
+(* [ty_app_arg_no_local] at [T_TyApp]), so it is safe to treat the       *)
+(* variable itself as no-local.                                          *)
 Definition is_any_at_free_bound (T : type) : bool :=
   match T with
   | type_ctor K lt_free [] => Nat.eqb K any_tag
   | _ => false
   end.
 
+(* [no_local_ty_G Γ T] is the context-sensitive refinement of [no_local_ty]:  *)
+(* it answers "does [T] mention no local lifetime?" while treating a type     *)
+(* variable as no-local exactly when its bound in [Γ] is [Any]'free (see      *)
+(* [is_any_at_free_bound]).  This is what lets handler answer types and       *)
+(* perform instantiations range over abstract — but provably non-local —      *)
+(* type variables.  Runtime types are ground, so on them it agrees with       *)
+(* [no_local_ty].                                                             *)
 Fixpoint no_local_ty_G (Γ : ctx) (T : type) : bool :=
   let fix go (Γ : ctx) (Ts : list type) : bool :=
     match Ts with
@@ -386,6 +396,11 @@ Fixpoint no_local_ty_G (Γ : ctx) (T : type) : bool :=
   | type_ty_all B A => andb (no_local_ty_G Γ B) (no_local_ty_G (bind_ty B :: Γ) A)
   end.
 
+(* [ty_app_arg_no_local Γ B S]: side condition of [T_TyApp].  When the     *)
+(* formal parameter's bound [B] is [Any]'free, the supplied argument [S]   *)
+(* must itself be no-local; otherwise instantiating an [Any]'free variable *)
+(* with a local type would unsoundly make [no_local_ty_G] lie.  For any    *)
+(* other bound there is no extra obligation.                               *)
 Definition ty_app_arg_no_local (Γ : ctx) (B S : type) : bool :=
   if is_any_at_free_bound B then no_local_ty_G Γ S else true.
 
@@ -561,8 +576,8 @@ Fixpoint elim_ty_n (n : nat) (bound : lifetime) (p : variance) (T : type)
 (*                                                                    *)
 (*   SA_Refl    : reflexivity                                         *)
 (*   SA_Trans   : transitivity                                        *)
-(*   SA_VarCtx  : (α <: B) ∈ Γ → Γ ⊢ α <: B             (SubCtx)      *)
-(*   SA_Data    : Γ ⊢ₗ l <: l' → Γ ⊢ T l τ̄ <: T l' τ̄   (SubData)      *)
+(*   SA_VarCtx  : (α <: B) ∈ Γ → Γ ⊢ α <: B                           *)
+(*   SA_Data    : Γ ⊢ₗ l <: l' → Γ ⊢ T l τ̄ <: T l' τ̄                  *)
 (*                covariant in lifetime, invariant in type args       *)
 (*   SA_Fun     : Γ ⊢ A <: A' (contra) ∧ Γ ⊢ₗ l <: l' (co) ∧          *)
 (*                Γ ⊢ B <: B' (co) → Γ ⊢ A' l → B <: A l' → B'        *)
@@ -653,19 +668,19 @@ Fixpoint inst_ty_vars (n : nat) (Ts : list type) (T : type) : type :=
   | S _, []         => T
   end.
 
-(* ------------------------------------------------------------------ *)
-(* Parallel substitution of lifetime schema variables.                 *)
-(*                                                                     *)
+(* -------------------------------------------------------------------- *)
+(* Parallel substitution of lifetime schema variables.                  *)
+(*                                                                      *)
 (* `multi_subst_lt cutoff lts l` and `multi_subst_lt_in_ty` walk under  *)
-(* binders and replace `lt_var i` (with i ≥ cutoff) by either:         *)
-(*   - lts[i - cutoff], lifted under `cutoff` extra binders, when      *)
-(*     i - cutoff < |lts|, or                                          *)
-(*   - lt_var (i - |lts|), otherwise (closing |lts| schema binders).   *)
-(*                                                                     *)
-(* This gives a clean semantics: lts[k] replaces schema-var-k, and    *)
-(* lts[k] itself is read in the *outer* (post-instantiation) ctx —     *)
-(* the user does NOT need to pre-shift entries.                        *)
-(* ------------------------------------------------------------------ *)
+(* binders and replace `lt_var i` (with i ≥ cutoff) by either:          *)
+(*   - lts[i - cutoff], lifted under `cutoff` extra binders, when       *)
+(*     i - cutoff < |lts|, or                                           *)
+(*   - lt_var (i - |lts|), otherwise (closing |lts| schema binders).    *)
+(*                                                                      *)
+(* This gives a clean semantics: lts[k] replaces schema-var-k, and      *)
+(* lts[k] itself is read in the *outer* (post-instantiation) ctx —      *)
+(* the user does NOT need to pre-shift entries.                         *)
+(* -------------------------------------------------------------------- *)
 
 Fixpoint multi_subst_lt (cutoff : nat) (lts : list lifetime) (l : lifetime)
     : lifetime :=
@@ -703,10 +718,10 @@ Fixpoint multi_subst_lt_in_ty (cutoff : nat) (lts : list lifetime) (T : type)
                                      (multi_subst_lt_in_ty cutoff lts A)
   end.
 
-(* Instantiate the n_lt lt-binders of a schema by parallel substitution.*)
-(* lts[k] replaces schema-var-k and lives in the outer context (no     *)
-(* pre-shifting required). The `n` parameter is kept for documentation *)
-(* and is intended to satisfy `n = length lts` at all call sites.      *)
+(* Instantiate the n_lt lt-binders of a schema by parallel substitution. *)
+(* lts[k] replaces schema-var-k and lives in the outer context (no       *)
+(* pre-shifting required). The `n` parameter is kept for documentation   *)
+(* and is intended to satisfy `n = length lts` at all call sites.        *)
 Definition inst_lt_vars (_n : nat) (lts : list lifetime) (T : type) : type :=
   multi_subst_lt_in_ty 0 lts T.
 
@@ -747,15 +762,15 @@ Definition inst_op_alpha (n_α : nat) (Ts : list type)
 
 (* Instantiate an op schema: substitute α-vars first, then β-vars.    *)
 (* Convention: in the schema, α-vars are innermost (indices 0..n_α-1) *)
-(* and β-vars are outermost (indices n_α..n_α+n_β-1).                  *)
+(* and β-vars are outermost (indices n_α..n_α+n_β-1).                 *)
 Definition inst_op_arg (n_α : nat) (Ts : list type)
                        (n_β : nat) (Ss : list type)
                        (T : type) : type :=
   inst_ty_vars n_β Ss (inst_op_alpha n_α Ts n_β T).
 
 (* [lt_var 0; lt_var 1; ...; lt_var (n-1)] — de Bruijn indices of the *)
-(* n freshly pushed lt-vars in the order matching `inst_lt_vars`:      *)
-(* schema-var-k is replaced by lt_var k (lt_var 0 is innermost).       *)
+(* n freshly pushed lt-vars in the order matching `inst_lt_vars`:     *)
+(* schema-var-k is replaced by lt_var k (lt_var 0 is innermost).      *)
 Definition lt_var_list (n : nat) : list lifetime :=
   List.map lt_var (List.seq 0 n).
 
@@ -767,19 +782,20 @@ Definition lt_var_list (n : nat) : list lifetime :=
 (* T_Var    : ctx_lookup_tm Γ x = Some T → Γ ⊢ₜ x : T    (Var)        *)
 (* T_Sub    : Γ ⊢ₜ t : T → Γ ⊢ T <:: U → Γ ⊢ₜ t : U      (Sub)        *)
 (* T_Lam    : (x:A)::Γ ⊢ₜ body : B →                                  *)
-(*              Γ ⊢ₜ λ(x:A).body : A -l-> B             (Lam)         *)
+(*              Γ ⊢ₜ λ(x:A).body : A -l-> B              (Lam)        *)
 (*            (closure lifetime l is left unconstrained;              *)
 (*             the paper says l = +lt_Γ(captures); use T_Sub)         *)
 (* T_App    : Γ ⊢ₜ t1 : A -l-> B → Γ ⊢ₜ t2 : A →                      *)
 (*              Γ ⊢ₜ t1 t2 : B                           (App)        *)
 (* T_TyLam  : (α<:B)::Γ ⊢ₜ body : T →                                 *)
-(*              Γ ⊢ₜ Λ(α<:B).body : ∀(α<:B).T           (TLam)        *)
+(*              Γ ⊢ₜ Λ(α<:B).body : ∀(α<:B).T            (TLam)       *)
 (* T_TyApp  : Γ ⊢ₜ t : ∀(α<:B).U → Γ ⊢ S <:: B →                      *)
-(*              Γ ⊢ₜ t [S] : [α↦S] U                    (TApp)        *)
+(*              (B = Any'free ⇒ S no-local) →                         *)
+(*              Γ ⊢ₜ t [S] : [α↦S] U                     (TApp)       *)
 (* T_LtLam  : (l<:local)::Γ ⊢ₜ body : T →                             *)
 (*              Γ ⊢ₜ Λl.body : ∀l.T                      (TLam, lt)   *)
 (* T_LtApp  : Γ ⊢ₜ t : ∀l.T →                                         *)
-(*              Γ ⊢ₜ t {Δ} : [l↦Δ] T                    (TApp, lt)    *)
+(*              Γ ⊢ₜ t {Δ} : [l↦Δ] T                     (TApp, lt)   *)
 (* ================================================================== *)
 
 Reserved Notation "G '⊢ₜ' t ':' T" (at level 40, t at next level).
@@ -800,7 +816,6 @@ Inductive typing : ctx -> term -> type -> Prop :=
 
   (* --- Term abstraction and application ---------------------------- *)
 
-    (* Paper Lam rule: closure lifetime ≥ capture lifetime.              *)
   | T_Lam   : forall Γ body A l B,
       ty_wf Γ A ->
       ty_wf Γ B ->
@@ -852,13 +867,13 @@ Inductive typing : ctx -> term -> type -> Prop :=
       lt_wf Γ l ->
       Γ ⊢ₜ term_lt_app t l : subst_lt_in_ty 0 l T
 
-  (* --- Constructor typing (Figure 7 — Ctor) ----------------------- *)
-  (* K[l, l̄, T̄](v̄) : instantiated result schema                      *)
+  (* --- Constructor typing ----------------------------------------- *)
+  (* K[l, l̄, T̄](v̄) : instantiated result schema                       *)
   (*   Look up K's signature ∀ l̄(n_lt) ᾱ(n_ty). σ̄ → R.                *)
   (*   Instantiate field types σ̄ and result type R with the supplied  *)
   (*   l̄/T̄.  The runtime lifetime carried by the constructor is the   *)
-  (*   top-level lifetime of the instantiated result type.  Field      *)
-  (*   lifetimes must fit under it, preserving local-escape safety.    *)
+  (*   top-level lifetime of the instantiated result type.  Field     *)
+  (*   lifetimes must fit under it, preserving local-escape safety.   *)
   | T_Ctor  : forall Γ K n_lt n_ty sigma_fields result_ty_schema
                      lts Ts rho_fields result_ty result_tag l vs,
       ctx_lookup_ctor Γ K = Some (n_lt, n_ty, sigma_fields, result_ty_schema) ->
@@ -878,15 +893,15 @@ Inductive typing : ctx -> term -> type -> Prop :=
       Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rho_fields ->
       Γ ⊢ₜ term_ctor K l lts Ts vs : result_ty
 
-  (* --- Pattern match typing (Figure 7 — Match) -------------------- *)
+  (* --- Pattern match typing --------------------------------------- *)
   (* match scrut { K arity yes | _ => no } : elim_result              *)
   (*   Push n_lt fresh lt-vars bounded by Δ → extended ctx Γ'.        *)
   (*   Instantiate K's field types → ρ̄; type yes_body under the ρ̄     *)
   (*   term-binders on top of Γ'. Eliminate the fresh lt-vars (elim⁺) *)
   (*   from the branch result type η to get elim_result.              *)
   | T_Match : forall Γ scrut K n_lt n_ty sigma_fields result_ty_schema
-             Ts Delta arity lts rho_fields scrut_result_ty
-         result_tag result_l
+                     Ts Delta arity lts rho_fields scrut_result_ty
+                     result_tag result_l
                      Γ' yes_body eta elim_result no_body,
       K <> any_tag ->
       ctx_lookup_ctor Γ K = Some (n_lt, n_ty, sigma_fields, result_ty_schema) ->
@@ -913,7 +928,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       Γ ⊢ₜ term_match scrut K n_lt arity yes_body no_body : elim_result
 
   (* ================================================================ *)
-  (* Effect-handler typing (paper one-plus-one §3)                    *)
+  (* Effect-handler typing                                            *)
   (* ================================================================ *)
 
   (* (Cap): a runtime capability value has type `E local Ts`.          *)
@@ -946,6 +961,10 @@ Inductive typing : ctx -> term -> type -> Prop :=
   (*   :: push_ty_vars n_β ...      ← β type-vars above                *)
 
   (* (Handle): allocate a capability and run the body.                 *)
+  (* The answer type [T_R] must be no-local in [Γ] ([no_local_ty_G]):  *)
+  (* it may be (or mention) an [Any]'free-bounded type variable, but   *)
+  (* never a genuinely local type, since the handled result escapes    *)
+  (* the capability's local scope.                                     *)
   | T_Handle : forall Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β,
       ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
       List.length Ts = n_α ->
@@ -963,6 +982,10 @@ Inductive typing : ctx -> term -> type -> Prop :=
 
   (* (Perform): invoke the (single) operation on a capability value.   *)
   (* Caller supplies the β-type-arguments Ss at the perform site.      *)
+  (* The β-arguments and the instantiated signature must be no-local   *)
+  (* in [Γ] ([forallb no_local_ty_G Ss] and [no_local_ty_G sig_inst]): *)
+  (* a value crossing the operation boundary must not smuggle a local  *)
+  (* capability out of scope. *)
   | T_Perform : forall Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret
                        sig_inst ret_inst,
       Γ ⊢ₜ recv : type_ctor E_tag Δ Ts ->

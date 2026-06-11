@@ -48,7 +48,7 @@ Inductive type : Type :=
   | type_var : nat -> type
   | type_fun : type -> lifetime -> type -> type
   | type_ctor : ctor_tag -> lifetime -> list type -> type
-  | type_lt_all : type -> type  (* bound *)
+  | type_lt_all : type -> type          (* bound       *)
   | type_ty_all : type -> type -> type  (* bound, body *)
   .
 
@@ -74,13 +74,15 @@ Inductive term : Type :=
   (* binders:                                                          *)
   (*   index 0 = the (single) op argument                              *)
   (*   index 1 = the resumption k                                      *)
+  (* effect, number of op's polymorphic type variables, effect type    *)
+  (* parameters, resulting handler's type, op's body, handler's body   *)
   | term_handle : eff_tag -> nat -> list type -> type -> term -> term -> term
   (* perform x Ss arg — Ss instantiates the operation's β-args.        *)
   | term_perform : term -> list type -> term -> term
-  (* runtime-only: capability value (paper's K_cap τ̄ m h).             *)
+  (* runtime-only: capability value                      .             *)
   (* Carries effect tag, marker, β-arity, α-type-args, and op_body.    *)
   | term_cap : eff_tag -> marker -> nat -> list type -> type -> term -> term
-  (* runtime-only: continuation delimiter (paper's handler_m t).       *)
+  (* runtime-only: continuation delimiter.                             *)
   | term_handler_m : marker -> type -> term -> term
   (* runtime-only: reified resumption value. `term_resume m b` is the  *)
   (* one-argument resumption produced by H_Perform; `b` has +1 term    *)
@@ -101,7 +103,7 @@ Inductive value : term -> Prop :=
   | value_ctor   : forall K l lts Ts vs,
       Forall value vs ->
       value (term_ctor K l lts Ts vs)
-    | value_cap    : forall E m n_β Ts T_R op_body,
+  | value_cap    : forall E m n_β Ts T_R op_body,
       value (term_cap E m n_β Ts T_R op_body)
   | value_resume : forall m T_R b,
       value (term_resume m T_R b)
