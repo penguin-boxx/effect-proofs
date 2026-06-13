@@ -16,11 +16,6 @@ Require Import SubstitutionTheory.
 (* that contains only lifetime and constructor bindings (no bind_tm,  *)
 (* no bind_ty).  This blocks SA_VarCtx at the top level and matches   *)
 (* the paper's "program-level" evaluation scenario.                   *)
-(*                                                                    *)
-(* Substitution-style lemmas (beta for tm/ty/lt and list              *)
-(* substitutions used by the match-yes case) are axiomatized; they    *)
-(* are standard de Bruijn manipulations orthogonal to the paper's     *)
-(* contribution.                                                      *)
 (* ================================================================== *)
 
 (* ------------------------------------------------------------------ *)
@@ -28,14 +23,14 @@ Require Import SubstitutionTheory.
 (*                                                                    *)
 (* Under an `eval_ctx` (no `bind_eff` entries), `T_Cap` cannot fire,  *)
 (* so a well-typed term cannot be a perform of a typed capability.    *)
-(* We prove this structurally:                                         *)
+(* We prove this structurally:                                        *)
 (*                                                                    *)
 (*   1. A well-typed `term_cap E …` forces `ctx_lookup_eff Γ E` to be *)
 (*      `Some …` (recorded by `T_Cap`; `T_Sub` is term-preserving).   *)
 (*   2. Every evaluation-context constructor (`ectx`) types its hole  *)
 (*      sub-term in the *same* context `Γ` — none introduce binders — *)
-(*      so `Γ ⊢ₜ plug P u : T` yields a typing of `u` under `Γ`.       *)
-(*   3. Inverting the `term_perform`/`term_cap` typing then collides   *)
+(*      so `Γ ⊢ₜ plug P u : T` yields a typing of `u` under `Γ`.      *)
+(*   3. Inverting the `term_perform`/`term_cap` typing then collides  *)
 (*      with `eval_ctx_no_eff`, giving the contradiction.             *)
 (* ------------------------------------------------------------------ *)
 
@@ -61,7 +56,7 @@ Proof.
 Qed.
 
 (* Subsumption-stripping inversions: each gives a typing of the      *)
-(* hole-bearing sub-term in the same context Γ.                       *)
+(* hole-bearing sub-term in the same context Γ.                      *)
 
 Lemma typed_app_inv : forall Γ f x T,
   Γ ⊢ₜ term_app f x : T ->
@@ -177,12 +172,6 @@ Proof.
     apply typed_perform_inv in H. destruct H as [Tr [Ta [_ Ha]]].
     eapply IHP; exact Ha.
 Qed.
-
-(* The old effect-free confinement lemma that ruled out a typed
-   `perform (cap ...)` under `eval_ctx` was intentionally removed in Phase 5:
-   `eval_ctx` now admits `bind_eff`, so the statement is false.  The replacement
-   invariant is `marker_ok`, which tracks whether runtime capabilities occur
-   under their matching handler marker. *)
 
 (* ------------------------------------------------------------------ *)
 (* Subtyping shape inversion under eval_ctx.                          *)
@@ -975,11 +964,11 @@ Proof.
 Qed.
 
 (* ================================================================== *)
-(* marker_ok metatheory: monotonicity and substitution invariance      *)
-(*                                                                     *)
-(* These are the genuinely-true, reusable structural facts about the   *)
-(* runtime marker invariant.  They are needed by any sound proof of    *)
-(* marker preservation (subject reduction for marker_ok).              *)
+(* marker_ok metatheory: monotonicity and substitution invariance     *)
+(*                                                                    *)
+(* These are the genuinely-true, reusable structural facts about the  *)
+(* runtime marker invariant.  They are needed by any sound proof of   *)
+(* marker preservation (subject reduction for marker_ok).             *)
 (* ================================================================== *)
 
 (* Top-level mirror of the nested marker_ok_list fixpoint, so that the  *)
@@ -1233,17 +1222,17 @@ Definition perform_escape (ms : list marker) (t : term) : Prop :=
 Definition progress_result (ms : list marker) (t : term) : Prop :=
   value t \/ (exists t', t ==> t') \/ perform_escape ms t.
 
-(* Phase-1/schema regularity for effect receivers: a value inhabiting an
-   effect capability type is a runtime capability.
+(* Schema regularity for effect receivers: a value inhabiting an   *)
+(** effect capability type is a runtime capability.                *)
 
-   This is the dual of `canonical_ctor_data`: there the `T_Cap` case was
-   impossible because the data tag has `ctx_lookup_eff = None`; here the
-   `T_Ctor` case is impossible because the effect tag has
-   `ctx_lookup_eff = Some _`, and the data/effect tag-disjointness premise on
-   `T_Ctor` (`ctx_lookup_eff Γ result_tag = None`) contradicts it.  The
-   `E_tag <> any_tag` side-condition required by `sub_ctor_inv` is derived from
-   `eval_ctx_no_eff_any`: under an `eval_ctx`, no effect is registered at the
-   reserved Any tag. *)
+(* This is the dual of `canonical_ctor_data`: there the `T_Cap` case was        *)
+(* impossible because the data tag has `ctx_lookup_eff = None`; here the        *)
+(* `T_Ctor` case is impossible because the effect tag has                       *)
+(* `ctx_lookup_eff = Some _`, and the data/effect tag-disjointness premise on   *)
+(* `T_Ctor` (`ctx_lookup_eff Γ result_tag = None`) contradicts it.  The         *)
+(* `E_tag <> any_tag` side-condition required by `sub_ctor_inv` is derived from *)
+(* `eval_ctx_no_eff_any`: under an `eval_ctx`, no effect is registered at the   *)
+(* reserved Any tag.                                                            *)
 Lemma canonical_cap : forall Γ v E_tag Δ Ts n_α n_β sig ret,
     eval_ctx Γ ->
     ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
@@ -1623,184 +1612,6 @@ Proof.
     + right. right. exists (@nil term), v, vs. repeat split; auto.
 Qed.
 
-(* Legacy progress without marker_types_safe is intentionally kept out of the
-  checked development. The missing annotation premise is exactly what made the
-  old handler-progress annotation axiom false; progress_open_safe below is the
-  maintained formulation. *)
-(*
-Theorem progress_open : forall Γ ms t T,
-  eval_ctx Γ ->
-  marker_ok ms t ->
-  Γ ⊢ₜ t : T ->
-  progress_result ms t.
-Proof.
-  intros Γ0 ms0 t0 T0 Hec0 Hmok0 Hty0. revert ms0 Hmok0 Hec0.
-  revert Hty0; revert T0; revert t0; revert Γ0.
-  apply (typing_ind2 (fun Γ t T => forall ms,
-    marker_ok ms t -> eval_ctx Γ -> progress_result ms t)).
-  - (* T_Var *)
-    intros Γ x T Hlk Hwf ms Hmok Hec.
-    rewrite eval_ctx_no_tm in Hlk; auto; discriminate.
-  - (* T_Sub *)
-    intros Γ t T U Hty IH Hsub ms Hmok Hec. apply IH; assumption.
-  - (* T_Lam *)
-    intros Γ body A l B HwfA HwfB Hbody IHbody Hcap ms Hmok Hec. left; constructor.
-  - (* T_App *)
-    intros Γ t1 t2 A l B Ht1 IH1 Ht2 IH2 ms Hmok Hec.
-    simpl in Hmok. destruct Hmok as [Hmok1 Hmok2].
-    specialize (IH1 ms Hmok1 Hec). specialize (IH2 ms Hmok2 Hec).
-    destruct IH1 as [Hv1 | [[t1' Hs1] | Hesc1]].
-    + destruct IH2 as [Hv2 | [[t2' Hs2] | Hesc2]].
-        * destruct (canonical_fun _ _ _ _ _ Hec Ht1 Hv1) as
-          [[body [T0 Heq]] | [m [T_B [T_R [b Heq]]]]]; subst.
-        -- right. left. eexists. apply S_Beta; auto.
-        -- right. left. eexists. apply S_Resume; auto.
-      * destruct (S_App2 t1 t2 Hv1 (ex_intro _ t2' Hs2)) as [u Hu].
-        right. left. exists u. exact Hu.
-      * destruct Hesc2 as (Et & m & nb & Ts0 & T_R & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
-        right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, v, (EC_app2 t1 P).
-        repeat split; auto.
-    + destruct (S_App1 t1 t2 (ex_intro _ t1' Hs1)) as [u Hu].
-      right. left. exists u. exact Hu.
-    + destruct Hesc1 as (Et & m & nb & Ts0 & T_R & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
-      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, v, (EC_app1 P t2).
-      repeat split; auto.
-  - (* T_TyLam *)
-    intros Γ bound body T HwfBound HwfT Hbody IHbody ms Hmok Hec. left; constructor.
-  - (* T_TyApp *)
-    intros Γ t B U S Ht IH HwfS Hsub HnlArg ms Hmok Hec.
-    simpl in Hmok. specialize (IH ms Hmok Hec).
-    destruct IH as [Hv | [[t' Hs] | Hesc]].
-    + destruct (canonical_ty_all _ _ _ _ Hec Ht Hv) as [bnd [body Heq]]; subst.
-      right. left. eexists. apply S_TyBeta.
-    + destruct (S_TyApp t S (ex_intro _ t' Hs)) as [u Hu].
-      right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
-      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, v, (EC_ty_app P S).
-      repeat split; auto.
-  - (* T_LtLam *)
-    intros Γ body T HwfT Hbody IHbody ms Hmok Hec. left; constructor.
-  - (* T_LtApp *)
-    intros Γ t T l Ht IH Hwfl ms Hmok Hec.
-    simpl in Hmok. specialize (IH ms Hmok Hec).
-    destruct IH as [Hv | [[t' Hs] | Hesc]].
-    + destruct (canonical_lt_all _ _ _ Hec Ht Hv) as [body Heq]; subst.
-      right. left. eexists. apply S_LtBeta.
-    + destruct (S_LtApp t l (ex_intro _ t' Hs)) as [u Hu].
-      right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
-      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, v, (EC_lt_app P l).
-      repeat split; auto.
-  - (* T_Ctor *)
-    intros Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields
-      result_ty result_tag l vs
-      Hlk Heff Hlen_lts Hwflts Hrho Hlen_Ts HwfTs Hresult Hshape Hresult_eff Hwfl Hlt Hlen_vs
-      HF HFP HargsIH ms Hmok Hec.
-    assert (Hmok_vs : Forall (marker_ok ms) vs).
-    { clear - Hmok. induction vs as [|v vs IH]; simpl in Hmok; constructor; [tauto|apply IH; tauto]. }
-    assert (Hforall : Forall (progress_result ms) vs).
-    { clear - HargsIH Hmok_vs Hec.
-      induction HargsIH; inversion Hmok_vs; subst; constructor.
-      - apply H; assumption.
-      - apply IHHargsIH; assumption. }
-    destruct (split_values_or_step_or_escape _ _ Hforall) as
-      [Hall | [[vsl [tm [tm' [vsr [Hallvl [Heq Hst]]]]]]
-              | [vsl [tm [vsr [Hallvl [Heq Hesc]]]]]]].
-    + left. constructor; auto.
-    + subst. destruct (S_Ctor K l lts Ts vsl tm vsr Hallvl (ex_intro _ tm' Hst)) as [u Hu].
-      right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & v & P & Hin & Hp & Hv & Heqesc).
-      subst vs tm.
-      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, v, (EC_ctor K l lts Ts vsl P vsr).
-      repeat split; auto.
-  - (* T_Match *)
-    intros Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
-      rho_fields scrut_result_ty result_tag result_l Γ' yes_body eta elim_result no_body
-      HKne Hlk Heff Hlts Hrho HTs HwfTs Hscrut_result Hscrut_shape
-      Hresult_eff Hresult_ne HwfDelta Hresult_l Hscrut IHscrut Harity HGamma' Hyes IHyes Helim Hno IHno
-      ms Hmok Hec.
-    simpl in Hmok. destruct Hmok as [Hmok_scrut [Hmok_yes Hmok_no]].
-    specialize (IHscrut ms Hmok_scrut Hec).
-    destruct IHscrut as [Hv | [[scrut' Hs] | Hesc]].
-    + destruct (canonical_ctor_data _ _ result_tag Delta Ts Hec Hresult_eff Hscrut Hv Hresult_ne)
-        as [K' [l' [lts' [Ts' [vs [Heq Hvvs]]]]]]; subst.
-      right. left.
-      destruct (Nat.eq_dec K' K) as [HKeq | HKdiff].
-      * subst K'.
-        destruct (ctor_value_arity _ _ _ _ _ _ _ Hscrut)
-          as [n_lt' [n_ty' [sig' [res' [Hlook Hlen]]]]].
-        rewrite Hlk in Hlook.
-        injection Hlook as Heq1 Heq2 Heq3 Heq4.
-        subst n_lt' n_ty' sig' res'.
-        eexists.
-        match goal with
-        | |- term_match _ _ _ ?a _ _ ==> _ => replace a with (@length term vs)
-        end.
-        2:{ rewrite List.length_map. exact Hlen. }
-        apply S_MatchYes. auto.
-      * eexists. eapply S_MatchNo; eauto.
-    + destruct (S_Match scrut K n_lt arity yes_body no_body (ex_intro _ scrut' Hs)) as [u Hu].
-      right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & v & P & Hin & Hp & Hv & Heq).
-      subst scrut.
-      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, v, (EC_match P K n_lt arity yes_body no_body).
-      repeat split; auto.
-  - (* T_Cap *)
-    intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
-      Heff Hlen HwfTs HwfTR Hsb Hrb Hop IHop ms Hmok Hec. left; constructor.
-  - (* T_Handle *)
-    intros Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β
-      Heff Hlen HwfTs HwfTR HnoLocal Hsb Hrb Hop IHop Hbody IHbody ms Hmok Hec.
-    set (m := marker_bound (term_handle E_tag n_β Ts T_R op_body body)).
-    right. left.
-    exists (term_handler_m m T_R (subst_tm 0 (term_cap E_tag m n_β Ts T_R op_body) body)).
-    unfold m. apply S_Handle. apply marker_bound_fresh.
-  - (* T_Perform *)
-    intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
-      Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs HnoSs Hsi HnoSig Hri HwfRet Harg IHarg ms Hmok Hec.
-    simpl in Hmok. destruct Hmok as [Hmok_recv Hmok_arg].
-    specialize (IHrecv ms Hmok_recv Hec).
-    destruct IHrecv as [Hvrecv | [[recv' Hsrecv] | Hescrecv]].
-    + specialize (IHarg ms Hmok_arg Hec).
-      destruct IHarg as [Hvarg | [[arg' Hsarg] | Hescarg]].
-      * destruct (canonical_cap Γ recv E_tag Δ Ts n_α n_β sig ret Hec Heff Hrecv Hvrecv)
-          as [m [T_R [op_body Heqcap]]].
-        subst recv. simpl in Hmok_recv. destruct Hmok_recv as [Hin Hop_ok].
-        right. right. exists E_tag, m, n_β, Ts, T_R, op_body, Ss, arg, EC_hole.
-        repeat split; auto.
-      * destruct (S_PerformArg recv Ss arg Hvrecv (ex_intro _ arg' Hsarg)) as [u Hu].
-        right. left. exists u. exact Hu.
-      * destruct Hescarg as (Et & m & nb & Ts0 & T_R & ob & Ss0 & v & P & Hin & Hp & Hv & Heq); subst.
-        right. right. exists Et, m, nb, Ts0, T_R, ob, Ss0, v, (EC_perform_a recv Ss P).
-        repeat split; auto.
-    + destruct (S_PerformRecv recv Ss arg (ex_intro _ recv' Hsrecv)) as [u Hu].
-      right. left. exists u. exact Hu.
-    + destruct Hescrecv as (Et & m & nb & Ts0 & T_R & ob & Ss0 & v & P & Hin & Hp & Hv & Heq); subst.
-      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss0, v, (EC_perform_r P Ss arg).
-      repeat split; auto.
-  - (* T_HandlerM *)
-    intros Γ m T t Ht IH ms Hmok Hec.
-    simpl in Hmok. specialize (IH (m :: ms) Hmok Hec).
-    destruct IH as [Hv | [[t' Hs] | Hesc]].
-    + right. left. exists t. apply S_Return; auto.
-    + destruct (S_HandlerM m T t (ex_intro _ t' Hs)) as [u Hu].
-      right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m0 & nb & Ts & T_R0 & op_body & Ss & v & P & Hin & Hp & Hv & Heq); subst.
-      destruct (Nat.eq_dec m0 m) as [Heqm | Hneq].
-      * subst m0. right. left. eexists.
-        pose proof (handler_progress_annotation_match Γ ms m T Et nb Ts T_R op_body Ss v P
-                      Hec Ht Hv Hp Hmok) as HTR.
-        subst T_R.
-        apply (S_step EC_hole); [constructor|]. apply H_Perform; auto.
-      * destruct Hin as [Hin_head | Hin_tail].
-        { subst. contradiction. }
-        right. right. exists Et, m0, nb, Ts, T_R, op_body, Ss, v, (EC_handler_m m T P).
-        repeat split; auto.
-  - (* T_Resume *)
-    intros Γ m T_R b A HwfA HwfTR Hb IHb ms Hmok Hec. left; constructor.
-Qed.
-*)
-
 Theorem progress_open_safe : forall Γ ms t T,
   eval_ctx Γ ->
   marker_ok ms t ->
@@ -2005,10 +1816,6 @@ Proof.
   eapply progress_safe; eauto.
 Qed.
 
-
-(* Substitution-style lemmas (subst_tm_lemma, subst_ty_in_tm_lemma,   *)
-(* subst_lt_in_tm_lemma) are now in SubstitutionTheory.v.             *)
-
 (* ------------------------------------------------------------------ *)
 (* Typing inversion lemmas                                            *)
 (* ------------------------------------------------------------------ *)
@@ -2122,22 +1929,22 @@ Proof.
 Qed.
 
 (* ------------------------------------------------------------------ *)
-(* Kernel-F<: narrowing for subtyping (now a theorem).                 *)
+(* Kernel-F<: narrowing for subtyping.                                *)
 (*                                                                    *)
-(* Replacing the bound of a type-variable binder by a *subtype*        *)
-(* preserves any subtyping derivation under it.  We prove this by       *)
-(* induction on the derivation, generalised over an arbitrary context   *)
-(* prefix `Δ` so the binder cases (`SA_LtAll`/`SA_TyAll`) go through.   *)
+(* Replacing the bound of a type-variable binder by a *subtype*       *)
+(* preserves any subtyping derivation under it.  We prove this by     *)
+(* induction on the derivation, generalised over an arbitrary context *)
+(* prefix `Δ` so the binder cases (`SA_LtAll`/`SA_TyAll`) go through. *)
 (*                                                                    *)
-(* Three context-level facts are needed:                               *)
-(*   (a) lifetime subtyping is invariant under narrowing a `bind_ty`    *)
-(*       (proved: `ctx_lookup_lt` skips `bind_ty` entries),             *)
-(*   (b) general (no-shift) weakening of `<::` — for the `SA_VarCtx`    *)
-(*       case when the looked-up variable *is* the narrowed one,        *)
-(*   (c) `lt_of_ty_G` is monotone under narrowing — narrowing a bound   *)
-(*       to a subtype can only shrink the computed `lt_∅`.              *)
-(* (b) and (c) are standard de Bruijn / lattice facts kept axiomatic,   *)
-(* in the same spirit as `sub_weaken_ty`; everything else is proved.    *)
+(* Three context-level facts are needed:                              *)
+(*   (a) lifetime subtyping is invariant under narrowing a `bind_ty`  *)
+(*       (proved: `ctx_lookup_lt` skips `bind_ty` entries),           *)
+(*   (b) general (no-shift) weakening of `<::` — for the `SA_VarCtx`  *)
+(*       case when the looked-up variable *is* the narrowed one,      *)
+(*   (c) `lt_of_ty_G` is monotone under narrowing — narrowing a bound *)
+(*       to a subtype can only shrink the computed `lt_∅`.            *)
+(* (b) and (c) are standard de Bruijn / lattice facts kept axiomatic, *)
+(* in the same spirit as `sub_weaken_ty`; everything else is proved.  *)
 (* ------------------------------------------------------------------ *)
 
 (* (a.0) `ctx_lookup_lt` ignores the narrowed `bind_ty` slot. *)
@@ -2225,7 +2032,7 @@ Proof.
 Qed.
 
 (* ------------------------------------------------------------------ *)
-(* Lattice helper: `lt_min` is monotone in both arguments.             *)
+(* Lattice helper: `lt_min` is monotone in both arguments.            *)
 (* ------------------------------------------------------------------ *)
 Lemma lt_min_mono : forall G a a' b b',
   G ⊢ₗ a <: a' -> G ⊢ₗ b <: b' -> G ⊢ₗ lt_min a b <: lt_min a' b'.
@@ -2245,10 +2052,10 @@ Proof.
 Qed.
 
 (* ------------------------------------------------------------------ *)
-(* `lt_of_ty_ctx` is monotone in its fuel argument: with more fuel,    *)
-(* type-variable chains are resolved further, which can only *raise*   *)
-(* the computed lifetime (chains that run out of fuel bottom out at    *)
-(* `lt_free`, the lattice bottom).                                     *)
+(* `lt_of_ty_ctx` is monotone in its fuel argument: with more fuel,   *)
+(* type-variable chains are resolved further, which can only *raise*  *)
+(* the computed lifetime (chains that run out of fuel bottom out at   *)
+(* `lt_free`, the lattice bottom).                                    *)
 (* ------------------------------------------------------------------ *)
 Lemma lt_of_ty_ctx_wf : forall f G T,
   ty_wf G T -> f <= List.length G -> lt_wf G (lt_of_ty_ctx f G T)
@@ -2320,12 +2127,12 @@ Proof.
       * apply lt_of_ty_ctx_fuel_mono_S; assumption.
 Qed.
 
-(* ------------------------------------------------------------------ *)
+(* ------------------------------------------------------------------- *)
 (* `lt_of_ty_ctx` is monotone under subtyping (fixed context), as long *)
 (* as the fuel does not exceed the context length (so the `SA_Any`     *)
 (* premise, stated at fuel `|G|`, can be transported down via fuel     *)
 (* monotonicity).                                                      *)
-(* ------------------------------------------------------------------ *)
+(* ------------------------------------------------------------------- *)
 Lemma lt_of_ty_ctx_mono_sub : forall f G S T,
   G ⊢ S <:: T ->
   f <= List.length G ->
@@ -2357,16 +2164,6 @@ Proof.
   - (* SA_LtAll *) destruct f as [|f']; simpl; apply LS_Refl; constructor.
   - (* SA_TyAll *) destruct f as [|f']; simpl; apply LS_Refl; constructor.
 Qed.
-
-(* ------------------------------------------------------------------ *)
-(* (b) sub_weaken_cons / sub_weaken_app are now in SubstitutionTheory.v *)
-(* ------------------------------------------------------------------ *)
-
-(* ------------------------------------------------------------------ *)
-(* (c) Narrowing a `bind_ty` bound to a subtype.  Now fully proved via  *)
-(* the `NarrowTy` relation, resting only on the (proved) shifting        *)
-(* weakening lemmas `sub_weaken_ty_shift` / `sub_weaken_lt_shift`.       *)
-(* ------------------------------------------------------------------ *)
 
 (* `G` is the wider (sup) context, `G'` the narrowed (sub) context. *)
 Inductive NarrowTy : type -> type -> ctx -> ctx -> Prop :=
@@ -2667,23 +2464,23 @@ Proof.
   exact (proj2 ty_wf_NT_all G Ts Hwf Bsub Bsup G' HN).
 Qed.
 
-(* Well-formedness of types does not depend on the subtyping strength of a
-   type-variable bound, only on the replacement bound being well-formed. *)
+(* Well-formedness of types does not depend on the subtyping strength of a *)
+(* type-variable bound, only on the replacement bound being well-formed.   *)
 Inductive ReplaceTy : ctx -> ctx -> Prop :=
-| RT_here : forall Γ B B',
-    ty_wf Γ B ->
-    ty_wf Γ B' ->
-    ReplaceTy (bind_ty B :: Γ) (bind_ty B' :: Γ)
-| RT_ty : forall G G' B,
-    ReplaceTy G G' ->
-    ty_wf G B ->
-    ty_wf G' B ->
-    ReplaceTy (bind_ty B :: G) (bind_ty B :: G')
-| RT_lt : forall G G' Δ,
-    ReplaceTy G G' ->
-    lt_wf G Δ ->
-    lt_wf G' Δ ->
-    ReplaceTy (bind_lt Δ :: G) (bind_lt Δ :: G').
+  | RT_here : forall Γ B B',
+      ty_wf Γ B ->
+      ty_wf Γ B' ->
+      ReplaceTy (bind_ty B :: Γ) (bind_ty B' :: Γ)
+  | RT_ty : forall G G' B,
+      ReplaceTy G G' ->
+      ty_wf G B ->
+      ty_wf G' B ->
+      ReplaceTy (bind_ty B :: G) (bind_ty B :: G')
+  | RT_lt : forall G G' Δ,
+      ReplaceTy G G' ->
+      lt_wf G Δ ->
+      lt_wf G' Δ ->
+      ReplaceTy (bind_lt Δ :: G) (bind_lt Δ :: G').
 
 Lemma RT_lookup_lt : forall G G',
   ReplaceTy G G' -> forall x, ctx_lookup_lt G x = ctx_lookup_lt G' x.
@@ -2888,13 +2685,11 @@ Proof.
     eexists; eexists; repeat split; eauto.
 Qed.
 
-(* sub_subst_ty / sub_subst_lt are now in SubstitutionTheory.v.       *)
-
-(* Replacing one stepping argument inside a well-typed constructor    *)
+(* Replacing one stepping argument inside a well-typed constructor     *)
 (* argument list preserves the per-element typing.  The per-element    *)
 (* preservation comes from the `typing_ind2` IH packaged as the second *)
 (* `Forall2` hypothesis below; this lemma is consumed in the T_Ctor    *)
-(* case of `preservation`.                                            *)
+(* case of `preservation`.                                             *)
 Lemma ctor_args_preserve :
   forall Γ vsl t0 t0' tsr rho_fields,
   Forall2 (fun v rho => Γ ⊢ₜ v : rho) (vsl ++ t0 :: tsr) rho_fields ->
@@ -2924,28 +2719,24 @@ Proof.
     + eapply IHvsl with (t0 := t0); eassumption.
 Qed.
 
-(* ================================================================== *)
-(* Variance soundness for `elim_ty` / `elim_lt`                       *)
-(*                                                                    *)
+(* =================================================================== *)
+(* Variance soundness for `elim_ty` / `elim_lt`                        *)
+(*                                                                     *)
 (* This is the central meta-theoretic lemma that justifies eliminating *)
 (* fresh lifetime variables from a match-branch result type:           *)
-(*                                                                    *)
+(*                                                                     *)
 (*   Provided eta has no invariant occurrence of the eliminated var,   *)
 (*   substituting any concrete witness l_0 (with l_0 <: Δ) yields a    *)
-(*   subtype of `elim_ty 0 Δ var_pos eta`.                              *)
-(*                                                                    *)
+(*   subtype of `elim_ty 0 Δ var_pos eta`.                             *)
+(*                                                                     *)
 (* The proof goes by mutual structural induction on the eliminated     *)
 (* type/lifetime, simultaneously varying the variance position.        *)
 (* Auxiliary mechanical de Bruijn lemmas are axiomatized: subtyping    *)
-(* monotonicity under shift / single-var lt-substitution.             *)
-(* ================================================================== *)
-
-(* Mechanical de Bruijn helpers (shift_subst_lt_comm,                 *)
-(* subst_lt_in_ty_ctor_eq, sub_weaken_ty) are now in                  *)
-(* SubstitutionTheory.v.                                              *)
+(* monotonicity under shift / single-var lt-substitution.              *)
+(* =================================================================== *)
 
 (* --- Custom type induction principle providing per-element IH      *)
-(*     for the list-of-types in `type_ctor`.                          *)
+(*     for the list-of-types in `type_ctor`.                         *)
 Section TypeInd.
   Variable P : type -> Prop.
   Hypotheses
@@ -3219,8 +3010,8 @@ Proof.
 Qed.
 
 (* --- Freshness: elim output has no free occurrence of the          *)
-(*     eliminated variable.  Encoded via the self-referential         *)
-(*     identity shift_lt 1 v (subst_lt v lt_free X) = X.              *)
+(*     eliminated variable.  Encoded via the self-referential        *)
+(*     identity shift_lt 1 v (subst_lt v lt_free X) = X.             *)
 Lemma elim_lt_closes : forall l lvar bound p l',
   elim_lt lvar bound p l = Some l' ->
   shift_lt 1 lvar (subst_lt lvar lt_free bound) = bound ->
@@ -3307,11 +3098,8 @@ Qed.
 
 (* --- Iterated elim soundness --- *)
 
-(* iter_subst_lt_in_ty, chain_bounded and iter_subst_lt_in_ty_mono are *)
-(* now in SubstitutionTheory.v.                                        *)
-
 (* ================================================================== *)
-(* Piece 5: over-approximate-in-context soundness.                    *)
+(* Over-approximate-in-context soundness.                             *)
 (* Eliminating n positive binders, then over-approximating the        *)
 (* eliminated variables by a context of n fresh lt-binders, yields    *)
 (*   push_corr n Delta G ⊢ eta <:: shift_lt_in_ty n 0 elim_result.    *)
@@ -3544,8 +3332,8 @@ Qed.
 (* ------------------------------------------------------------------ *)
 (* Well-scopedness: a well-typed term's free term variables are all   *)
 (* bound by its typing context.  Specialized to an `eval_ctx` (which  *)
-(* has no `bind_tm` entries) this gives term-closedness, discharging   *)
-(* the closedness side-condition of `subst_tm_lemma`.                  *)
+(* has no `bind_tm` entries) this gives term-closedness, discharging  *)
+(* the closedness side-condition of `subst_tm_lemma`.                 *)
 (* ------------------------------------------------------------------ *)
 
 (* Shifting the cutoff of `free_tm_vars` by one shifts membership.     *)
@@ -3993,256 +3781,6 @@ Proof.
 Qed.
 
 (* ------------------------------------------------------------------ *)
-(* Match-yes preservation                                             *)
-(* ------------------------------------------------------------------ *)
-
-(*
-Lemma match_yes_preservation : forall Γ K Delta lts Ts vs n_lt arity yes_body no_body T,
-  eval_ctx Γ ->
-  Γ ⊢ₜ term_match (term_ctor K Delta lts Ts vs) K n_lt arity yes_body no_body : T ->
-  Forall value vs ->
-  arity = List.length vs ->
-  Γ ⊢ₜ subst_list_tm vs (subst_list_lt_in_tm lts yes_body) : T.
-Proof.
-  intros Γ K Delta lts Ts vs n_lt arity yes_body no_body T Hec Hmatch Hvals Harity_vs.
-  destruct (match_typing_inv _ _ _ _ _ _ _ _ Hmatch) as
-    (n_lt_m & n_ty & sigma & result & Ts_m & Delta_m & scrut_result_ty &
-     result_tag & result_l & eta & elim_result & Hinv).
-  destruct Hinv as
-    (HKne & Hctor_lk & Heff & Hnlt_eq & HTs_len & Hscrut_result & Hscrut_shape &
-     Hresult_ne & HwfDelta_m & Hresult_l & Hscrut & Harity_sigma & Hyes & Helim & Hno & HsubT).
-  subst n_lt_m.
-  simpl in Hscrut.
-  destruct (ctor_typing_inv _ _ _ _ _ _ _ Hscrut) as
-    [n_lt' [n_ty' [sigma' [result' [actual_result_tag Hctor_inv]]]]].
-  destruct Hctor_inv as
-    [Hctor_lk' [Hlts_len [HTs_len_actual [Hactual_result [Hactual_lifetime [Hlts_bound [Hvs_len [Hfields Hctor_sub]]]]]]]].
-  rewrite Hctor_lk in Hctor_lk'. injection Hctor_lk' as Hnlt Hnty Hsigma Hresult.
-  subst n_lt' n_ty' sigma' result'.
-  destruct (sub_ctor_inv _ _ _ _ _ Hec Hctor_sub Hresult_ne) as [Delta0 [Hctor_eq HDelta_sub]].
-  injection Hctor_eq as HDelta_eq HTs_eq. subst Delta0 Ts_m.
-  assert (Harity_vs_len : List.length vs = List.length sigma) by lia.
-  destruct (ctor_lts_chain_bounded Γ lts n_lt n_ty Ts sigma vs
-              (lt_of_ty_list (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma)) Delta_m
-              Hfields Hlts_len eq_refl
-              (LS_Trans _ _ _ _ Hactual_lifetime HDelta_sub)) as
-          [_ [_ [Hbounded_fields _]]].
-  assert (Hforall : Forall (fun l => Γ ⊢ₗ l <: Delta_m) lts).
-  { eapply Forall_impl; [|exact Hlts_bound].
-    intros l Hl. eapply LS_Trans; [exact Hl|exact HDelta_sub]. }
-  assert (Hcb : chain_bounded Γ lts (shift_lt n_lt 0 Delta_m)).
-  { eapply chain_bounded_from_eval_ctx_forall; eauto. }
-  assert (Hlt_body :
-    (fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
-       Γ (subst_list_lt_in_ty_each lts (List.map (inst_ctor_type n_lt n_ty (lt_var_list n_lt) Ts) sigma)))
-      ⊢ₜ subst_list_lt_in_tm lts yes_body : subst_list_lt_in_ty lts eta).
-  { eapply (subst_list_lt_in_tm_lemma Γ
-              (List.map (inst_ctor_type n_lt n_ty (lt_var_list n_lt) Ts) sigma)
-              n_lt Delta_m lts yes_body eta);
-      [exact Hlts_len | exact Hcb | exact Hyes]. }
-  rewrite (inst_ctor_type_subst_eq n_lt n_ty lts Ts sigma Hlts_len Hbounded_fields) in Hlt_body.
-  assert (Htm_body : Γ ⊢ₜ subst_list_tm vs (subst_list_lt_in_tm lts yes_body) : subst_list_lt_in_ty lts eta).
-  { assert (Hclosed_vs : Forall (fun v => free_tm_vars 0 v = []) vs).
-    { clear - Hfields Hec.
-      induction Hfields as [|v rho vs0 rhos0 Hvty Hfields' IH]; constructor.
-      - eapply typing_closed; [exact Hec | exact Hvty].
-      - exact IH. }
-    eapply (subst_list_tm_lemma Γ vs
-              (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma)
-              (subst_list_lt_in_tm lts yes_body) (subst_list_lt_in_ty lts eta)).
-    - rewrite List.length_map. exact Hvs_len.
-    - exact Hvals.
-    - exact Hclosed_vs.
-    - exact Hfields.
-    - exact Hlt_body. }
-  eapply T_Sub; [exact Htm_body|].
-  assert (HwfEta_push : ty_wf (push_corr n_lt Delta_m Γ) eta).
-  { pose proof (typing_implies_wf _ _ _ Hyes) as HwfEta_yes.
-    eapply ty_wf_lookup_ty_eq_lt_dom; [exact HwfEta_yes| |].
-    - intros x Hsome. rewrite ctx_lookup_lt_fold_bind_tm in Hsome.
-      apply ctx_lookup_lt_push_lt_vars_push_corr_dom. exact Hsome.
-    - intro a. rewrite ctx_lookup_ty_fold_bind_tm.
-      apply ctx_lookup_ty_push_lt_vars_push_corr. }
-  pose proof (elim_ty_n_sound_pos n_lt Delta_m lts eta elim_result Γ
-                Helim Hlts_len HwfDelta_m HwfEta_push Hforall) as HelimSub.
-  destruct HsubT as [HeqT|HsubT].
-  - subst T. exact HelimSub.
-  - eapply SA_Trans; [exact HelimSub|exact HsubT].
-Qed.
-*)
-
-(* Legacy preservation depended on an axiomatized H_Perform case. The public
-  safety theorems now state reachable typing explicitly; a future preservation
-  theorem should be proved against the stronger runtime invariants instead. *)
-(*
-Theorem preservation : forall Γ t t' T,
-  eval_ctx Γ ->
-  Γ ⊢ₜ t : T ->
-  t ==> t' ->
-  Γ ⊢ₜ t' : T.
-Proof.
-  intros Γ0 t0 t'0 T0 Hec0 Hty0 Hstep0.
-  revert Hstep0; revert t'0; revert Hec0.
-  revert Hty0; revert T0; revert t0; revert Γ0.
-  apply (typing_ind2
-           (fun Γ t T => eval_ctx Γ -> forall t', t ==> t' -> Γ ⊢ₜ t' : T)).
-  - (* T_Var *)
-    intros Γ x T Hlk HwfT Hec t'' Hstep. no_step.
-  - (* T_Sub *)
-    intros Γ t T U Ht IH Hsub Hec t'' Hstep.
-    specialize (IH Hec).
-    eapply T_Sub; [ apply IH; exact Hstep | exact Hsub ].
-  - (* T_Lam *)
-    intros Γ body A l B HwfA HwfB Hbody IHbody Hcap Hec t'' Hstep. no_step.
-  - (* T_App *)
-    intros Γ t1 t2 A l B Ht1 IH1 Ht2 IH2 Hec t'' Hstep.
-    specialize (IH1 Hec); specialize (IH2 Hec).
-    apply step_app_inv in Hstep.
-    destruct Hstep as [(body0 & T0 & v0 & E1 & E2 & Hv0 & E3)
-              | [ (m0 & T_R0 & b0 & v0 & E1 & E2 & Hv0 & E3)
-                      | [ (t1' & Hs1 & E3) | (t2' & Hv1 & Hs2 & E3) ]]].
-    + (* S_Beta *)
-      subst t1 t2 t''.
-      apply lam_typing_inv in Ht1.
-      destruct Ht1 as [l' [B' [Hbody Hsub]]].
-      destruct (sub_fun_inv _ _ _ _ _ Hec Hsub)
-        as [A'' [l'' [B'' [HeqT [HAsub [Hlsub HBsub]]]]]].
-      injection HeqT; intros; subst.
-      eapply T_Sub; [| exact HBsub].
-      eapply subst_tm_lemma.
-      * eapply typing_closed; [exact Hec | exact Ht2].
-      * exact Hbody.
-      * exact Hv0.
-      * eapply T_Sub; [exact Ht2 | exact HAsub].
-    + (* S_Resume *)
-      subst t1 t2 t''.
-      apply resume_typing_inv in Ht1.
-      destruct Ht1 as [A' [Hbody Hsub]].
-      destruct (sub_fun_inv _ _ _ _ _ Hec Hsub)
-        as [A'' [l'' [B'' [HeqT [HAsub [Hlsub HBsub]]]]]].
-      injection HeqT; intros; subst.
-      eapply T_Sub; [| exact HBsub].
-      apply T_HandlerM.
-      eapply subst_tm_lemma.
-      * eapply typing_closed; [exact Hec | exact Ht2].
-      * exact Hbody.
-      * exact Hv0.
-      * eapply T_Sub; [exact Ht2 | exact HAsub].
-    + subst t''. eapply T_App; eauto.
-    + subst t''. eapply T_App; eauto.
-  - (* T_TyLam *)
-    intros Γ bound body T HwfBound HwfT Hbody IHbody Hec t'' Hstep. no_step.
-  - (* T_TyApp *)
-    intros Γ t B U S Ht IH HwfS Hsub HnlArg Hec t'' Hstep.
-    specialize (IH Hec).
-    apply step_ty_app_inv in Hstep.
-    destruct Hstep as [(bound0 & body0 & E1 & E2) | (t0' & Hs & E2)].
-    + (* S_TyBeta *)
-      subst t t''.
-      apply ty_lam_typing_inv in Ht.
-      destruct Ht as [U0 [Hbody Hsub']].
-      destruct (sub_ty_all_inv_full _ _ _ _ Hec Hsub')
-        as [B0 [U1 [HeqU [HBsub Hsubbody]]]].
-      injection HeqU; intros; subst.
-      eapply T_Sub.
-      * eapply subst_ty_in_tm_lemma; [exact Hbody|]. eapply SA_Trans; eauto.
-      * eapply sub_subst_ty; eauto.
-    + subst t''. eapply T_TyApp; eauto.
-  - (* T_LtLam *)
-    intros Γ body T HwfT Hbody IHbody Hec t'' Hstep. no_step.
-  - (* T_LtApp *)
-    intros Γ t T l Ht IH Hwfl Hec t'' Hstep.
-    specialize (IH Hec).
-    apply step_lt_app_inv in Hstep.
-    destruct Hstep as [(body0 & E1 & E2) | (t0' & Hs & E2)].
-    + (* S_LtBeta *)
-      subst t t''.
-      apply lt_lam_typing_inv in Ht.
-      destruct Ht as [U0 [Hbody Hsub']].
-      destruct (sub_lt_all_inv_full _ _ _ Hec Hsub') as [U1 [HeqU Hsubbody]].
-      injection HeqU; intros; subst.
-      eapply T_Sub.
-      * eapply subst_lt_in_tm_lemma; [exact Hbody|]. apply LS_Local. exact Hwfl.
-      * eapply sub_subst_lt; [exact Hsubbody | apply LS_Local; exact Hwfl].
-    + subst t''. eapply T_LtApp; eauto.
-  - (* T_Ctor *)
-      intros Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields
-        result_ty result_tag l vs
-        Hlk Heff Hlen_lts HwfLts Hrho Hlen_Ts HwfTs Hresult Hshape Hresult_eff Hwfl Hlt Hlen_vs
-        HF HFP HargsIH Hec t'' Hstep.
-    apply step_ctor_inv in Hstep.
-    destruct Hstep as (vs0 & t0 & t0' & tsr0 & Hvs0 & Eargs & Hs0 & Et).
-    subst t''.
-    rewrite Eargs in HF, HFP, HargsIH.
-    assert (HF' : Forall2 (fun v rho => Γ ⊢ₜ v : rho)
-                          (vs0 ++ t0' :: tsr0) rho_fields).
-    { eapply ctor_args_preserve;
-      [ exact HFP | exact HargsIH | exact Hec | exact Hs0 ]. }
-    eapply T_Ctor; try eassumption.
-    assert (Hlen' : @length term (vs0 ++ t0' :: tsr0)
-                  = @length term (vs0 ++ t0 :: tsr0)).
-    { rewrite !List.length_app. reflexivity. }
-    rewrite Hlen'. exact HF.
-  - (* T_Match *)
-    intros Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
-           rho_fields scrut_result_ty result_tag result_l
-           Γ' yes_body eta elim_result no_body
-           HKne Hlk Heff Hlts Hrho HTs HwfTs Hscrut_result Hscrut_shape Hresult_eff Hresult_ne
-           HwfDelta Hresult_l Hscrut IHscrut Harity HGamma' Hyes IHyes Helim Hno IHno
-           Hec t'' Hstep.
-    apply step_match_inv in Hstep.
-    destruct Hstep as
-      [ (K0 & l0 & lts0 & Ts0 & vs0 & Es & Hvs0 & Ear & EK & Et)
-      | [ (K0' & l0 & lts0 & Ts0 & vs0 & Es & Hvs0 & Hne & Et)
-        | (s' & Hs & Et) ]].
-    + (* S_MatchYes *)
-      subst K0 scrut arity t''.
-      eapply match_yes_preservation; eauto.
-    + (* S_MatchNo *) subst t''. exact Hno.
-    + (* S_Match *)
-      subst t''. specialize (IHscrut Hec). eapply T_Match; eauto.
-  - (* T_Cap *)
-    intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
-           Heff Hlen HwfTs HwfTR Hsig Hret Hop IHop Hec t'' Hstep. no_step.
-  - (* T_Handle *)
-    intros Γ E_tag Ts op_body body n_α n_β sig ret T_R sig_β ret_β
-           Heff Hlen HwfTs HwfTR HnoLocal Hsig Hret Hop IHop Hbody IHbody Hec t'' Hstep.
-    apply step_handle_inv in Hstep.
-    destruct Hstep as [m Heq]. subst t''.
-    assert (Hcap : Γ ⊢ₜ term_cap E_tag m n_β Ts T_R op_body : type_ctor E_tag lt_local Ts).
-    { eapply T_Cap; eauto. }
-    apply T_HandlerM.
-    eapply subst_tm_lemma.
-    + eapply typing_closed; [exact Hec | exact Hcap].
-    + exact Hbody.
-    + constructor.
-    + exact Hcap.
-  - (* T_Perform *)
-        intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
-          Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs HnoSs Hsi HnoSig Hri HwfRet Harg IHarg Hec t'' Hstep.
-    apply step_perform_inv in Hstep.
-    destruct Hstep as [(recv' & Hsrecv & Heq) | (arg' & Hvrecv & Hsarg & Heq)].
-    + subst t''. eapply T_Perform; eauto.
-    + subst t''. eapply T_Perform; eauto.
-  - (* T_HandlerM *)
-    intros Γ m T t Ht IH Hec t'' Hstep.
-    specialize (IH Hec).
-    apply step_handler_m_inv in Hstep.
-    destruct Hstep as
-      [(Hv & Et)
-      | [(t' & Hs & Et)
-      | (E_tag & n_beta & Ts & op_body & Ss & v & Pr & Hv & Hpe & Edec & Et)]].
-    + (* H_Return *) subst t''. exact Ht.
-    + (* S_HandlerM *) subst t''. apply T_HandlerM. apply IH; assumption.
-    + (* H_Perform *)
-      subst t. subst t''.
-      eapply handler_perform_preservation; eauto.
-  - (* T_Resume *)
-    intros Γ m T_R b A HwfA HwfTR Hb IHb Hec t'' Hstep. no_step.
-Qed.
-*)
-
-(* ------------------------------------------------------------------ *)
 (* Type Safety corollary                                              *)
 (* ------------------------------------------------------------------ *)
 
@@ -4358,7 +3896,7 @@ Qed.
 
 (* Value/type form: a `local`-annotated data value can never be       *)
 (* subsumed to the same data carrying `free`.  This is the            *)
-(* "no escape via subtyping" theorem for local values.               *)
+(* "no escape via subtyping" theorem for local values.                *)
 Theorem local_data_not_escapes : forall Γ K Ts,
   eval_ctx Γ ->
   ctx_lookup_eff Γ K = None ->
