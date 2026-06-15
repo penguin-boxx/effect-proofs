@@ -4022,3 +4022,85 @@ Proof.
   intros Γ t E E_tag m n_beta Ts T_R op_body T Hec Hmok Hty Hms Hpure.
   eapply capability_never_exposed; eauto.
 Qed.
+
+(* ================================================================== *)
+(*            PRESERVATION INFRASTRUCTURE (additive)                  *)
+(*                                                                    *)
+(* Principal-type inversions for the runtime effect forms, in the     *)
+(* style of `resume_typing_inv`: strip subsumption and recover the    *)
+(* premises of the introducing rule together with the residual        *)
+(* subtyping `<intro type> <:: T`.                                    *)
+(* ================================================================== *)
+
+Lemma handler_m_typing_inv : forall Γ m T_B T_R t T,
+  Γ ⊢ₜ term_handler_m m T_B T_R t : T ->
+  Γ ⊢ₜ t : T_B /\ Γ ⊢ T_B <:: T_R /\ no_local_ty_G Γ T_B = true /\ Γ ⊢ T_R <:: T.
+Proof.
+  intros Γ m T_B T_R t T H.
+  remember (term_handler_m m T_B T_R t) as s eqn:Hs.
+  induction H; try discriminate Hs.
+  - (* T_Sub *) destruct (IHtyping Hs) as [Ht [Hbr [Hnl Hrt]]].
+    repeat split; auto. eapply SA_Trans; eauto.
+  - (* T_HandlerM *) injection Hs; intros; subst.
+    repeat split; auto. apply SA_Refl. assumption.
+Qed.
+
+Lemma cap_typing_inv : forall Γ E_tag m n_β Ts T_R op_body T,
+  Γ ⊢ₜ term_cap E_tag m n_β Ts T_R op_body : T ->
+  exists n_α sig ret sig_β ret_β,
+    ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) /\
+    List.length Ts = n_α /\
+    types_wf Γ Ts /\
+    ty_wf Γ T_R /\
+    sig_β = inst_op_alpha n_α Ts n_β sig /\
+    ret_β = inst_op_alpha n_α Ts n_β ret /\
+    (bind_tm sig_β
+      :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
+      :: push_ty_vars n_β any_at_free Γ)
+      ⊢ₜ op_body : shift_ty n_β 0 T_R /\
+    Γ ⊢ type_ctor E_tag lt_local Ts <:: T.
+Proof.
+  intros Γ E_tag m n_β Ts T_R op_body T H.
+  remember (term_cap E_tag m n_β Ts T_R op_body) as s eqn:Hs.
+  induction H; try discriminate Hs.
+  - (* T_Sub *)
+    destruct (IHtyping Hs) as
+      [n_α [sig [ret [sig_β [ret_β [Heff [HlenTs [HwfTs [HwfTR
+        [Hsigβ [Hretβ [Hop Hsub]]]]]]]]]]]].
+    exists n_α, sig, ret, sig_β, ret_β. repeat split; auto.
+    eapply SA_Trans; eauto.
+  - (* T_Cap *) injection Hs; intros; subst.
+    do 5 eexists. repeat split; try eassumption; try reflexivity.
+    apply SA_Refl. apply TWF_Ctor; [apply LWF_Local | assumption].
+Qed.
+
+Lemma perform_typing_inv : forall Γ recv Ss arg T,
+  Γ ⊢ₜ term_perform recv Ss arg : T ->
+  exists E_tag Δ Ts n_α n_β sig ret sig_inst ret_inst,
+    Γ ⊢ₜ recv : type_ctor E_tag Δ Ts /\
+    ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) /\
+    List.length Ts = n_α /\
+    List.length Ss = n_β /\
+    types_wf Γ Ss /\
+    forallb (no_local_ty_G Γ) Ss = true /\
+    sig_inst = inst_op_arg n_α Ts n_β Ss sig /\
+    no_local_ty_G Γ sig_inst = true /\
+    ret_inst = inst_op_arg n_α Ts n_β Ss ret /\
+    ty_wf Γ ret_inst /\
+    Γ ⊢ₜ arg : sig_inst /\
+    Γ ⊢ ret_inst <:: T.
+Proof.
+  intros Γ recv Ss arg T H.
+  remember (term_perform recv Ss arg) as s eqn:Hs.
+  induction H; try discriminate Hs.
+  - (* T_Sub *)
+    destruct (IHtyping Hs) as
+      [E_tag [Δ [Ts [n_α [n_β [sig [ret [sig_inst [ret_inst
+        [Hrecv [Heff [HlenTs [HlenSs [HwfSs [HnlSs [Hsi [Hnlsi
+          [Hri [HwfRi [Harg Hsub]]]]]]]]]]]]]]]]]]]].
+    do 9 eexists. repeat split; try eassumption.
+    eapply SA_Trans; eauto.
+  - (* T_Perform *) injection Hs; intros; subst.
+    do 9 eexists. repeat split; try eassumption; try reflexivity.
+    apply SA_Refl. assumption.
+Qed.
