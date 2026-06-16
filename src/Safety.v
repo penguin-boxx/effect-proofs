@@ -4040,9 +4040,11 @@ Proof.
   remember (term_handler_m m T_B T_R t) as s eqn:Hs.
   induction H; try discriminate Hs.
   - (* T_Sub *) destruct (IHtyping Hs) as [Ht [Hbr [Hnl Hrt]]].
-    repeat split; auto. eapply SA_Trans; eauto.
+    split; [exact Ht|]. split; [exact Hbr|]. split; [exact Hnl|].
+    eapply SA_Trans; [exact Hrt | eassumption].
   - (* T_HandlerM *) injection Hs; intros; subst.
-    repeat split; auto. apply SA_Refl. assumption.
+    split; [assumption|]. split; [assumption|]. split; [assumption|].
+    apply SA_Refl. assumption.
 Qed.
 
 Lemma cap_typing_inv : forall Γ E_tag m n_β Ts T_R op_body T,
@@ -4067,8 +4069,10 @@ Proof.
     destruct (IHtyping Hs) as
       [n_α [sig [ret [sig_β [ret_β [Heff [HlenTs [HwfTs [HwfTR
         [Hsigβ [Hretβ [Hop Hsub]]]]]]]]]]]].
-    exists n_α, sig, ret, sig_β, ret_β. repeat split; auto.
-    eapply SA_Trans; eauto.
+    exists n_α, sig, ret, sig_β, ret_β.
+    split; [exact Heff|]. split; [exact HlenTs|]. split; [exact HwfTs|].
+    split; [exact HwfTR|]. split; [exact Hsigβ|]. split; [exact Hretβ|].
+    split; [exact Hop|]. eapply SA_Trans; [exact Hsub | eassumption].
   - (* T_Cap *) injection Hs; intros; subst.
     do 5 eexists. repeat split; try eassumption; try reflexivity.
     apply SA_Refl. apply TWF_Ctor; [apply LWF_Local | assumption].
@@ -4098,9 +4102,496 @@ Proof.
       [E_tag [Δ [Ts [n_α [n_β [sig [ret [sig_inst [ret_inst
         [Hrecv [Heff [HlenTs [HlenSs [HwfSs [HnlSs [Hsi [Hnlsi
           [Hri [HwfRi [Harg Hsub]]]]]]]]]]]]]]]]]]]].
-    do 9 eexists. repeat split; try eassumption.
-    eapply SA_Trans; eauto.
+    exists E_tag, Δ, Ts, n_α, n_β, sig, ret, sig_inst, ret_inst.
+    split; [exact Hrecv|]. split; [exact Heff|]. split; [exact HlenTs|].
+    split; [exact HlenSs|]. split; [exact HwfSs|]. split; [exact HnlSs|].
+    split; [exact Hsi|]. split; [exact Hnlsi|]. split; [exact Hri|].
+    split; [exact HwfRi|]. split; [exact Harg|].
+    eapply SA_Trans; [exact Hsub | eassumption].
   - (* T_Perform *) injection Hs; intros; subst.
     do 9 eexists. repeat split; try eassumption; try reflexivity.
     apply SA_Refl. assumption.
+Qed.
+
+(* ================================================================== *)
+(* Evaluation-context typing recomposition (congruence).              *)
+(*                                                                    *)
+(* If `plug P u : T` and `u'` can be typed at every type `u` can,     *)
+(* then `plug P u' : T`.  Proved frame-by-frame; each frame lemma     *)
+(* inducts on the typing derivation to thread the outer type through  *)
+(* subsumption.                                                       *)
+(* ================================================================== *)
+
+Lemma app1_replace : forall Γ f f' t2 T,
+  Γ ⊢ₜ term_app f t2 : T ->
+  (forall Tf, Γ ⊢ₜ f : Tf -> Γ ⊢ₜ f' : Tf) ->
+  Γ ⊢ₜ term_app f' t2 : T.
+Proof.
+  intros Γ f f' t2 T H Himpl.
+  remember (term_app f t2) as s eqn:Hs. revert Hs.
+  induction H; intros Hs; try discriminate Hs.
+  - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
+  - injection Hs; intros; subst.
+    eapply T_App; [apply Himpl; eassumption | eassumption].
+Qed.
+
+Lemma app2_replace : forall Γ t1 u u' T,
+  Γ ⊢ₜ term_app t1 u : T ->
+  (forall Tu, Γ ⊢ₜ u : Tu -> Γ ⊢ₜ u' : Tu) ->
+  Γ ⊢ₜ term_app t1 u' : T.
+Proof.
+  intros Γ t1 u u' T H Himpl.
+  remember (term_app t1 u) as s eqn:Hs. revert Hs.
+  induction H; intros Hs; try discriminate Hs.
+  - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
+  - injection Hs; intros; subst.
+    eapply T_App; [eassumption | apply Himpl; eassumption].
+Qed.
+
+Lemma ty_app_replace : forall Γ u u' S T,
+  Γ ⊢ₜ term_ty_app u S : T ->
+  (forall Tu, Γ ⊢ₜ u : Tu -> Γ ⊢ₜ u' : Tu) ->
+  Γ ⊢ₜ term_ty_app u' S : T.
+Proof.
+  intros Γ u u' S T H Himpl.
+  remember (term_ty_app u S) as s eqn:Hs. revert Hs.
+  induction H; intros Hs; try discriminate Hs.
+  - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
+  - injection Hs; intros; subst.
+    eapply T_TyApp; [apply Himpl; eassumption | assumption | assumption | assumption].
+Qed.
+
+Lemma lt_app_replace : forall Γ u u' l T,
+  Γ ⊢ₜ term_lt_app u l : T ->
+  (forall Tu, Γ ⊢ₜ u : Tu -> Γ ⊢ₜ u' : Tu) ->
+  Γ ⊢ₜ term_lt_app u' l : T.
+Proof.
+  intros Γ u u' l T H Himpl.
+  remember (term_lt_app u l) as s eqn:Hs. revert Hs.
+  induction H; intros Hs; try discriminate Hs.
+  - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
+  - injection Hs; intros; subst.
+    eapply T_LtApp; [apply Himpl; eassumption | assumption].
+Qed.
+
+Lemma match_scrut_replace : forall Γ u u' K nlt ar y n T,
+  Γ ⊢ₜ term_match u K nlt ar y n : T ->
+  (forall Tu, Γ ⊢ₜ u : Tu -> Γ ⊢ₜ u' : Tu) ->
+  Γ ⊢ₜ term_match u' K nlt ar y n : T.
+Proof.
+  intros Γ u u' K nlt ar y n T H Himpl.
+  remember (term_match u K nlt ar y n) as s eqn:Hs. revert Hs.
+  induction H; intros Hs; try discriminate Hs.
+  - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
+  - injection Hs; intros; subst.
+    eapply T_Match;
+      try (apply Himpl; eassumption); try eassumption; try reflexivity.
+Qed.
+
+Lemma handler_m_replace : forall Γ m T_B T_R u u' T,
+  Γ ⊢ₜ term_handler_m m T_B T_R u : T ->
+  (forall Tu, Γ ⊢ₜ u : Tu -> Γ ⊢ₜ u' : Tu) ->
+  Γ ⊢ₜ term_handler_m m T_B T_R u' : T.
+Proof.
+  intros Γ m T_B T_R u u' T H Himpl.
+  remember (term_handler_m m T_B T_R u) as s eqn:Hs. revert Hs.
+  induction H; intros Hs; try discriminate Hs.
+  - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
+  - injection Hs; intros; subst.
+    eapply T_HandlerM; try eassumption.
+    apply Himpl; eassumption.
+Qed.
+
+Lemma perform_recv_replace : forall Γ u u' Ss arg T,
+  Γ ⊢ₜ term_perform u Ss arg : T ->
+  (forall Tu, Γ ⊢ₜ u : Tu -> Γ ⊢ₜ u' : Tu) ->
+  Γ ⊢ₜ term_perform u' Ss arg : T.
+Proof.
+  intros Γ u u' Ss arg T H Himpl.
+  remember (term_perform u Ss arg) as s eqn:Hs. revert Hs.
+  induction H; intros Hs; try discriminate Hs.
+  - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
+  - injection Hs; intros; subst.
+    eapply T_Perform;
+      try (apply Himpl; eassumption); try eassumption; try reflexivity.
+Qed.
+
+Lemma perform_arg_replace : forall Γ recv u u' Ss T,
+  Γ ⊢ₜ term_perform recv Ss u : T ->
+  (forall Tu, Γ ⊢ₜ u : Tu -> Γ ⊢ₜ u' : Tu) ->
+  Γ ⊢ₜ term_perform recv Ss u' : T.
+Proof.
+  intros Γ recv u u' Ss T H Himpl.
+  remember (term_perform recv Ss u) as s eqn:Hs. revert Hs.
+  induction H; intros Hs; try discriminate Hs.
+  - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
+  - injection Hs; intros; subst.
+    eapply T_Perform;
+      try (apply Himpl; eassumption); try eassumption; try reflexivity.
+Qed.
+
+Lemma Forall2_focus_replace :
+  forall (R : term -> type -> Prop) vs u u' ts rhos,
+  Forall2 R (vs ++ u :: ts) rhos ->
+  (forall ru, R u ru -> R u' ru) ->
+  Forall2 R (vs ++ u' :: ts) rhos.
+Proof.
+  intros R vs u u' ts rhos H Himpl.
+  revert rhos H. induction vs as [|v vs IH]; intros rhos H; simpl in *.
+  - inversion H; subst. constructor; [apply Himpl; assumption | assumption].
+  - inversion H; subst. constructor; [assumption | apply IH; assumption].
+Qed.
+
+Lemma ctor_focus_replace : forall Γ K l lts Ts vs u u' ts T,
+  Γ ⊢ₜ term_ctor K l lts Ts (vs ++ u :: ts) : T ->
+  (forall Tu, Γ ⊢ₜ u : Tu -> Γ ⊢ₜ u' : Tu) ->
+  Γ ⊢ₜ term_ctor K l lts Ts (vs ++ u' :: ts) : T.
+Proof.
+  intros Γ K l lts Ts vs u u' ts T H Himpl.
+  remember (term_ctor K l lts Ts (vs ++ u :: ts)) as s eqn:Hs. revert Hs.
+  induction H; intros Hs; try discriminate Hs.
+  - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
+  - injection Hs; intros; subst.
+    assert (Hlen : length (vs ++ u' :: ts) = length (vs ++ u :: ts))
+      by (rewrite !length_app; reflexivity).
+    eapply T_Ctor;
+      try (rewrite Hlen; eassumption);
+      try (eapply Forall2_focus_replace;
+           [ eassumption | intros ru Hu; apply Himpl; exact Hu ]);
+      try eassumption; try reflexivity.
+Qed.
+
+Lemma plug_typing_replace : forall P Γ u u' T,
+  Γ ⊢ₜ plug P u : T ->
+  (forall Tu, Γ ⊢ₜ u : Tu -> Γ ⊢ₜ u' : Tu) ->
+  Γ ⊢ₜ plug P u' : T.
+Proof.
+  induction P; intros Γ u u' T H Himpl; simpl in *.
+  - apply Himpl; exact H.
+  - eapply app1_replace; [exact H|]. intros Tf Hf. eapply IHP; eauto.
+  - eapply app2_replace; [exact H|]. intros Tf Hf. eapply IHP; eauto.
+  - eapply ty_app_replace; [exact H|]. intros Tf Hf. eapply IHP; eauto.
+  - eapply lt_app_replace; [exact H|]. intros Tf Hf. eapply IHP; eauto.
+  - eapply ctor_focus_replace; [exact H|]. intros Tf Hf. eapply IHP; eauto.
+  - eapply match_scrut_replace; [exact H|]. intros Tf Hf. eapply IHP; eauto.
+  - eapply handler_m_replace; [exact H|]. intros Tf Hf. eapply IHP; eauto.
+  - eapply perform_recv_replace; [exact H|]. intros Tf Hf. eapply IHP; eauto.
+  - eapply perform_arg_replace; [exact H|]. intros Tf Hf. eapply IHP; eauto.
+Qed.
+
+(* ================================================================== *)
+(* Shifting commutes with plugging.                                   *)
+(*                                                                    *)
+(* No evaluation-context hole sits under a term binder (every frame's *)
+(* recursive position keeps the shift cutoff fixed — see              *)
+(* `shift_ectx_tm`), so the cutoff is identical on both sides.        *)
+(* Used by H_Perform to relate the captured context `P` lifted under  *)
+(* the resumption binder to the shifted body.                         *)
+(* ================================================================== *)
+
+Lemma shift_tm_plug : forall P amount cutoff u,
+  shift_tm amount cutoff (plug P u)
+  = plug (shift_ectx_tm amount cutoff P) (shift_tm amount cutoff u).
+Proof.
+  induction P; intros amount cutoff u;
+    try (simpl; rewrite IHP; reflexivity).
+  - (* EC_hole *) simpl; reflexivity.
+  - (* EC_ctor *)
+    cbn [plug shift_ectx_tm shift_tm].
+    rewrite shift_tm_go_eq_map. rewrite List.map_app. cbn [List.map].
+    rewrite IHP. reflexivity.
+Qed.
+
+(* ================================================================== *)
+(* Principal-type inversions for elimination forms (residual `<:: T`).*)
+(* ================================================================== *)
+
+Lemma app_typing_inv_p : forall Γ f x T,
+  Γ ⊢ₜ term_app f x : T ->
+  exists A l B, Γ ⊢ₜ f : type_fun A l B /\ Γ ⊢ₜ x : A /\ Γ ⊢ B <:: T.
+Proof.
+  intros Γ f x T H. remember (term_app f x) as s eqn:Hs.
+  induction H; try discriminate Hs.
+  - destruct (IHtyping Hs) as [A [l [B [Hf [Hx Hsub]]]]].
+    exists A, l, B. split; [exact Hf|]. split; [exact Hx|]. eapply SA_Trans; eassumption.
+  - injection Hs; intros; subst.
+    exists A, l, B. split; [eassumption|]. split; [eassumption|].
+    apply SA_Refl.
+    match goal with Hf : _ ⊢ₜ _ : type_fun _ _ _ |- _ =>
+      pose proof (typing_implies_wf _ _ _ Hf) as Hwf; inversion Hwf; subst; assumption
+    end.
+Qed.
+
+Lemma tyapp_typing_inv_p : forall Γ t S T,
+  Γ ⊢ₜ term_ty_app t S : T ->
+  exists B U, Γ ⊢ₜ t : type_ty_all B U /\ Γ ⊢ S <:: B
+    /\ ty_app_arg_no_local Γ B S = true /\ Γ ⊢ subst_ty 0 S U <:: T.
+Proof.
+  intros Γ t S T H. remember (term_ty_app t S) as s eqn:Hs.
+  induction H; try discriminate Hs.
+  - destruct (IHtyping Hs) as [B0 [U0 [Ht [HSb [Hnl Hsub]]]]].
+    exists B0, U0. split; [exact Ht|]. split; [exact HSb|]. split; [exact Hnl|].
+    eapply SA_Trans; eassumption.
+  - injection Hs; intros; subst.
+    exists B, U. split; [eassumption|]. split; [eassumption|]. split; [eassumption|].
+    apply SA_Refl. eapply typing_implies_wf. eapply T_TyApp; eassumption.
+Qed.
+
+Lemma ltapp_typing_inv_p : forall Γ t l T,
+  Γ ⊢ₜ term_lt_app t l : T ->
+  exists U, Γ ⊢ₜ t : type_lt_all U /\ lt_wf Γ l /\ Γ ⊢ subst_lt_in_ty 0 l U <:: T.
+Proof.
+  intros Γ t l T H. remember (term_lt_app t l) as s eqn:Hs.
+  induction H; try discriminate Hs.
+  - destruct (IHtyping Hs) as [U0 [Ht [Hl Hsub]]].
+    exists U0. split; [exact Ht|]. split; [exact Hl|]. eapply SA_Trans; eassumption.
+  - injection Hs; intros; subst.
+    eexists. split; [eassumption|]. split; [eassumption|].
+    apply SA_Refl. eapply typing_implies_wf. eapply T_LtApp; eassumption.
+Qed.
+
+(* Fuller resume inversion: also recover the T_Resume well-formedness    *)
+(* side-conditions, needed to rebuild a delimiter in the (resume) case.  *)
+Lemma resume_typing_inv_full : forall Γ m T_B T_R b T,
+  Γ ⊢ₜ term_resume m T_B T_R b : T ->
+  exists A,
+    ty_wf Γ A /\ ty_wf Γ T_B /\ ty_wf Γ T_R /\
+    no_local_ty_G Γ T_B = true /\ Γ ⊢ T_B <:: T_R /\
+    (bind_tm A :: Γ) ⊢ₜ b : T_B /\
+    Γ ⊢ type_fun A lt_local T_R <:: T.
+Proof.
+  intros Γ m T_B T_R b T H.
+  remember (term_resume m T_B T_R b) as s eqn:Hs.
+  induction H; try discriminate Hs.
+  - destruct (IHtyping Hs) as [A0 [HwfA [HwfB [HwfR [Hnl [Hbr [Hb Hsub]]]]]]].
+    exists A0. repeat (split; [assumption|]). eapply SA_Trans; eassumption.
+  - injection Hs; intros; subst.
+    exists A. repeat (split; [assumption|]).
+    apply SA_Refl. constructor; [assumption | constructor | assumption].
+Qed.
+
+(* ================================================================== *)
+(*                  PRESERVATION (subject reduction)                  *)
+(*                                                                    *)
+(* The substitution-preservation facts are abstracted as section      *)
+(* hypotheses: they are the residual obligations whose proofs require  *)
+(* the closed/eval_ctx substitution metatheory (see typing_SubstTm    *)
+(* discussion). Everything else is discharged here.                   *)
+(* ================================================================== *)
+
+Section Preservation.
+
+(* Term substitution at index 0 preserves typing (eval_ctx form). *)
+Hypothesis subst_tm_preserves : forall Γ A t B v,
+  eval_ctx Γ ->
+  (bind_tm A :: Γ) ⊢ₜ t : B ->
+  value v ->
+  Γ ⊢ₜ v : A ->
+  Γ ⊢ₜ subst_tm 0 v t : B.
+
+(* Type-/lifetime-β and the list-substitution cases (match/perform):  *)
+(* abstracted at the redex level (substitution metatheory + variance).*)
+Hypothesis tybeta_preserves : forall Γ bound body S T,
+  eval_ctx Γ ->
+  Γ ⊢ₜ term_ty_app (term_ty_lam bound body) S : T ->
+  Γ ⊢ₜ subst_ty_in_tm 0 S body : T.
+
+Hypothesis ltbeta_preserves : forall Γ body l T,
+  eval_ctx Γ ->
+  Γ ⊢ₜ term_lt_app (term_lt_lam body) l : T ->
+  Γ ⊢ₜ subst_lt_in_tm 0 l body : T.
+
+Hypothesis matchyes_preserves : forall Γ K l lts Ts vs n_lt yes_body no_body T,
+  eval_ctx Γ -> Forall value vs ->
+  Γ ⊢ₜ term_match (term_ctor K l lts Ts vs) K n_lt (List.length vs) yes_body no_body : T ->
+  Γ ⊢ₜ subst_list_tm vs (subst_list_lt_in_tm lts yes_body) : T.
+
+Hypothesis perform_preserves :
+  forall Γ E_tag m n_beta Ts T_B T_R op_body Ss v P T,
+  eval_ctx Γ -> value v -> pure_ectx_m m P ->
+  Γ ⊢ₜ term_handler_m m T_B T_R
+        (plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss v)) : T ->
+  Γ ⊢ₜ subst_list_tm
+         [v; term_resume m T_B T_R (plug (shift_ectx_tm 1 0 P) (term_var 0))]
+         (subst_list_ty_in_tm Ss op_body) : T.
+
+(* Head reductions preserve typing (at any type, under eval_ctx). *)
+Lemma head_step_preserves_typing : forall Γ r r' T,
+  eval_ctx Γ -> Γ ⊢ₜ r : T -> r -->h r' -> Γ ⊢ₜ r' : T.
+Proof.
+  intros Γ r r' T Hec Hty Hstep.
+  inversion Hstep; subst.
+  - (* H_Beta *)
+    apply app_typing_inv_p in Hty.
+    destruct Hty as [A [l [B [Hlam [Hv Hsub]]]]].
+    apply lam_typing_inv in Hlam. destruct Hlam as [l' [B' [Hbody Hfsub]]].
+    apply (sub_fun_inv Γ _ A l B Hec) in Hfsub.
+    destruct Hfsub as [A'' [l'' [B'' [Heq [HAsub [Hlsub HBsub]]]]]].
+    injection Heq; intros; subst.
+    eapply T_Sub; [ | eapply SA_Trans; [exact HBsub | exact Hsub] ].
+    eapply subst_tm_preserves; [exact Hec | exact Hbody | assumption |].
+    eapply T_Sub; [exact Hv | exact HAsub].
+  - (* H_TyBeta *)
+    eapply tybeta_preserves; eauto.
+  - (* H_LtBeta *)
+    eapply ltbeta_preserves; eauto.
+  - (* H_MatchYes *)
+    eapply matchyes_preserves; eauto.
+  - (* H_MatchNo *)
+    apply match_typing_inv in Hty.
+    destruct Hty as [nlt1 [nty1 [sig1 [res1 [Ts1 [Delta1 [srt1 [rtag1 [rl1 [eta1 [elimr1 Hconj]]]]]]]]]]].
+    destruct Hconj as (HK & Hlk & Heff & Hnlt & HlenTs & Hsr & Hss & Hrne &
+       HwfD & Hrl & Hscrut & Har & Hbody & Helim & Hno & HsubOr).
+    destruct HsubOr as [Heq | Hsub].
+    + subst. exact Hno.
+    + eapply T_Sub; [exact Hno | exact Hsub].
+  - (* H_Return *)
+    apply handler_m_typing_inv in Hty.
+    destruct Hty as [Hv [Hbr [_ Hrt]]].
+    eapply T_Sub; [exact Hv | eapply SA_Trans; [exact Hbr | exact Hrt]].
+  - (* H_Perform *)
+    eapply perform_preserves; eauto.
+  - (* H_Resume *)
+    apply app_typing_inv_p in Hty.
+    destruct Hty as [A [l [B [Hres [Hv Hsub]]]]].
+    apply resume_typing_inv_full in Hres.
+    destruct Hres as [A0 [HwfA0 [HwfTB [HwfTR [Hnl [Hbr [Hb Hfsub]]]]]]].
+    apply (sub_fun_inv Γ _ A l B Hec) in Hfsub.
+    destruct Hfsub as [A'' [l'' [B'' [Heq [HAsub [Hlsub HBsub]]]]]].
+    injection Heq; intros; subst.
+    eapply T_Sub; [ | eapply SA_Trans; [ | exact Hsub] ].
+    + apply T_HandlerM; try assumption.
+      eapply subst_tm_preserves; [exact Hec | exact Hb | assumption |].
+      eapply T_Sub; [exact Hv | exact HAsub].
+    + exact HBsub.
+Qed.
+
+(* Handle inversion (principal): recover the T_Handle premises + T_R <:: T. *)
+Lemma handle_typing_inv : forall Γ E_tag n_beta Ts T_B T_R op_body body T,
+  Γ ⊢ₜ term_handle E_tag n_beta Ts T_B T_R op_body body : T ->
+  exists n_α sig ret sig_β ret_β,
+    ctx_lookup_eff Γ E_tag = Some (n_α, n_beta, sig, ret) /\
+    List.length Ts = n_α /\ types_wf Γ Ts /\
+    ty_wf Γ T_B /\ ty_wf Γ T_R /\ no_local_ty_G Γ T_B = true /\ Γ ⊢ T_B <:: T_R /\
+    sig_β = inst_op_alpha n_α Ts n_beta sig /\
+    ret_β = inst_op_alpha n_α Ts n_beta ret /\
+    (bind_tm sig_β
+      :: bind_tm (type_fun ret_β lt_local (shift_ty n_beta 0 T_R))
+      :: push_ty_vars n_beta any_at_free Γ)
+      ⊢ₜ op_body : shift_ty n_beta 0 T_R /\
+    (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) ⊢ₜ body : T_B /\
+    Γ ⊢ T_R <:: T.
+Proof.
+  intros Γ E_tag n_beta Ts T_B T_R op_body body T H.
+  remember (term_handle E_tag n_beta Ts T_B T_R op_body body) as s eqn:Hs.
+  induction H; try discriminate Hs.
+  - destruct (IHtyping Hs) as
+      (n_α & sig & ret & sig_β & ret_β & Heff & HlenTs & HwfTs & HwfTB & HwfTR
+       & Hnl & Hbr & Hsigβ & Hretβ & Hop & Hbody & Hsub).
+    exists n_α, sig, ret, sig_β, ret_β.
+    repeat (split; [assumption|]). eapply SA_Trans; eassumption.
+  - injection Hs; intros; subst.
+    do 5 eexists.
+    repeat split; try eassumption; try reflexivity.
+    apply SA_Refl. assumption.
+Qed.
+
+(* Allocating a fresh handler delimiter preserves typing. *)
+Lemma handle_step_preserves_typing :
+  forall Γ E_tag n_beta Ts T_B T_R op_body body m T,
+  eval_ctx Γ ->
+  Γ ⊢ₜ term_handle E_tag n_beta Ts T_B T_R op_body body : T ->
+  Γ ⊢ₜ term_handler_m m T_B T_R
+        (subst_tm 0 (term_cap E_tag m n_beta Ts T_R op_body) body) : T.
+Proof.
+  intros Γ E_tag n_beta Ts T_B T_R op_body body m T Hec Hty.
+  apply handle_typing_inv in Hty.
+  destruct Hty as
+    (n_α & sig & ret & sig_β & ret_β & Heff & HlenTs & HwfTs & HwfTB & HwfTR
+     & Hnl & Hbr & Hsigβ & Hretβ & Hop & Hbody & Hsub).
+  assert (Hcap : Γ ⊢ₜ term_cap E_tag m n_beta Ts T_R op_body
+                   : type_ctor E_tag lt_local Ts).
+  { eapply T_Cap; eassumption. }
+  eapply T_Sub; [ | exact Hsub ].
+  apply T_HandlerM; try assumption.
+  eapply subst_tm_preserves; [ exact Hec | exact Hbody | apply value_cap | exact Hcap ].
+Qed.
+
+(* Reduction preserves typing. *)
+Lemma step_preserves_typing : forall Γ t t' T,
+  eval_ctx Γ -> Γ ⊢ₜ t : T -> t ==> t' -> Γ ⊢ₜ t' : T.
+Proof.
+  intros Γ t t' T Hec Hty Hstep.
+  inversion Hstep as [E r r' Hwf Hhead Heq1 Heq2 | E E_tag n_beta Ts T_B T_R op_body body m Hwf Hfresh Heq1 Heq2]; subst.
+  - (* S_step *)
+    eapply plug_typing_replace; [ exact Hty | ].
+    intros Tu Hu. eapply head_step_preserves_typing; [ exact Hec | exact Hu | exact Hhead ].
+  - (* S_HandleCtx *)
+    eapply plug_typing_replace; [ exact Hty | ].
+    intros Tu Hu. eapply handle_step_preserves_typing; [ exact Hec | exact Hu ].
+Qed.
+
+(* Subject reduction (typing preservation under one step). *)
+Theorem preservation : forall Γ t t' T,
+  eval_ctx Γ -> Γ ⊢ₜ t : T -> t ==> t' -> Γ ⊢ₜ t' : T.
+Proof. exact step_preserves_typing. Qed.
+
+End Preservation.
+
+(* ================================================================== *)
+(*                      TYPE SOUNDNESS (capstone)                     *)
+(*                                                                    *)
+(* Progress + preservation: a well-typed, marker-safe term never      *)
+(* reaches a stuck state.  Conditional on the same substitution-      *)
+(* preservation facts as `preservation`, plus step-preservation of    *)
+(* the two marker invariants (proved separately below where           *)
+(* possible).                                                         *)
+(* ================================================================== *)
+
+Theorem type_soundness :
+  (forall Γ A t B v,
+     eval_ctx Γ -> (bind_tm A :: Γ) ⊢ₜ t : B -> value v -> Γ ⊢ₜ v : A ->
+     Γ ⊢ₜ subst_tm 0 v t : B) ->
+  (forall Γ bound body S T,
+     eval_ctx Γ -> Γ ⊢ₜ term_ty_app (term_ty_lam bound body) S : T ->
+     Γ ⊢ₜ subst_ty_in_tm 0 S body : T) ->
+  (forall Γ body l T,
+     eval_ctx Γ -> Γ ⊢ₜ term_lt_app (term_lt_lam body) l : T ->
+     Γ ⊢ₜ subst_lt_in_tm 0 l body : T) ->
+  (forall Γ K l lts Ts vs n_lt yes_body no_body T,
+     eval_ctx Γ -> Forall value vs ->
+     Γ ⊢ₜ term_match (term_ctor K l lts Ts vs) K n_lt (List.length vs) yes_body no_body : T ->
+     Γ ⊢ₜ subst_list_tm vs (subst_list_lt_in_tm lts yes_body) : T) ->
+  (forall Γ E_tag m n_beta Ts T_B T_R op_body Ss v P T,
+     eval_ctx Γ -> value v -> pure_ectx_m m P ->
+     Γ ⊢ₜ term_handler_m m T_B T_R
+           (plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss v)) : T ->
+     Γ ⊢ₜ subst_list_tm
+            [v; term_resume m T_B T_R (plug (shift_ectx_tm 1 0 P) (term_var 0))]
+            (subst_list_ty_in_tm Ss op_body) : T) ->
+  (* Marker preservation may use the full invariant (typing/eval_ctx):    *)
+  (* markers do not escape precisely because of typing (capability         *)
+  (* confinement), so these are stated with the typing premise available.  *)
+  (forall Γ0 t t' T0,
+     eval_ctx Γ0 -> marker_ok [] t -> marker_types_safe t -> Γ0 ⊢ₜ t : T0 ->
+     t ==> t' -> marker_ok [] t') ->
+  (forall Γ0 t t' T0,
+     eval_ctx Γ0 -> marker_ok [] t -> marker_types_safe t -> Γ0 ⊢ₜ t : T0 ->
+     t ==> t' -> marker_types_safe t') ->
+  forall Γ t t' T,
+    eval_ctx Γ ->
+    safety_invariants Γ T t ->
+    multi_step t t' ->
+    ~ stuck t'.
+Proof.
+  intros Hstm Htyb Hltb Hmy Hpf Hmok_pres Hmsafe_pres Γ t t' T Hec Hinv Hms.
+  assert (Hreach : safety_invariants Γ T t').
+  { revert Hinv. induction Hms as [u | u1 u2 u3 Hstep Hms IH]; intros Hinv.
+    - exact Hinv.
+    - apply IH. destruct Hinv as [Hmok [Hmsafe Hty]].
+      split; [eapply Hmok_pres; [exact Hec | exact Hmok | exact Hmsafe | exact Hty | exact Hstep] |].
+      split; [eapply Hmsafe_pres; [exact Hec | exact Hmok | exact Hmsafe | exact Hty | exact Hstep] |].
+      eapply preservation; eauto. }
+  destruct Hreach as [Hmok [Hmsafe Hty]].
+  eapply safe_state_not_stuck; eauto.
 Qed.
