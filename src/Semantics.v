@@ -514,12 +514,12 @@ Lemma S_Resume : forall m T_B T_R b v,
 Proof. intros. apply (S_step EC_hole); auto. Qed.
 
 (* ================================================================== *)
-(* Structural inversion                                                *)
+(* Structural inversion                                               *)
 (*                                                                    *)
 (* Recover the case-analysis principle of the classical structural    *)
 (* small-step relation. Each lemma converts a step on a particular    *)
 (* term shape into the disjunction of the rules that could have       *)
-(* produced it, naming the resulting sub-derivations.                  *)
+(* produced it, naming the resulting sub-derivations.                 *)
 (* ================================================================== *)
 
 (* No step from a value (or from a variable). *)

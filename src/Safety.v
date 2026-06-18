@@ -989,6 +989,47 @@ Proof.
     rewrite IH. reflexivity.
 Qed.
 
+(* Extract per-argument marker_ok from a constructor's marker_ok. *)
+Lemma marker_ok_ctor_args_forall : forall ms K l lts Ts vs,
+  marker_ok ms (term_ctor K l lts Ts vs) -> Forall (marker_ok ms) vs.
+Proof.
+  intros ms K l lts Ts vs H. rewrite marker_ok_ctor_eq in H.
+  induction vs as [|v vs IH]; constructor.
+  - destruct H as [Hv _]. exact Hv.
+  - apply IH. destruct H as [_ Hrest]. exact Hrest.
+Qed.
+
+(* Recompose marker_ok through an evaluation context: replacing the hole
+   contents by anything that is marker_ok in every marker scope preserves
+   marker_ok of the whole plug.  The handler frame extends the scope by m,
+   which the uniform (forall ms') replacement condition absorbs.  Use
+   [cbn [plug]]/[destruct], NOT [simpl], to avoid unfolding marker_ok's
+   nested constructor fixpoint (which would defeat marker_ok_ctor_eq). *)
+Lemma marker_ok_plug_replace : forall E r r' ms,
+  marker_ok ms (plug E r) ->
+  (forall ms', marker_ok ms' r -> marker_ok ms' r') ->
+  marker_ok ms (plug E r').
+Proof.
+  induction E as
+    [ | E1 IHE ta | ta E1 IHE | E1 IHE Ty | E1 IHE lt
+    | tag dl lts Tys vs E1 IHE ts | E1 IHE K nlt ar yes no
+    | mk TB TR E1 IHE | E1 IHE Ss ar2 | rcv Ss E1 IHE ];
+    intros r r' ms Hok Hrep; cbn [plug] in Hok |- *.
+  - apply Hrep. exact Hok.
+  - destruct Hok as [H1 H2]. split; [eapply IHE; eauto | exact H2].
+  - destruct Hok as [H1 H2]. split; [exact H1 | eapply IHE; eauto].
+  - eapply IHE; eauto.
+  - eapply IHE; eauto.
+  - rewrite marker_ok_ctor_eq in Hok |- *.
+    induction vs as [|a vs' IHvs]; cbn [List.app] in Hok |- *.
+    + destruct Hok as [Hfoc Hrest]. split; [eapply IHE; eauto | exact Hrest].
+    + destruct Hok as [Ha Hrest]. split; [exact Ha | apply IHvs; exact Hrest].
+  - destruct Hok as [Hs [Hy Hn]]. repeat split; [eapply IHE; eauto | exact Hy | exact Hn].
+  - eapply IHE; eauto.
+  - destruct Hok as [H1 H2]. split; [eapply IHE; eauto | exact H2].
+  - destruct Hok as [H1 H2]. split; [exact H1 | eapply IHE; eauto].
+Qed.
+
 (* incl is preserved by prepending a common head. *)
 Lemma incl_same_cons : forall (m : marker) ms ms',
   incl ms ms' -> incl (m :: ms) (m :: ms').
@@ -1423,7 +1464,7 @@ Lemma typing_ind2 :
       result_ty = type_ctor result_tag l Ts ->
       ctx_lookup_eff Γ result_tag = None ->
      lt_wf Γ l ->
-      Γ ⊢ₗ lt_of_ty_list rho_fields <: l ->
+      Γ ⊢ₗ lt_of_ty_list rho_fields <: lt_of_ty result_ty ->
       Forall (fun l0 => Γ ⊢ₗ l0 <: l) lts ->
      List.length vs = List.length rho_fields ->
      Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rho_fields ->
@@ -3298,7 +3339,6 @@ Lemma ctor_typing_inv : forall Γ K l lts Ts vs T,
     List.length lts = n_lt /\
     List.length Ts = n_ty /\
     inst_ctor_type n_lt n_ty lts Ts result_ty_schema = type_ctor result_tag l Ts /\
-    Γ ⊢ₗ lt_of_ty_list (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields) <: l /\
     Forall (fun l0 => Γ ⊢ₗ l0 <: l) lts /\
     List.length vs = List.length sigma_fields /\
     Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs
@@ -3311,7 +3351,7 @@ Proof.
   - (* T_Sub *) subst.
     destruct (IHHty eq_refl) as
       (n_lt & n_ty & sig & res & result_tag &
-       Hlk & Hltlen & HTslen & Hresult & Hlt & Hlts_bound & Hvslen & Hf2 & Hsub).
+       Hlk & Hltlen & HTslen & Hresult & Hlts_bound & Hvslen & Hf2 & Hsub).
     exists n_lt, n_ty, sig, res, result_tag.
     repeat split; auto. eapply SA_Trans; eauto.
   - (* T_Ctor *)
@@ -3945,7 +3985,7 @@ Proof.
   apply ctor_typing_inv in Htyv.
   destruct Htyv as
     (n_lt & n_ty & sig & res & result_tag & Hlk & Hltlen & HTslen & Hresult &
-     Hlt_bound & Hlts_bound & Hvslen & Hf2 & Hsub).
+     Hlts_bound & Hvslen & Hf2 & Hsub).
   destruct (sub_ctor_inv _ _ _ _ _ Hec Hsub HK) as [lx [Heq Hlsub]].
   injection Heq as HKeq Hleq HTseq.
   subst result_tag. subst Ts'.

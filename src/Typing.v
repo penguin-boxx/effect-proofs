@@ -136,25 +136,6 @@ Fixpoint ctx_lookup_eff (Γ : ctx) (E : eff_tag)
   | _ :: rest => ctx_lookup_eff rest E
   end.
 
-(* ================================================================== *)
-(* Lifetime subtyping                                                 *)
-(*                                                                    *)
-(* Γ ⊢ₗ Δ' <: Δ  means Δ' "outlives" Δ in the         lattice:        *)
-(*   free (bottom) <: local (top)                                     *)
-(*   lt_min l1 l2 is the join (= least upper bound) of l1 and l2      *)
-(*                                                                    *)
-(* Rules (Figure 4 of the paper):                                     *)
-(*   LS_Free    :  Γ ⊢ₗ free  <: Δ          (free is bottom)          *)
-(*   LS_Local   :  Γ ⊢ₗ Δ <: local          (local is top)            *)
-(*   LS_Var     :  (l <: Δ) ∈ Γ → Γ ⊢ₗ l <: Δ  (SubCtx_Δ)             *)
-(*   LS_Refl    :  Γ ⊢ₗ Δ <: Δ                                        *)
-(*   LS_Trans   :  transitivity                                       *)
-(*   LS_MinL    :  Γ ⊢ₗ l1 <: l → Γ ⊢ₗ l2 <: l →                      *)
-(*                  Γ ⊢ₗ lt_min l1 l2 <: l    (Sub+: join ≤ upper bd) *)
-(*   LS_MinR1   :  Γ ⊢ₗ l <: l1 → Γ ⊢ₗ l <: lt_min l1 l2              *)
-(*   LS_MinR2   :  Γ ⊢ₗ l <: l2 → Γ ⊢ₗ l <: lt_min l1 l2              *)
-(* ================================================================== *)
-
 Reserved Notation "G '⊢ₗ' l1 '<:' l2" (at level 40, l1 at next level).
 
 Inductive lt_wf : ctx -> lifetime -> Prop :=
@@ -206,6 +187,25 @@ with types_wf : ctx -> list type -> Prop :=
       ty_wf Γ T ->
       types_wf Γ Ts ->
       types_wf Γ (T :: Ts).
+
+(* ================================================================== *)
+(* Lifetime subtyping                                                 *)
+(*                                                                    *)
+(* Γ ⊢ₗ Δ' <: Δ  means Δ' "outlives" Δ in the         lattice:        *)
+(*   free (bottom) <: local (top)                                     *)
+(*   lt_min l1 l2 is the join (= least upper bound) of l1 and l2      *)
+(*                                                                    *)
+(* Rules:                                                             *)
+(*   LS_Free    :  Γ ⊢ₗ free  <: Δ          (free is bottom)          *)
+(*   LS_Local   :  Γ ⊢ₗ Δ <: local          (local is top)            *)
+(*   LS_Var     :  (l <: Δ) ∈ Γ → Γ ⊢ₗ l <: Δ  (SubCtx_Δ)             *)
+(*   LS_Refl    :  Γ ⊢ₗ Δ <: Δ                                        *)
+(*   LS_Trans   :  transitivity                                       *)
+(*   LS_MinL    :  Γ ⊢ₗ l1 <: l → Γ ⊢ₗ l2 <: l →                      *)
+(*                  Γ ⊢ₗ lt_min l1 l2 <: l    (Sub+: join ≤ upper bd) *)
+(*   LS_MinR1   :  Γ ⊢ₗ l <: l1 → Γ ⊢ₗ l <: lt_min l1 l2              *)
+(*   LS_MinR2   :  Γ ⊢ₗ l <: l2 → Γ ⊢ₗ l <: lt_min l1 l2              *)
+(* ================================================================== *)
 
 Inductive lt_sub : ctx -> lifetime -> lifetime -> Prop :=
 
@@ -265,15 +265,6 @@ Hint Constructors lt_sub : core.
 (*   lt_∅(τ̄ Δ → σ)     = Δ             (only the closure lt matters)  *)
 (*   lt_∅(∀l.τ)        = local         (conservative top)             *)
 (*   lt_∅(∀(α<:B).τ)   = local         (conservative top)             *)
-(*                                                                    *)
-(* The ∀-cases are read as `local` (top of the lattice).  Reading     *)
-(* them as plain `free` (the previous behaviour) under-approximates:  *)
-(* a type abstraction can wrap a local-tainted closure, and the       *)
-(* ∀-type would hide that taint from capture_lt / SA_Any / T_Ctor     *)
-(* (see CounterexampleTmSubst.v).  `local` is the unique choice that  *)
-(* is stable under lifetime substitution (a more precise bound that   *)
-(* looks under the binder is not: instantiating a quantified          *)
-(* lifetime with `local` can raise the body's true bound).            *)
 (* ================================================================== *)
 
 Fixpoint lt_of_ty (T : type) : lifetime :=
@@ -416,7 +407,7 @@ Definition ty_app_arg_no_local (Γ : ctx) (B S : type) : bool :=
 (*   Cap-aware: a literal runtime capability form (term_cap /         *)
 (*   term_handler_m / term_resume) anywhere in the body forces the    *)
 (*   closure lifetime to lt_local, since free_tm_vars cannot see      *)
-(*   literal capabilities (see CounterexampleMarkerReturn.v).         *)
+(*   literal capabilities.                                            *)
 (* ================================================================== *)
 
 Fixpoint free_tm_vars (cutoff : nat) (t : term) : list nat :=
@@ -572,7 +563,7 @@ Fixpoint elim_ty_n (n : nat) (bound : lifetime) (p : variance) (T : type)
 (* ================================================================== *)
 (* Type subtyping                                                     *)
 (*                                                                    *)
-(* Γ ⊢ S <: T  (Figure 4 of the paper)                                *)
+(* Γ ⊢ S <: T                                                         *)
 (*                                                                    *)
 (*   SA_Refl    : reflexivity                                         *)
 (*   SA_Trans   : transitivity                                        *)
@@ -658,9 +649,9 @@ Hint Constructors sub : core.
 (* them as proper inductive constructors rather than Axioms.          *)
 (* ================================================================== *)
 
-(* Instantiate n_ty type-binders (outermost-first) by substituting Ts.
-   Each head argument is lifted over the remaining schema binders so
-   later substitutions cannot capture its free type variables. *)
+(* Instantiate n_ty type-binders (outermost-first) by substituting Ts.  *)
+(* Each head argument is lifted over the remaining schema binders so    *)
+(* later substitutions cannot capture its free type variables.          *)
 Fixpoint inst_ty_vars (n : nat) (Ts : list type) (T : type) : type :=
   match n, Ts with
   | O, _            => T
@@ -777,14 +768,13 @@ Definition lt_var_list (n : nat) : list lifetime :=
 (* ================================================================== *)
 (* Typing relation                                                    *)
 (*                                                                    *)
-(* Γ ⊢ₜ t : T  (Figures 6–7 of the paper)                             *)
+(* Γ ⊢ₜ t : T                                                         *)
 (*                                                                    *)
 (* T_Var    : ctx_lookup_tm Γ x = Some T → Γ ⊢ₜ x : T    (Var)        *)
 (* T_Sub    : Γ ⊢ₜ t : T → Γ ⊢ T <:: U → Γ ⊢ₜ t : U      (Sub)        *)
 (* T_Lam    : (x:A)::Γ ⊢ₜ body : B →                                  *)
 (*              Γ ⊢ₜ λ(x:A).body : A -l-> B              (Lam)        *)
-(*            (closure lifetime l is left unconstrained;              *)
-(*             the paper says l = +lt_Γ(captures); use T_Sub)         *)
+(*            (l = +lt_Γ(captures); use T_Sub)                        *)
 (* T_App    : Γ ⊢ₜ t1 : A -l-> B → Γ ⊢ₜ t2 : A →                      *)
 (*              Γ ⊢ₜ t1 t2 : B                           (App)        *)
 (* T_TyLam  : (α<:B)::Γ ⊢ₜ body : T →                                 *)
@@ -887,7 +877,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       result_ty = type_ctor result_tag l Ts ->
       ctx_lookup_eff Γ result_tag = None ->
       lt_wf Γ l ->
-      Γ ⊢ₗ lt_of_ty_list rho_fields <: l ->
+      Γ ⊢ₗ lt_of_ty_list rho_fields <: lt_of_ty result_ty ->
       Forall (fun l0 => Γ ⊢ₗ l0 <: l) lts ->
       List.length vs = List.length rho_fields ->
       Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rho_fields ->

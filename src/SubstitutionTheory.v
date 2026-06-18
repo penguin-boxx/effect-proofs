@@ -18,7 +18,7 @@ Require Import Typing.
 (*                                                                    *)
 (* Naming convention                                                  *)
 (* ----------------                                                   *)
-(*   <op>_<sort>          — single-sort version (e.g. shift_lt)       *)
+(*   <op>_<sort>              — single-sort version (e.g. shift_lt)   *)
 (*   <op>_<sort>_in_<carrier> — cross-sort version                    *)
 (*                                                                    *)
 (* For every fixpoint in Substitution.v we state, where applicable:   *)
@@ -2014,7 +2014,6 @@ Qed.
 (* ================================================================== *)
 (*                                                                    *)
 (*   TYPING-DEPENDENT SUBSTITUTION / WEAKENING / SHIFT LEMMAS         *)
-(*   (relocated from Safety.v)                                        *)
 (*                                                                    *)
 (* These lemmas mention the typing (`⊢ₜ`) and subtyping (`<::`, `<:`) *)
 (* judgments, so they live here — after `Require Import Typing` —     *)
@@ -2116,10 +2115,10 @@ Qed.
 (*  sufficiency, and shift commutation.                               *)
 (*                                                                    *)
 (*  The shift-on-lookup discipline makes EVERY context structurally   *)
-(*  acyclic (a bound looked up across k binders is var-bounded by k),  *)
-(*  so fuel = |Γ| always suffices: the computed lt_∅ is independent    *)
-(*  of any fuel ≥ |Γ|.  This is what lets context weakening go through *)
-(*  at the `SA_Any` rule without a separate well-formedness premise.   *)
+(*  acyclic (a bound looked up across k binders is var-bounded by k), *)
+(*  so fuel = |Γ| always suffices: the computed lt_∅ is independent   *)
+(*  of any fuel ≥ |Γ|.  This is what lets context weakening go through*)
+(*  at the `SA_Any` rule without a separate well-formedness premise.  *)
 (* ================================================================== *)
 
 (* External per-field minimum, matching the internal field fold. *)
@@ -2483,10 +2482,10 @@ Qed.
 (* ================================================================== *)
 (* Depth-general bind_ty weakening for subtyping.                     *)
 (*                                                                    *)
-(* InsTy c G G' : G' is G with one bind_ty inserted after c ty-binders *)
-(* (counted from the head).  Subtyping is closed under InsTy, with     *)
-(* types shifted by `shift_ty 1 c`.  `sub_weaken_ty_shift` is the      *)
-(* front (c = 0) instance.                                             *)
+(* InsTy c G G' : G' is G with one bind_ty inserted after c ty-binders*)
+(* (counted from the head).  Subtyping is closed under InsTy, with    *)
+(* types shifted by `shift_ty 1 c`.  `sub_weaken_ty_shift` is the     *)
+(* front (c = 0) instance.                                            *)
 (* ================================================================== *)
 
 (* Shift swap law (different cutoffs); needed for the head bind_ty case. *)
@@ -2593,23 +2592,23 @@ Proof.
 Qed.
 
 Inductive InsTy : nat -> ctx -> ctx -> Prop :=
-| InsTy_here : forall B G, InsTy 0 G (bind_ty B :: G)
-| InsTy_ty : forall c G G' A,
-    InsTy c G G' -> InsTy (S c) (bind_ty A :: G) (bind_ty (shift_ty 1 c A) :: G')
-| InsTy_lt : forall c G G' D,
-    InsTy c G G' -> InsTy c (bind_lt D :: G) (bind_lt D :: G')
-| InsTy_tm : forall c G G' T,
-    InsTy c G G' -> InsTy c (bind_tm T :: G) (bind_tm (shift_ty 1 c T) :: G')
-| InsTy_ctor : forall c G G' tg n1 n2 Ts Tr,
-    InsTy c G G' ->
-    InsTy c (bind_ctor tg n1 n2 Ts Tr :: G)
-      (bind_ctor tg n1 n2 (List.map (shift_ty 1 (n2 + c)) Ts)
-                (shift_ty 1 (n2 + c) Tr) :: G')
-| InsTy_eff : forall c G G' eg m1 m2 Ts Tr,
-    InsTy c G G' ->
-    InsTy c (bind_eff eg m1 m2 Ts Tr :: G)
-      (bind_eff eg m1 m2 (shift_ty 1 (m1 + m2 + c) Ts)
-                (shift_ty 1 (m1 + m2 + c) Tr) :: G').
+  | InsTy_here : forall B G, InsTy 0 G (bind_ty B :: G)
+  | InsTy_ty : forall c G G' A,
+      InsTy c G G' -> InsTy (S c) (bind_ty A :: G) (bind_ty (shift_ty 1 c A) :: G')
+  | InsTy_lt : forall c G G' D,
+      InsTy c G G' -> InsTy c (bind_lt D :: G) (bind_lt D :: G')
+  | InsTy_tm : forall c G G' T,
+      InsTy c G G' -> InsTy c (bind_tm T :: G) (bind_tm (shift_ty 1 c T) :: G')
+  | InsTy_ctor : forall c G G' tg n1 n2 Ts Tr,
+      InsTy c G G' ->
+      InsTy c (bind_ctor tg n1 n2 Ts Tr :: G)
+        (bind_ctor tg n1 n2 (List.map (shift_ty 1 (n2 + c)) Ts)
+                  (shift_ty 1 (n2 + c) Tr) :: G')
+  | InsTy_eff : forall c G G' eg m1 m2 Ts Tr,
+      InsTy c G G' ->
+      InsTy c (bind_eff eg m1 m2 Ts Tr :: G)
+        (bind_eff eg m1 m2 (shift_ty 1 (m1 + m2 + c) Ts)
+                  (shift_ty 1 (m1 + m2 + c) Tr) :: G').
 
 Definition shv (c a : nat) : nat := if Nat.leb c a then S a else a.
 
@@ -2880,11 +2879,11 @@ Qed.
 (* ---- Subtyping weakening (correctly shifted) -------------------- *)
 
 (* Correct context weakening for subtyping.  Inserting a `bind_ty`      *)
-(* binding at the front shifts the type-variable namespace by one, so    *)
-(* the related types must be shifted by `shift_ty 1 0`.  (The earlier    *)
-(* no-shift `sub_weaken_cons` omitted this shift and was unsound:         *)
-(* prepending a binding silently re-captured the de Bruijn indices.)     *)
-(* Standard weakening metatheory; now derived from `sub_InsTy`.        *)
+(* binding at the front shifts the type-variable namespace by one, so   *)
+(* the related types must be shifted by `shift_ty 1 0`.  (The earlier   *)
+(* no-shift `sub_weaken_cons` omitted this shift and was unsound:       *)
+(* prepending a binding silently re-captured the de Bruijn indices.)    *)
+(* Standard weakening metatheory; now derived from `sub_InsTy`.         *)
 Lemma sub_weaken_ty_shift : forall Γ B T1 T2,
   Γ ⊢ T1 <:: T2 ->
   (bind_ty B :: Γ) ⊢ shift_ty 1 0 T1 <:: shift_ty 1 0 T2.
@@ -2892,7 +2891,7 @@ Proof.
   intros Γ B T1 T2 H. apply (sub_InsTy Γ T1 T2 H 0 (bind_ty B :: Γ)). apply InsTy_here.
 Qed.
 
-(* Likewise, inserting a `bind_lt` binding shifts the lifetime          *)
+(* Likewise, inserting a `bind_lt` binding shifts the lifetime         *)
 (* namespace inside types by one.  Derived from `sub_InsLt`.           *)
 
 (* ===== InsLt: depth-general bind_lt weakening ===== *)
@@ -4286,7 +4285,7 @@ Lemma typing_ind_forall2 :
       result_ty = type_ctor result_tag l Ts ->
       ctx_lookup_eff Γ result_tag = None ->
      lt_wf Γ l ->
-      Γ ⊢ₗ lt_of_ty_list rho_fields <: l ->
+      Γ ⊢ₗ lt_of_ty_list rho_fields <: lt_of_ty result_ty ->
       Forall (fun l0 => Γ ⊢ₗ l0 <: l) lts ->
      List.length vs = List.length rho_fields ->
      Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rho_fields ->
@@ -4432,16 +4431,16 @@ Proof.
 Qed.
 
 (* ================================================================== *)
-(* Stability of the context-sensitive no-local checks under weakening  *)
+(* Stability of the context-sensitive no-local checks under weakening *)
 (*                                                                    *)
 (* The new typing premises ([no_local_ty_G], [ty_app_arg_no_local],   *)
 (* [forallb no_local_ty_G ...]) read the bound of each type variable  *)
 (* from the context, so weakening lemmas must show they are preserved *)
 (* when a binder is inserted ([InsTm]/[InsTy]/[InsLt]).  The two      *)
-(* [is_any_at_free_bound_shift_*] lemmas establish that shifting an    *)
-(* inserted bound does not change whether it is [Any]'free, and        *)
-(* [no_local_ty_G_go_eq_fold] re-exposes the inner [go] fixpoint as a  *)
-(* [fold_right] so it can be reasoned about by [Forall]/induction.     *)
+(* [is_any_at_free_bound_shift_*] lemmas establish that shifting an   *)
+(* inserted bound does not change whether it is [Any]'free, and       *)
+(* [no_local_ty_G_go_eq_fold] re-exposes the inner [go] fixpoint as a *)
+(* [fold_right] so it can be reasoned about by [Forall]/induction.    *)
 (* ================================================================== *)
 
 Lemma shift_ty_any_at_free : forall c, shift_ty 1 c any_at_free = any_at_free.
@@ -4901,7 +4900,7 @@ Proof.
             + eapply types_wf_InsTm; [exact HwfTs|]. apply InsTmAt_to_InsTm with (c := c). exact HIns.
     + rewrite (InsTm_lookup_eff Γ G' (InsTmAt_to_InsTm c Γ G' HIns) result_tag). exact Hresult_eff.
             + eapply lt_wf_InsTm; [exact Hwfl|]. apply InsTmAt_to_InsTm with (c := c). exact HIns.
-    + apply (lt_sub_InsTm Γ (lt_of_ty_list rho_fields) l Hlt
+    + apply (lt_sub_InsTm Γ (lt_of_ty_list rho_fields) (lt_of_ty result_ty) Hlt
            G' (InsTmAt_to_InsTm c Γ G' HIns)).
     + eapply Forall_impl; [|exact Hbounded].
       intros l0 Hsub.
@@ -5482,7 +5481,7 @@ Proof.
 Qed.
 
 (* ============================================================ *)
-(* subst_lt_in_ty head-constructor rewrite equations             *)
+(* subst_lt_in_ty head-constructor rewrite equations            *)
 (* ============================================================ *)
 Lemma subst_lt_in_ty_var_eq : forall v R n,
   subst_lt_in_ty v R (type_var n) = type_var n.
@@ -6023,7 +6022,7 @@ Proof.
 Qed.
 
 (* ============================================================ *)
-(* SubstLt : substitute a lifetime for an lt-binder at depth n   *)
+(* SubstLt : substitute a lifetime for an lt-binder at depth n  *)
 (* ============================================================ *)
 
 Definition slv (n a : nat) : nat := if Nat.ltb n a then pred a else a.
@@ -7682,7 +7681,8 @@ Proof.
     + rewrite (InsTy_lookup_eff c Γ G' HIns result_tag). rewrite Hresult_eff. reflexivity.
     + eapply lt_wf_InsTy; eauto.
     + rewrite (lt_of_ty_list_shift_ty rho_fields c).
-      apply (lt_sub_InsTy Γ (lt_of_ty_list rho_fields) l Hlt c G' HIns).
+      rewrite (lt_of_ty_shift_ty result_ty c).
+      apply (lt_sub_InsTy Γ (lt_of_ty_list rho_fields) (lt_of_ty result_ty) Hlt c G' HIns).
     + eapply Forall_impl; [|exact Hbounded]. intros l0 Hsub.
       apply (lt_sub_InsTy Γ l0 l Hsub c G' HIns).
     + rewrite !List.length_map. exact Hlen.
@@ -8012,7 +8012,8 @@ Proof.
     + rewrite (InsLt_lookup_eff c Γ G' HIns result_tag). rewrite Hresult_eff. reflexivity.
     + eapply lt_wf_InsLt; eauto.
     + rewrite (lt_of_ty_list_shift_lt rho_fields c).
-      apply (lt_sub_InsLt Γ (lt_of_ty_list rho_fields) l Hlt c G' HIns).
+      rewrite (lt_of_ty_shift_lt result_ty c).
+      apply (lt_sub_InsLt Γ (lt_of_ty_list rho_fields) (lt_of_ty result_ty) Hlt c G' HIns).
     + exact (Forall_lt_sub_InsLt_map Γ lts l Hbounded c G' HIns).
     + rewrite !List.length_map. exact Hlen.
     + apply (Forall2_typing_InsLt Γ vs rho_fields IHargs c G' HIns).
@@ -8497,6 +8498,46 @@ Proof.
       * assumption.
 Qed.
 
+(* Context-free [lt_of_ty] of a constructor unfolds to [lt_min l ...].  *)
+Lemma lt_of_ty_ctor_eq : forall K l Ts,
+  lt_of_ty (type_ctor K l Ts) = lt_min l (lt_of_ty_list Ts).
+Proof.
+  intros K l Ts. simpl. f_equal.
+Qed.
+
+(* Context-free escape lifetime is below the context-aware one          *)
+(* (a type variable contributes [free] context-free, its bound          *)
+(* context-aware).  Used to thread the (weaker) T_Ctor escape premise   *)
+(* `lt_of_ty_list rho <: lt_of_ty result_ty` into context-aware goals.  *)
+Lemma lt_of_ty_le_lt_of_ty_ctx : forall G T,
+  ty_wf G T -> G ⊢ₗ lt_of_ty T <: lt_of_ty_ctx (List.length G) G T
+with lt_of_ty_list_le_lt_of_ty_ctx_list : forall G Ts,
+  types_wf G Ts -> G ⊢ₗ lt_of_ty_list Ts <: lt_of_ty_ctx_list (List.length G) G Ts.
+Proof.
+  - intros G T Hwf.
+    induction Hwf as [Γ α B Hlk HwfB IHBound
+                     |Γ A l B HwfA IHA Hwfl HwfB IHB
+                     |Γ K l Ts Hwfl HwfTs IHTs
+                     |Γ A HwfA IHA
+                     |Γ B A HwfB IHB HwfA IHA].
+    + apply LS_Free. change (lt_wf Γ (lt_of_ty_G Γ (type_var α))).
+      apply lt_of_ty_G_wf. exact (TWF_Var Γ α B Hlk HwfB).
+    + rewrite lt_of_ty_ctx_fun. apply LS_Refl. exact Hwfl.
+    + rewrite lt_of_ty_ctor_eq, lt_of_ty_ctx_ctor.
+      apply lt_min_mono; [apply LS_Refl; exact Hwfl|].
+      eapply lt_of_ty_list_le_lt_of_ty_ctx_list; eauto.
+    + rewrite lt_of_ty_ctx_ltall. apply LS_Refl. constructor.
+    + rewrite lt_of_ty_ctx_tyall. apply LS_Refl. constructor.
+  - intros G Ts Hwf.
+    induction Hwf as [Γ | Γ T Ts HwfT IHT HwfTs IHTs].
+    + rewrite lt_of_ty_ctx_list_nil. apply LS_Refl. constructor.
+    + change (lt_of_ty_list (T :: Ts)) with (lt_min (lt_of_ty T) (lt_of_ty_list Ts)).
+      rewrite lt_of_ty_ctx_list_cons.
+      apply lt_min_mono.
+      * eapply lt_of_ty_le_lt_of_ty_ctx; eauto.
+      * eapply lt_of_ty_list_le_lt_of_ty_ctx_list; eauto.
+Qed.
+
 Lemma lt_of_ty_G_mono_sub : forall G T1 T2, G ⊢ T1 <:: T2 ->
   G ⊢ₗ lt_of_ty_G G T1 <: lt_of_ty_G G T2.
 Proof.
@@ -8773,26 +8814,26 @@ Proof.
   apply SubstLt_here. exact HltΔ.
 Qed.
 
-(* Narrowing a type-variable bound preserves type well-formedness.    *)
+(* Narrowing a type-variable bound preserves type well-formedness.     *)
 (* This is the small F<: narrowing fragment needed by the unrestricted *)
 (* lifetime-substitution T_TyApp case: after substituting lifetimes,   *)
 (* we may view [forall α <: B. U] at the tighter bound [S] when        *)
 (* [S <: B], and then apply T_TyApp with the self-bound [S].           *)
 
 Inductive NarrowTyWf : type -> type -> ctx -> ctx -> Prop :=
-| NTW_here : forall Bsub Bsup Γ,
-    Γ ⊢ Bsub <:: Bsup ->
-    NarrowTyWf Bsub Bsup (bind_ty Bsup :: Γ) (bind_ty Bsub :: Γ)
-| NTW_ty : forall Bsub Bsup G G' A,
-    NarrowTyWf Bsub Bsup G G' ->
-    ty_wf G A ->
-    ty_wf G' A ->
-    NarrowTyWf Bsub Bsup (bind_ty A :: G) (bind_ty A :: G')
-| NTW_lt : forall Bsub Bsup G G' D,
-    NarrowTyWf Bsub Bsup G G' ->
-    lt_wf G D ->
-    lt_wf G' D ->
-    NarrowTyWf Bsub Bsup (bind_lt D :: G) (bind_lt D :: G').
+  | NTW_here : forall Bsub Bsup Γ,
+      Γ ⊢ Bsub <:: Bsup ->
+      NarrowTyWf Bsub Bsup (bind_ty Bsup :: Γ) (bind_ty Bsub :: Γ)
+  | NTW_ty : forall Bsub Bsup G G' A,
+      NarrowTyWf Bsub Bsup G G' ->
+      ty_wf G A ->
+      ty_wf G' A ->
+      NarrowTyWf Bsub Bsup (bind_ty A :: G) (bind_ty A :: G')
+  | NTW_lt : forall Bsub Bsup G G' D,
+      NarrowTyWf Bsub Bsup G G' ->
+      lt_wf G D ->
+      lt_wf G' D ->
+      NarrowTyWf Bsub Bsup (bind_lt D :: G) (bind_lt D :: G').
 
 Lemma NarrowTyWf_lookup_lt : forall Bsub Bsup G G',
   NarrowTyWf Bsub Bsup G G' ->
@@ -12077,43 +12118,43 @@ Qed.
 
 Inductive SubstTm_eval_ctx_provider_shape (Γ : ctx) (v : term) (T : type) :
   term -> nat -> ctx -> ctx -> Prop :=
-| SEPS_here :
-    SubstTm_eval_ctx_provider_shape Γ v T
-      v 0 (bind_tm T :: Γ) Γ
-| SEPS_fold_bind_tm : forall rhos,
-    SubstTm_eval_ctx_provider_shape Γ v T
-      (shift_tm (List.length rhos) 0 v) (List.length rhos)
-      (List.fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
-        (bind_tm T :: Γ) rhos)
-      (List.fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ rhos)
-| SEPS_push_lt_vars : forall k Delta,
-    lt_lt_closed 0 Delta ->
-    SubstTm_eval_ctx_provider_shape Γ v T
-      (shift_lt_in_tm k 0 v) 0
-      (push_lt_vars k Delta (bind_tm T :: Γ))
-      (push_lt_vars k Delta Γ)
-| SEPS_push_ty_vars : forall k B,
-    SubstTm_eval_ctx_provider_shape Γ v T
-      (shift_ty_in_tm k 0 v) 0
-      (push_ty_vars k B (bind_tm T :: Γ))
-      (push_ty_vars k B Γ)
-| SEPS_push_lt_fold_bind_tm : forall k Delta rhos,
-    lt_lt_closed 0 Delta ->
-    SubstTm_eval_ctx_provider_shape Γ v T
-      (shift_tm (List.length rhos) 0 (shift_lt_in_tm k 0 v))
-      (List.length rhos)
-      (List.fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
-        (push_lt_vars k Delta (bind_tm T :: Γ)) rhos)
-      (List.fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
-        (push_lt_vars k Delta Γ) rhos)
-| SEPS_push_ty_fold_bind_tm : forall k B rhos,
-    SubstTm_eval_ctx_provider_shape Γ v T
-      (shift_tm (List.length rhos) 0 (shift_ty_in_tm k 0 v))
-      (List.length rhos)
-      (List.fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
-        (push_ty_vars k B (bind_tm T :: Γ)) rhos)
-      (List.fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
-        (push_ty_vars k B Γ) rhos).
+  | SEPS_here :
+      SubstTm_eval_ctx_provider_shape Γ v T
+        v 0 (bind_tm T :: Γ) Γ
+  | SEPS_fold_bind_tm : forall rhos,
+      SubstTm_eval_ctx_provider_shape Γ v T
+        (shift_tm (List.length rhos) 0 v) (List.length rhos)
+        (List.fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
+          (bind_tm T :: Γ) rhos)
+        (List.fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ rhos)
+  | SEPS_push_lt_vars : forall k Delta,
+      lt_lt_closed 0 Delta ->
+      SubstTm_eval_ctx_provider_shape Γ v T
+        (shift_lt_in_tm k 0 v) 0
+        (push_lt_vars k Delta (bind_tm T :: Γ))
+        (push_lt_vars k Delta Γ)
+  | SEPS_push_ty_vars : forall k B,
+      SubstTm_eval_ctx_provider_shape Γ v T
+        (shift_ty_in_tm k 0 v) 0
+        (push_ty_vars k B (bind_tm T :: Γ))
+        (push_ty_vars k B Γ)
+  | SEPS_push_lt_fold_bind_tm : forall k Delta rhos,
+      lt_lt_closed 0 Delta ->
+      SubstTm_eval_ctx_provider_shape Γ v T
+        (shift_tm (List.length rhos) 0 (shift_lt_in_tm k 0 v))
+        (List.length rhos)
+        (List.fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
+          (push_lt_vars k Delta (bind_tm T :: Γ)) rhos)
+        (List.fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
+          (push_lt_vars k Delta Γ) rhos)
+  | SEPS_push_ty_fold_bind_tm : forall k B rhos,
+      SubstTm_eval_ctx_provider_shape Γ v T
+        (shift_tm (List.length rhos) 0 (shift_ty_in_tm k 0 v))
+        (List.length rhos)
+        (List.fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
+          (push_ty_vars k B (bind_tm T :: Γ)) rhos)
+        (List.fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
+          (push_ty_vars k B Γ) rhos).
 
 Lemma SubstTm_eval_ctx_provider_shape_SubstTm :
   forall Γ v T repl n G G',
@@ -12320,37 +12361,37 @@ Qed.
 
 Inductive SubstTm_eval_ctx_prefix (Γ : ctx) (v : term) (T : type) :
   term -> nat -> ctx -> ctx -> Prop :=
-| SETP_here :
-    SubstTm_eval_ctx_prefix Γ v T v 0 (bind_tm T :: Γ) Γ
-| SETP_tm : forall repl n G G' A,
-    SubstTm_eval_ctx_prefix Γ v T repl n G G' ->
-    SubstTm_eval_ctx_prefix Γ v T
-      (shift_tm 1 0 repl) (S n) (bind_tm A :: G) (bind_tm A :: G')
-| SETP_ty : forall repl n G G' B,
-    SubstTm_eval_ctx_prefix Γ v T repl n G G' ->
-    SubstTm_eval_ctx_prefix Γ v T
-      (shift_ty_in_tm 1 0 repl) n (bind_ty B :: G) (bind_ty B :: G')
-| SETP_fold_bind_tm : forall rhos repl n G G',
-    SubstTm_eval_ctx_prefix Γ v T repl n G G' ->
-    SubstTm_eval_ctx_prefix Γ v T
-      (shift_tm (List.length rhos) 0 repl) (n + List.length rhos)
-      (List.fold_right (fun rho G0 => bind_tm rho :: G0) G rhos)
-      (List.fold_right (fun rho G0 => bind_tm rho :: G0) G' rhos)
-| SETP_push_ty_vars : forall k B repl n G G',
-    SubstTm_eval_ctx_prefix Γ v T repl n G G' ->
-    SubstTm_eval_ctx_prefix Γ v T
-      (shift_ty_in_tm k 0 repl) n
-      (push_ty_vars k B G) (push_ty_vars k B G')
-| SETP_push_lt_vars_closed0 : forall k Delta repl n G G',
-    SubstTm_eval_ctx_prefix Γ v T repl n G G' ->
-    tm_lt_closed 0 repl ->
-    SubstTm_target_lt_closed0 n G ->
-    ctx_lt_closed_from 0 G' ->
-    ctx_schemas_lt_closed_from 0 G' ->
-    lt_lt_closed 0 Delta ->
-    SubstTm_eval_ctx_prefix Γ v T
-      (shift_lt_in_tm k 0 repl) n
-      (push_lt_vars k Delta G) (push_lt_vars k Delta G').
+  | SETP_here :
+      SubstTm_eval_ctx_prefix Γ v T v 0 (bind_tm T :: Γ) Γ
+  | SETP_tm : forall repl n G G' A,
+      SubstTm_eval_ctx_prefix Γ v T repl n G G' ->
+      SubstTm_eval_ctx_prefix Γ v T
+        (shift_tm 1 0 repl) (S n) (bind_tm A :: G) (bind_tm A :: G')
+  | SETP_ty : forall repl n G G' B,
+      SubstTm_eval_ctx_prefix Γ v T repl n G G' ->
+      SubstTm_eval_ctx_prefix Γ v T
+        (shift_ty_in_tm 1 0 repl) n (bind_ty B :: G) (bind_ty B :: G')
+  | SETP_fold_bind_tm : forall rhos repl n G G',
+      SubstTm_eval_ctx_prefix Γ v T repl n G G' ->
+      SubstTm_eval_ctx_prefix Γ v T
+        (shift_tm (List.length rhos) 0 repl) (n + List.length rhos)
+        (List.fold_right (fun rho G0 => bind_tm rho :: G0) G rhos)
+        (List.fold_right (fun rho G0 => bind_tm rho :: G0) G' rhos)
+  | SETP_push_ty_vars : forall k B repl n G G',
+      SubstTm_eval_ctx_prefix Γ v T repl n G G' ->
+      SubstTm_eval_ctx_prefix Γ v T
+        (shift_ty_in_tm k 0 repl) n
+        (push_ty_vars k B G) (push_ty_vars k B G')
+  | SETP_push_lt_vars_closed0 : forall k Delta repl n G G',
+      SubstTm_eval_ctx_prefix Γ v T repl n G G' ->
+      tm_lt_closed 0 repl ->
+      SubstTm_target_lt_closed0 n G ->
+      ctx_lt_closed_from 0 G' ->
+      ctx_schemas_lt_closed_from 0 G' ->
+      lt_lt_closed 0 Delta ->
+      SubstTm_eval_ctx_prefix Γ v T
+        (shift_lt_in_tm k 0 repl) n
+        (push_lt_vars k Delta G) (push_lt_vars k Delta G').
 
 Lemma SubstTm_eval_ctx_prefix_SubstTm :
   forall Γ v T repl n G G',
@@ -13232,11 +13273,11 @@ Proof.
                  simpl in Hfree; rewrite free_tm_vars_go_eq_concat in Hfree; exact Hfree|
                  exact HcapVs])
       end.
-      apply LS_MinR1.
-      * eapply LS_Trans.
-        -- exact HlocalFields.
-        -- exact Hlt.
-      * eapply lt_of_ty_G_list_wf; eauto.
+      rewrite Hshape in Hlt. rewrite lt_of_ty_ctor_eq in Hlt.
+      eapply LS_Trans; [exact HlocalFields|].
+      eapply LS_Trans; [exact Hlt|].
+      apply lt_min_mono; [apply LS_Refl; exact Hwfl|].
+      eapply lt_of_ty_list_le_lt_of_ty_ctx_list. exact HwfTs.
     + apply LS_Free. apply lt_of_ty_G_wf. rewrite Hshape. constructor; assumption.
   - intros Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
            rho_fields scrut_result_ty result_tag result_l Γ' yes_body eta
@@ -13359,8 +13400,8 @@ Qed.
 
 (* ================================================================== *)
 (* typing_SubstTy : type-substitution preserves typing.               *)
-(* Discharges `subst_ty_in_tm_lemma` (it is the depth-0 instance with  *)
-(* `SubstTy_here`).  Mirrors `typing_InsTy`, swapping shift→subst.     *)
+(* Discharges `subst_ty_in_tm_lemma` (it is the depth-0 instance with *)
+(* `SubstTy_here`).  Mirrors `typing_InsTy`, swapping shift→subst.    *)
 (* ================================================================== *)
 
 (* ---- schema-level type substitution ---- *)
@@ -14568,7 +14609,7 @@ Proof.
     + subst result_ty. rewrite Hshape. reflexivity.
     + rewrite (SubstLt_lookup_eff R n Γ G' HSub result_tag). rewrite Hresult_eff. reflexivity.
     + eapply lt_wf_SubstLt; eauto.
-    + rewrite lt_of_ty_list_subst_lt. eapply lt_sub_SubstLt; eauto.
+    + rewrite lt_of_ty_list_subst_lt. rewrite lt_of_ty_subst_lt. eapply lt_sub_SubstLt; eauto.
     + exact (Forall_lt_sub_SubstLt Γ lts l Hbounded R n G' HSub).
     + rewrite List.length_map. rewrite Hlen_vs. symmetry. apply List.length_map.
     + eapply Forall2_typing_SubstLt_closed_from; eauto.
