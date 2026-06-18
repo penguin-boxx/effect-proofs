@@ -6170,6 +6170,19 @@ Inductive SubstLt : lifetime -> nat -> ctx -> ctx -> Prop :=
 Lemma SubstLt_length : forall R n G G', SubstLt R n G G' -> length G = S (length G').
 Proof. intros R n G G' H. induction H; simpl; lia. Qed.
 
+Lemma SubstLt_lookup_lt_removed : forall R n G G',
+  SubstLt R n G G' -> exists Delta, ctx_lookup_lt G n = Some Delta.
+Proof.
+  intros R n G G' H. induction H.
+  - exists (shift_lt 1 0 Delta). simpl. reflexivity.
+  - destruct IHSubstLt as [Delta0 Hlk].
+    exists (shift_lt 1 0 Delta0). simpl. rewrite Hlk. reflexivity.
+  - destruct IHSubstLt as [Delta0 Hlk].
+    exists Delta0. simpl. exact Hlk.
+  - destruct IHSubstLt as [Delta0 Hlk].
+    exists Delta0. simpl. exact Hlk.
+Qed.
+
 Lemma SubstLt_lookup_ty : forall R n G G', SubstLt R n G G' ->
   forall a, ctx_lookup_ty G' a = option_map (subst_lt_in_ty n R) (ctx_lookup_ty G a).
 Proof.
@@ -6723,6 +6736,15 @@ Proof.
   destruct (is_any_at_free_bound (subst_lt_in_ty n R B)) eqn:HBsub; [|reflexivity].
   pose proof (is_any_at_free_bound_subst_lt_not_free B n R HR HBsub) as HB.
   rewrite HB in Hnl. eapply no_local_ty_G_SubstLt; eauto.
+Qed.
+
+Lemma ty_app_arg_no_local_self : forall Γ S,
+  ty_app_arg_no_local Γ S S = true.
+Proof.
+  intros Γ S. unfold ty_app_arg_no_local.
+  destruct S as [α|A l B|K l Ts|A|B A]; simpl; try reflexivity.
+  destruct l; destruct Ts as [|T Ts]; simpl; try reflexivity.
+  destruct (K =? any_tag); reflexivity.
 Qed.
 
 (* ================================================================== *)
@@ -8751,6 +8773,213 @@ Proof.
   apply SubstLt_here. exact HltΔ.
 Qed.
 
+(* Narrowing a type-variable bound preserves type well-formedness.    *)
+(* This is the small F<: narrowing fragment needed by the unrestricted *)
+(* lifetime-substitution T_TyApp case: after substituting lifetimes,   *)
+(* we may view [forall α <: B. U] at the tighter bound [S] when        *)
+(* [S <: B], and then apply T_TyApp with the self-bound [S].           *)
+
+Inductive NarrowTyWf : type -> type -> ctx -> ctx -> Prop :=
+| NTW_here : forall Bsub Bsup Γ,
+    Γ ⊢ Bsub <:: Bsup ->
+    NarrowTyWf Bsub Bsup (bind_ty Bsup :: Γ) (bind_ty Bsub :: Γ)
+| NTW_ty : forall Bsub Bsup G G' A,
+    NarrowTyWf Bsub Bsup G G' ->
+    ty_wf G A ->
+    ty_wf G' A ->
+    NarrowTyWf Bsub Bsup (bind_ty A :: G) (bind_ty A :: G')
+| NTW_lt : forall Bsub Bsup G G' D,
+    NarrowTyWf Bsub Bsup G G' ->
+    lt_wf G D ->
+    lt_wf G' D ->
+    NarrowTyWf Bsub Bsup (bind_lt D :: G) (bind_lt D :: G').
+
+Lemma NarrowTyWf_lookup_lt : forall Bsub Bsup G G',
+  NarrowTyWf Bsub Bsup G G' ->
+  forall x, ctx_lookup_lt G x = ctx_lookup_lt G' x.
+Proof.
+  intros Bsub Bsup G G' H. induction H; intro x.
+  - simpl. reflexivity.
+  - simpl. apply IHNarrowTyWf.
+  - destruct x as [|x']; simpl.
+    + reflexivity.
+    + rewrite (IHNarrowTyWf x'). reflexivity.
+Qed.
+
+Lemma ty_wf_unshift_ty : forall Γ B S T,
+  Γ ⊢ S <:: B ->
+  ty_wf (bind_ty B :: Γ) (shift_ty 1 0 T) ->
+  ty_wf Γ T.
+Proof.
+  intros Γ B S T Hsub Hwf.
+  pose proof (ty_wf_SubstTy (bind_ty B :: Γ) (shift_ty 1 0 T) Hwf
+               S 0 Γ (SubstTy_here Γ B S Hsub)) as HwfSub.
+  rewrite subst_ty_shift_cancel in HwfSub. exact HwfSub.
+Qed.
+
+Lemma ty_wf_unshift_lt : forall Γ D R T,
+  Γ ⊢ₗ R <: D ->
+  ty_wf (bind_lt D :: Γ) (shift_lt_in_ty 1 0 T) ->
+  ty_wf Γ T.
+Proof.
+  intros Γ D R T Hsub Hwf.
+  pose proof (ty_wf_SubstLt (bind_lt D :: Γ) (shift_lt_in_ty 1 0 T) Hwf
+               R 0 Γ (SubstLt_here Γ D R Hsub)) as HwfSub.
+  rewrite subst_lt_in_ty_shift_cancel in HwfSub. exact HwfSub.
+Qed.
+
+Lemma lt_wf_NarrowTyWf : forall Bsub Bsup G G',
+  NarrowTyWf Bsub Bsup G G' ->
+  forall l, lt_wf G l -> lt_wf G' l.
+Proof.
+  intros Bsub Bsup G G' HN l Hwf.
+  revert G' HN.
+  induction Hwf.
+  all: intros G' HN.
+  - apply LWF_Var with (Δ := Δ).
+    rewrite <- (NarrowTyWf_lookup_lt Bsub Bsup Γ G' HN x). exact H.
+  - apply LWF_Free.
+  - apply LWF_Local.
+  - apply LWF_Min; [apply (IHHwf1 G' HN) | apply (IHHwf2 G' HN)].
+Qed.
+
+Lemma lt_sub_NarrowTyWf : forall Bsub Bsup G G',
+  NarrowTyWf Bsub Bsup G G' ->
+  forall l1 l2, G ⊢ₗ l1 <: l2 -> G' ⊢ₗ l1 <: l2.
+Proof.
+  intros Bsub Bsup G G' HN l1 l2 H.
+  revert G' HN.
+  induction H.
+  all: intros G' HN.
+  - apply LS_Free. eapply lt_wf_NarrowTyWf; eauto.
+  - apply LS_Local. eapply lt_wf_NarrowTyWf; eauto.
+  - apply LS_Var with (Δ := Δ);
+      [rewrite <- (NarrowTyWf_lookup_lt Bsub Bsup Γ G' HN x); exact H |
+       eapply lt_wf_NarrowTyWf; eauto].
+  - apply LS_Refl. eapply lt_wf_NarrowTyWf; eauto.
+  - eapply LS_Trans; eauto.
+  - apply LS_MinL; eauto.
+  - apply LS_MinR1; eauto. eapply lt_wf_NarrowTyWf; eauto.
+  - apply LS_MinR2; eauto. eapply lt_wf_NarrowTyWf; eauto.
+Qed.
+
+Lemma NarrowTyWf_lookup_sub : forall Bsub Bsup G G',
+  NarrowTyWf Bsub Bsup G G' ->
+  forall α U, ctx_lookup_ty G α = Some U -> ty_wf G U ->
+    exists U', ctx_lookup_ty G' α = Some U'
+            /\ G ⊢ U' <:: U
+            /\ G' ⊢ U' <:: U.
+Proof.
+  intros Bsub Bsup G G' HN.
+  induction HN as [Bsub Bsup Γ Hsub
+                  |Bsub Bsup G G' A HN IH HwfA HwfA'
+                  |Bsub Bsup G G' D HN IH HwfD HwfD']; intros α U Hlk HwfU.
+  - destruct α as [|n].
+    + simpl in Hlk. injection Hlk; intros; subst U.
+      exists (shift_ty 1 0 Bsub). split; [reflexivity|]. split.
+      * apply (sub_weaken_ty_shift Γ Bsup Bsub Bsup Hsub).
+      * apply (sub_weaken_ty_shift Γ Bsub Bsub Bsup Hsub).
+    + simpl in Hlk.
+      destruct (ctx_lookup_ty Γ n) as [W|] eqn:E; simpl in Hlk; [|discriminate].
+      injection Hlk; intros; subst U.
+      assert (HwfW : ty_wf Γ W).
+      { eapply ty_wf_unshift_ty; [exact Hsub|exact HwfU]. }
+      assert (HwfTarget : ty_wf (bind_ty Bsub :: Γ) (shift_ty 1 0 W)).
+      { eapply ty_wf_InsTy; [exact HwfW|apply InsTy_here]. }
+      exists (shift_ty 1 0 W). split; [simpl; rewrite E; reflexivity|].
+      split; apply SA_Refl; assumption.
+  - destruct α as [|n].
+    + simpl in Hlk. injection Hlk; intros; subst U.
+      assert (HwfTarget : ty_wf (bind_ty A :: G') (shift_ty 1 0 A)).
+      { eapply ty_wf_InsTy; [exact HwfA'|apply InsTy_here]. }
+      exists (shift_ty 1 0 A). simpl. split; [reflexivity|]. split; apply SA_Refl; assumption.
+    + simpl in Hlk. destruct (ctx_lookup_ty G n) as [W|] eqn:E; simpl in Hlk;
+        [|discriminate].
+      injection Hlk; intros; subst U.
+      assert (HwfW : ty_wf G W).
+      { eapply ty_wf_unshift_ty; [apply SA_Refl; exact HwfA|exact HwfU]. }
+      destruct (IH n W E HwfW) as [W' [HW' [HsubG HsubG']]].
+      exists (shift_ty 1 0 W'). simpl. rewrite HW'. simpl.
+      split; [reflexivity|]. split.
+      * apply (sub_weaken_ty_shift G A W' W HsubG).
+      * apply (sub_weaken_ty_shift G' A W' W HsubG').
+  - simpl in Hlk.
+    destruct (ctx_lookup_ty G α) as [W|] eqn:E; simpl in Hlk; [|discriminate].
+    injection Hlk; intros; subst U.
+    assert (HwfW : ty_wf G W).
+    { eapply ty_wf_unshift_lt; [apply LS_Refl; exact HwfD|exact HwfU]. }
+    destruct (IH α W E HwfW) as [W' [HW' [HsubG HsubG']]].
+    exists (shift_lt_in_ty 1 0 W'). simpl. rewrite HW'. simpl.
+    split; [reflexivity|]. split.
+    + apply (sub_weaken_lt_shift G D W' W HsubG).
+    + apply (sub_weaken_lt_shift G' D W' W HsubG').
+Qed.
+
+Scheme ty_wf_st_mutind := Induction for ty_wf Sort Prop
+with types_wf_st_mutind := Induction for types_wf Sort Prop.
+Combined Scheme ty_wf_types_wf_st_mutind from ty_wf_st_mutind, types_wf_st_mutind.
+
+Lemma ty_wf_NarrowTyWf_all :
+  (forall G T, ty_wf G T -> forall Bsub Bsup G',
+      NarrowTyWf Bsub Bsup G G' -> ty_wf G' T) /\
+  (forall G Ts, types_wf G Ts -> forall Bsub Bsup G',
+      NarrowTyWf Bsub Bsup G G' -> types_wf G' Ts).
+Proof.
+  apply (ty_wf_types_wf_st_mutind
+    (fun G T _ => forall Bsub Bsup G', NarrowTyWf Bsub Bsup G G' -> ty_wf G' T)
+    (fun G Ts _ => forall Bsub Bsup G', NarrowTyWf Bsub Bsup G G' -> types_wf G' Ts)).
+  - intros Γ α B Hlk HwfB IHBound Bsub Bsup G' HN.
+    destruct (NarrowTyWf_lookup_sub Bsub Bsup Γ G' HN α B Hlk HwfB)
+      as [B' [HB' [_ HsubG']]].
+    destruct (sub_wf _ _ _ HsubG') as [HwfB' _].
+    econstructor; eauto.
+  - intros Γ A l B HwfA IHA Hwfl HwfB IHB Bsub Bsup G' HN.
+    constructor.
+    + apply (IHA Bsub Bsup G' HN).
+    + eapply lt_wf_NarrowTyWf; eauto.
+    + apply (IHB Bsub Bsup G' HN).
+  - intros Γ K l Ts Hwfl HwfTs IHTs Bsub Bsup G' HN.
+    constructor.
+    + eapply lt_wf_NarrowTyWf; eauto.
+    + apply (IHTs Bsub Bsup G' HN).
+  - intros Γ A HwfA IHA Bsub Bsup G' HN.
+    constructor. apply (IHA Bsub Bsup (bind_lt lt_local :: G')).
+    apply NTW_lt; [exact HN|constructor|constructor].
+  - intros Γ B A HwfB IHB HwfA IHA Bsub Bsup G' HN.
+    constructor.
+    + apply (IHB Bsub Bsup G' HN).
+    + apply (IHA Bsub Bsup (bind_ty B :: G')).
+      apply NTW_ty.
+      * exact HN.
+      * exact HwfB.
+      * apply (IHB Bsub Bsup G' HN).
+  - intros Γ Bsub Bsup G' HN. constructor.
+  - intros Γ T Ts HwfT IHT HwfTs IHTs Bsub Bsup G' HN.
+    constructor.
+    + apply (IHT Bsub Bsup G' HN).
+    + apply (IHTs Bsub Bsup G' HN).
+Qed.
+
+Lemma ty_wf_NarrowTyWf : forall Bsub Bsup G G',
+  NarrowTyWf Bsub Bsup G G' -> forall T, ty_wf G T -> ty_wf G' T.
+Proof.
+  intros Bsub Bsup G G' HN T Hwf.
+  exact (proj1 ty_wf_NarrowTyWf_all G T Hwf Bsub Bsup G' HN).
+Qed.
+
+Lemma type_ty_all_narrow_bound : forall Γ Bsub Bsup U,
+  Γ ⊢ Bsub <:: Bsup ->
+  ty_wf (bind_ty Bsup :: Γ) U ->
+  Γ ⊢ type_ty_all Bsup U <:: type_ty_all Bsub U.
+Proof.
+  intros Γ Bsub Bsup U Hsub HwfU.
+  eapply SA_TyAll.
+  - exact HwfU.
+  - eapply ty_wf_NarrowTyWf; [apply NTW_here; exact Hsub|exact HwfU].
+  - exact Hsub.
+  - apply SA_Refl. eapply ty_wf_NarrowTyWf; [apply NTW_here; exact Hsub|exact HwfU].
+Qed.
+
 (* ================================================================== *)
 (* SubstTm : substitute a term for a tm-binder at depth n             *)
 (* ================================================================== *)
@@ -10386,6 +10615,15 @@ Definition ctx_ty_closed_from (c : nat) (Γ : ctx) : Prop :=
 
 Definition ctx_lt_closed_from (c : nat) (Γ : ctx) : Prop :=
   forall x, c <= x -> ctx_lookup_lt Γ x = None.
+
+Lemma SubstLt_ctx_lt_closed_from_absurd : forall R n G G',
+  SubstLt R n G G' ->
+  ctx_lt_closed_from n G -> False.
+Proof.
+  intros R n G G' HSub Hclosed.
+  destruct (SubstLt_lookup_lt_removed R n G G' HSub) as [Delta Hlk].
+  rewrite (Hclosed n (Nat.le_refl n)) in Hlk. discriminate.
+Qed.
 
 Definition ctx_tm_lt_closed_from (c : nat) (Γ : ctx) : Prop :=
   forall x T, ctx_lookup_tm Γ x = Some T -> ty_lt_closed c T.
@@ -14145,20 +14383,18 @@ Qed.
 Lemma Forall2_typing_SubstLt_closed_from : forall Γ vs rhos,
   Forall2 (fun v rho => forall R n G',
     SubstLt R n Γ G' ->
-    R <> lt_free ->
     ctx_lt_closed_from n Γ ->
     ctx_schemas_lt_closed_from n Γ ->
     G' ⊢ₜ subst_lt_in_tm n R v : subst_lt_in_ty n R rho) vs rhos ->
   forall R n G',
     SubstLt R n Γ G' ->
-    R <> lt_free ->
     ctx_lt_closed_from n Γ ->
     ctx_schemas_lt_closed_from n Γ ->
     Forall2 (fun v rho => G' ⊢ₜ v : rho)
       (List.map (subst_lt_in_tm n R) vs)
       (List.map (subst_lt_in_ty n R) rhos).
 Proof.
-  intros Γ vs rhos H. induction H; intros R n G' HSub HR Hlt Hschemas; simpl.
+  intros Γ vs rhos H. induction H; intros R n G' HSub Hlt Hschemas; simpl.
   - constructor.
   - constructor.
     + apply H; assumption.
@@ -14236,7 +14472,6 @@ Lemma typing_SubstLt_closed_from : forall Γ t T,
   Γ ⊢ₜ t : T ->
   forall R n G',
     SubstLt R n Γ G' ->
-    R <> lt_free ->
     ctx_lt_closed_from n Γ ->
     ctx_schemas_lt_closed_from n Γ ->
     G' ⊢ₜ subst_lt_in_tm n R t : subst_lt_in_ty n R T.
@@ -14244,65 +14479,71 @@ Proof.
   apply (typing_ind_forall2
     (fun Γ t T => forall R n G',
       SubstLt R n Γ G' ->
-      R <> lt_free ->
       ctx_lt_closed_from n Γ ->
       ctx_schemas_lt_closed_from n Γ ->
       G' ⊢ₜ subst_lt_in_tm n R t : subst_lt_in_ty n R T)).
-  - intros Γ x T Hlk HwfT R n G' HSub HR Hlt Hschemas.
+  - intros Γ x T Hlk HwfT R n G' HSub Hlt Hschemas.
     simpl. apply T_Var.
     + rewrite (SubstLt_lookup_tm R n Γ G' HSub x). rewrite Hlk. reflexivity.
     + eapply ty_wf_SubstLt; eauto.
-  - intros Γ t T U Ht IH Hsub R n G' HSub HR Hlt Hschemas.
+  - intros Γ t T U Ht IH Hsub R n G' HSub Hlt Hschemas.
     eapply T_Sub.
-    + apply (IH R n G' HSub HR Hlt Hschemas).
+    + apply (IH R n G' HSub Hlt Hschemas).
     + eapply sub_SubstLt; eauto.
-  - intros Γ body A l B HwfA HwfB Hbody IHbody Hcap R n G' HSub HR Hlt Hschemas.
+  - intros Γ body A l B HwfA HwfB Hbody IHbody Hcap R n G' HSub Hlt Hschemas.
     simpl. apply T_Lam.
     + eapply ty_wf_SubstLt; eauto.
     + eapply ty_wf_SubstLt; eauto.
     + apply (IHbody R n (bind_tm (subst_lt_in_ty n R A) :: G')
-        (SubstLt_tm R n Γ G' A HSub) HR
+        (SubstLt_tm R n Γ G' A HSub)
         (ctx_lt_closed_from_bind_tm n Γ A Hlt)
         (ctx_schemas_lt_closed_from_bind_tm n Γ A Hschemas)).
     + rewrite (capture_lt_SubstLt R n Γ G' HSub body).
       eapply lt_sub_SubstLt; eauto.
-  - intros Γ t1 t2 A l B Ht1 IH1 Ht2 IH2 R n G' HSub HR Hlt Hschemas.
+  - intros Γ t1 t2 A l B Ht1 IH1 Ht2 IH2 R n G' HSub Hlt Hschemas.
     simpl. eapply T_App.
-    + apply (IH1 R n G' HSub HR Hlt Hschemas).
-    + apply (IH2 R n G' HSub HR Hlt Hschemas).
-  - intros Γ bound body T HwfBound HwfT HisAbs Hbody IHbody R n G' HSub HR Hlt Hschemas.
+    + apply (IH1 R n G' HSub Hlt Hschemas).
+    + apply (IH2 R n G' HSub Hlt Hschemas).
+  - intros Γ bound body T HwfBound HwfT HisAbs Hbody IHbody R n G' HSub Hlt Hschemas.
     simpl. apply T_TyLam.
     + eapply ty_wf_SubstLt; eauto.
     + eapply ty_wf_SubstLt; [exact HwfT|]. apply SubstLt_ty. exact HSub.
     + rewrite is_abs_subst_lt_in_tm. exact HisAbs.
     + apply (IHbody R n (bind_ty (subst_lt_in_ty n R bound) :: G')
-        (SubstLt_ty R n Γ G' bound HSub) HR
+        (SubstLt_ty R n Γ G' bound HSub)
         (ctx_lt_closed_from_bind_ty n Γ bound Hlt)
         (ctx_schemas_lt_closed_from_bind_ty n Γ bound Hschemas)).
-  - intros Γ t B U S Ht IH HwfS Hsub HnlArg R n G' HSub HR Hlt Hschemas.
+  - intros Γ t B U S Ht IH HwfS Hsub HnlArg R n G' HSub Hlt Hschemas.
     simpl. rewrite subst_lt_in_ty_subst_ty_comm.
     eapply T_TyApp.
-    + apply (IH R n G' HSub HR Hlt Hschemas).
+    + eapply T_Sub.
+      * apply (IH R n G' HSub Hlt Hschemas).
+      * apply type_ty_all_narrow_bound.
+        -- eapply sub_SubstLt; eauto.
+        -- pose proof (typing_implies_wf Γ t (type_ty_all B U) Ht) as HwfAll.
+           inversion HwfAll; subst.
+           eapply ty_wf_SubstLt; [eassumption|].
+           apply SubstLt_ty. exact HSub.
     + eapply ty_wf_SubstLt; eauto.
-    + eapply sub_SubstLt; eauto.
-    + eapply ty_app_arg_no_local_SubstLt_not_free; eauto.
-  - intros Γ body T HwfT HisAbs Hbody IHbody R n G' HSub HR Hlt Hschemas.
+    + apply SA_Refl. eapply ty_wf_SubstLt; eauto.
+    + apply ty_app_arg_no_local_self.
+  - intros Γ body T HwfT HisAbs Hbody IHbody R n G' HSub Hlt Hschemas.
     simpl. apply T_LtLam.
     + eapply ty_wf_SubstLt; [exact HwfT|]. apply SubstLt_lt. exact HSub.
     + rewrite is_abs_subst_lt_in_tm. exact HisAbs.
     + apply (IHbody (shift_lt 1 0 R) (S n) (bind_lt lt_local :: G')
-        (SubstLt_bind_lt_closed lt_local R n Γ G' HSub I) (shift_lt_not_free R 1 0 HR)
+        (SubstLt_bind_lt_closed lt_local R n Γ G' HSub I)
         (ctx_lt_closed_from_bind_lt n Γ lt_local Hlt)
         (ctx_schemas_lt_closed_from_bind_lt n Γ lt_local Hschemas)).
-  - intros Γ t T l Ht IH Hwfl R n G' HSub HR Hlt Hschemas.
+  - intros Γ t T l Ht IH Hwfl R n G' HSub Hlt Hschemas.
     simpl. rewrite <- subst_lt_in_ty_subst_lt_in_ty_comm_head.
     eapply T_LtApp.
-    + apply (IH R n G' HSub HR Hlt Hschemas).
+    + apply (IH R n G' HSub Hlt Hschemas).
     + eapply lt_wf_SubstLt; eauto.
   - intros Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields
            result_ty result_tag l vs Hctor Heff Hlen_lts Hwflts Hrho Hlen_Ts HwfTs
            Hresult Hshape Hresult_eff Hwfl HltSub Hbounded Hlen_vs Hargs IHargs
-           R n G' HSub HR Hlt Hschemas.
+           R n G' HSub Hlt Hschemas.
     simpl. rewrite subst_lt_in_tm_go_eq_map.
     eapply T_Ctor with
       (n_lt := n_lt) (n_ty := n_ty)
@@ -14335,7 +14576,7 @@ Proof.
            rho_fields scrut_result_ty result_tag result_l Γyes yes_body eta elim_result no_body
            HKne Hctor Heff Hlts Hrho Hlen_Ts HwfTs Hscrut_result Hscrut_shape
            Hresult_eff Hresult_ne HwfDelta Hresult_l Hscrut IHscrut Harity HΓyes
-           Hyes IHyes Helim Hno IHno R n G' HSub HR Hlt Hschemas.
+           Hyes IHyes Helim Hno IHno R n G' HSub Hlt Hschemas.
     subst Γyes. simpl.
     assert (HTsClosed : tys_lt_closed n Ts) by (eapply types_wf_lt_closed_from; eauto).
     assert (HrhosClosed : tys_lt_closed (n + n_lt) rho_fields).
@@ -14378,7 +14619,7 @@ Proof.
     + exact Hresult_ne.
     + eapply lt_wf_SubstLt; eauto.
     + eapply lt_sub_SubstLt; eauto.
-    + apply (IHscrut R n G' HSub HR Hlt Hschemas).
+    + apply (IHscrut R n G' HSub Hlt Hschemas).
     + exact Harity.
     + rewrite subst_lt_closed_lifetime by (eapply lt_wf_closed_from; eauto). reflexivity.
     + apply (IHyes (shift_lt n_lt 0 R) (n_lt + n)
@@ -14390,7 +14631,6 @@ Proof.
            ++ exact HSub.
            ++ eapply lt_wf_closed_from; eauto.
           -- exact HrhosClosed.
-      * apply shift_lt_not_free. exact HR.
       * replace (n_lt + n) with (n + n_lt) by lia.
         apply ctx_lt_closed_from_fold_bind_tm.
         apply ctx_lt_closed_from_push_lt_vars. exact Hlt.
@@ -14399,9 +14639,9 @@ Proof.
         apply ctx_schemas_lt_closed_from_push_lt_vars. exact Hschemas.
     + rewrite shift_lt_subst_lt_comm_many0.
       apply elim_ty_n_subst_lt_shifted. exact Helim.
-    + apply (IHno R n G' HSub HR Hlt Hschemas).
+    + apply (IHno R n G' HSub Hlt Hschemas).
   - intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
-           Heff Hlen HwfTs HwfTR Hsig Hret Hop IHop R n G' HSub HR Hlt Hschemas.
+           Heff Hlen HwfTs HwfTR Hsig Hret Hop IHop R n G' HSub Hlt Hschemas.
     simpl.
     eapply T_Cap with
       (n_α := n_α) (n_β := n_β)
@@ -14428,14 +14668,13 @@ Proof.
          bind_tm (subst_lt_in_ty n R (type_fun ret_β lt_local (shift_ty n_β 0 T_R))) ::
          push_ty_vars n_β any_at_free G')).
       * apply SubstLt_tm. apply SubstLt_tm. apply SubstLt_push_ty_vars_any_at_free. exact HSub.
-      * exact HR.
       * repeat apply ctx_lt_closed_from_bind_tm.
         apply ctx_lt_closed_from_push_ty_vars. exact Hlt.
       * repeat apply ctx_schemas_lt_closed_from_bind_tm.
         apply ctx_schemas_lt_closed_from_push_ty_vars. exact Hschemas.
   - intros Γ E_tag Ts op_body body n_α n_β sig ret T_B T_R sig_β ret_β
            Heff Hlen HwfTs HwfTB HwfTR HnoLocal Hsub Hsig Hret Hop IHop Hbody IHbody
-           R n G' HSub HR Hlt Hschemas.
+           R n G' HSub Hlt Hschemas.
     simpl.
     eapply T_Handle with
       (n_α := n_α) (n_β := n_β)
@@ -14466,23 +14705,22 @@ Proof.
          bind_tm (subst_lt_in_ty n R (type_fun ret_β lt_local (shift_ty n_β 0 T_R))) ::
          push_ty_vars n_β any_at_free G')).
       * apply SubstLt_tm. apply SubstLt_tm. apply SubstLt_push_ty_vars_any_at_free. exact HSub.
-      * exact HR.
       * repeat apply ctx_lt_closed_from_bind_tm.
         apply ctx_lt_closed_from_push_ty_vars. exact Hlt.
       * repeat apply ctx_schemas_lt_closed_from_bind_tm.
         apply ctx_schemas_lt_closed_from_push_ty_vars. exact Hschemas.
     + apply (IHbody R n (bind_tm (subst_lt_in_ty n R (type_ctor E_tag lt_local Ts)) :: G')
-        (SubstLt_tm R n Γ G' (type_ctor E_tag lt_local Ts) HSub) HR
+      (SubstLt_tm R n Γ G' (type_ctor E_tag lt_local Ts) HSub)
         (ctx_lt_closed_from_bind_tm n Γ (type_ctor E_tag lt_local Ts) Hlt)
         (ctx_schemas_lt_closed_from_bind_tm n Γ (type_ctor E_tag lt_local Ts) Hschemas)).
   - intros Γ recv arg E_tag Delta Ts Ss n_α n_β sig ret sig_inst ret_inst
            Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs HnoSs Hsig HnoSig Hret HwfRet Harg IHarg
-           R n G' HSub HR Hlt Hschemas.
+         R n G' HSub Hlt Hschemas.
     simpl. eapply T_Perform with
       (n_α := n_α) (n_β := n_β)
       (sig := subst_lt_in_ty n R sig) (ret := subst_lt_in_ty n R ret)
       (sig_inst := subst_lt_in_ty n R sig_inst) (ret_inst := subst_lt_in_ty n R ret_inst).
-    + apply (IHrecv R n G' HSub HR Hlt Hschemas).
+    + apply (IHrecv R n G' HSub Hlt Hschemas).
     + rewrite (SubstLt_lookup_eff R n Γ G' HSub E_tag). rewrite Heff. reflexivity.
     + change (List.length (List.map (subst_lt_in_ty n R) Ts) = n_α).
       rewrite List.length_map. exact Hlen_Ts.
@@ -14502,15 +14740,15 @@ Proof.
         subst_lt_in_ty n R (inst_op_arg n_α Ts n_β Ss ret)).
       apply inst_op_arg_subst_lt.
     + eapply ty_wf_SubstLt; eauto.
-    + apply (IHarg R n G' HSub HR Hlt Hschemas).
-  - intros Γ m T_B T_R t HwfTB HwfTR HnoLocal Hsub Ht IH R n G' HSub HR Hlt Hschemas.
+    + apply (IHarg R n G' HSub Hlt Hschemas).
+  - intros Γ m T_B T_R t HwfTB HwfTR HnoLocal Hsub Ht IH R n G' HSub Hlt Hschemas.
     simpl. apply T_HandlerM.
     + eapply ty_wf_SubstLt; eauto.
     + eapply ty_wf_SubstLt; eauto.
     + eapply no_local_ty_G_SubstLt; eauto.
     + eapply sub_SubstLt; eauto.
-    + apply (IH R n G' HSub HR Hlt Hschemas).
-  - intros Γ m b A T_B T_R HwfA HwfTB HwfTR HnoLocal Hsub Hb IHb R n G' HSub HR Hlt Hschemas.
+    + apply (IH R n G' HSub Hlt Hschemas).
+  - intros Γ m b A T_B T_R HwfA HwfTB HwfTR HnoLocal Hsub Hb IHb R n G' HSub Hlt Hschemas.
     simpl. apply T_Resume.
     + eapply ty_wf_SubstLt; eauto.
     + eapply ty_wf_SubstLt; eauto.
@@ -14518,7 +14756,7 @@ Proof.
     + eapply no_local_ty_G_SubstLt; eauto.
     + eapply sub_SubstLt; eauto.
     + apply (IHb R n (bind_tm (subst_lt_in_ty n R A) :: G')
-        (SubstLt_tm R n Γ G' A HSub) HR
+      (SubstLt_tm R n Γ G' A HSub)
         (ctx_lt_closed_from_bind_tm n Γ A Hlt)
         (ctx_schemas_lt_closed_from_bind_tm n Γ A Hschemas)).
 Qed.
@@ -14655,4 +14893,125 @@ Proof.
     + unfold inst_ctor_type, inst_lt_vars.
       apply bounded_ctor_inst_type_core; [exact Hlen0 | exact Hhead].
     + apply IH. exact Htail.
+Qed.
+
+(* ================================================================== *)
+(* typing_SubstTy support: lifetime/no-local helpers under type subst *)
+(* (subst_ty never touches lifetime variables, so lt-judgements are   *)
+(* preserved verbatim).                                               *)
+(* ================================================================== *)
+
+Lemma lt_wf_SubstTy : forall G l,
+  lt_wf G l -> forall Sb n G', SubstTy Sb n G G' -> lt_wf G' l.
+Proof.
+  intros G l Hwf. induction Hwf; intros Sb n G' HS.
+  - eapply LWF_Var. rewrite (SubstTy_lookup_lt Sb n Γ G' HS x). exact H.
+  - apply LWF_Free.
+  - apply LWF_Local.
+  - apply LWF_Min; [eapply IHHwf1 | eapply IHHwf2]; eauto.
+Qed.
+
+Lemma lt_sub_SubstTy : forall G l1 l2, G ⊢ₗ l1 <: l2 ->
+  forall Sb n G', SubstTy Sb n G G' -> G' ⊢ₗ l1 <: l2.
+Proof.
+  intros G l1 l2 H.
+  induction H as [Γ l Hwf|Γ l Hwf|Γ x Δ Hlk Hwf|Γ l Hwf
+                 |Γ l1 l2 l3 H1 IH1 H2 IH2|Γ l1 l2 l H1 IH1 H2 IH2
+                 |Γ l l1 l2 H1 IH1 Hwf2|Γ l l1 l2 H1 IH1 Hwf1];
+    intros Sb n G' HS.
+  - apply LS_Free. eapply lt_wf_SubstTy; eauto.
+  - apply LS_Local. eapply lt_wf_SubstTy; eauto.
+  - apply LS_Var.
+    + rewrite (SubstTy_lookup_lt Sb n Γ G' HS x). exact Hlk.
+    + eapply lt_wf_SubstTy; eauto.
+  - apply LS_Refl. eapply lt_wf_SubstTy; eauto.
+  - eapply LS_Trans; [apply (IH1 Sb n G' HS) | apply (IH2 Sb n G' HS)].
+  - apply LS_MinL; [apply (IH1 Sb n G' HS) | apply (IH2 Sb n G' HS)].
+  - apply LS_MinR1; [apply (IH1 Sb n G' HS) | eapply lt_wf_SubstTy; eauto].
+  - apply LS_MinR2; [apply (IH1 Sb n G' HS) | eapply lt_wf_SubstTy; eauto].
+Qed.
+
+Lemma is_any_at_free_bound_subst_ty_true : forall B n Sb,
+  is_any_at_free_bound B = true -> is_any_at_free_bound (subst_ty n Sb B) = true.
+Proof.
+  intros B n Sb H. destruct B as [| | K l Ts | |]; simpl in H; try discriminate.
+  destruct l; try discriminate. destruct Ts; try discriminate. simpl. exact H.
+Qed.
+
+Lemma no_local_ty_G_var_bind_lt : forall D Γ x,
+  no_local_ty_G (bind_lt D :: Γ) (type_var x) = no_local_ty_G Γ (type_var x).
+Proof.
+  intros D Γ x. cbn [no_local_ty_G]. simpl ctx_lookup_ty.
+  destruct (ctx_lookup_ty Γ x) as [B|]; simpl;
+    [apply is_any_at_free_bound_shift_lt | reflexivity].
+Qed.
+
+Lemma no_local_ty_G_var_bind_ty_S : forall B0 Γ x,
+  no_local_ty_G (bind_ty B0 :: Γ) (type_var (S x)) = no_local_ty_G Γ (type_var x).
+Proof.
+  intros B0 Γ x. cbn [no_local_ty_G]. simpl ctx_lookup_ty.
+  destruct (ctx_lookup_ty Γ x) as [B|]; simpl;
+    [apply is_any_at_free_bound_shift_ty | reflexivity].
+Qed.
+
+(* Type substitution preserves no-local-ness, PROVIDED the replacement   *)
+(* is no-local whenever the substituted variable is (i.e. has an         *)
+(* Any'free bound).  This conditional is exactly `ty_app_arg_no_local`.  *)
+Lemma no_local_ty_G_subst_ty : forall T Γ Sb n G',
+  SubstTy Sb n Γ G' ->
+  (no_local_ty_G Γ (type_var n) = true -> no_local_ty_G G' Sb = true) ->
+  no_local_ty_G Γ T = true ->
+  no_local_ty_G G' (subst_ty n Sb T) = true.
+Proof.
+  intro T.
+  apply (type_list_ind
+    (fun T => forall Γ Sb n G', SubstTy Sb n Γ G' ->
+      (no_local_ty_G Γ (type_var n) = true -> no_local_ty_G G' Sb = true) ->
+      no_local_ty_G Γ T = true -> no_local_ty_G G' (subst_ty n Sb T) = true)
+    (fun Ts => forall Γ Sb n G', SubstTy Sb n Γ G' ->
+      (no_local_ty_G Γ (type_var n) = true -> no_local_ty_G G' Sb = true) ->
+      fold_right (fun A acc => andb (no_local_ty_G Γ A) acc) true Ts = true ->
+      fold_right (fun A acc => andb (no_local_ty_G G' A) acc) true (List.map (subst_ty n Sb) Ts) = true)).
+  - (* type_var x *) intros x Γ Sb n G' HS Hcond Hnl.
+    destruct (Nat.eq_dec x n) as [Heq|Hne].
+    + subst x. replace (subst_ty n Sb (type_var n)) with Sb
+        by (simpl; rewrite Nat.eqb_refl; reflexivity).
+      apply Hcond. exact Hnl.
+    + rewrite (subst_ty_var_neq n Sb x Hne).
+      cbn [no_local_ty_G] in Hnl |- *.
+      rewrite (SubstTy_lookup_ty Sb n Γ G' HS x Hne).
+      destruct (ctx_lookup_ty Γ x) as [B|] eqn:HB; simpl in Hnl |- *; [|discriminate].
+      apply is_any_at_free_bound_subst_ty_true. exact Hnl.
+  - (* type_fun *) intros A l B IHA IHB Γ Sb n G' HS Hcond Hnl.
+    simpl in *. repeat rewrite Bool.andb_true_iff in Hnl.
+    destruct Hnl as [HnlA [Hnll HnlB]].
+    rewrite (IHA Γ Sb n G' HS Hcond HnlA), (IHB Γ Sb n G' HS Hcond HnlB), Hnll. reflexivity.
+  - (* type_ctor *) intros K l Ts IHTs Γ Sb n G' HS Hcond Hnl.
+    rewrite subst_ty_ctor_eq. simpl in *.
+    rewrite !no_local_ty_G_go_eq_fold in *.
+    apply Bool.andb_true_iff in Hnl. destruct Hnl as [Hnll HnlTs].
+    rewrite Hnll, (IHTs Γ Sb n G' HS Hcond HnlTs). reflexivity.
+  - (* type_lt_all *) intros A IHA Γ Sb n G' HS Hcond Hnl. simpl in Hnl |- *.
+    apply (IHA (bind_lt lt_local :: Γ) (shift_lt_in_ty 1 0 Sb) n (bind_lt lt_local :: G')).
+    + apply SubstTy_lt. exact HS.
+    + intro Hn'.
+      apply (no_local_ty_G_InsLt G' Sb 0 (bind_lt lt_local :: G') (InsLt_here lt_local G')).
+      apply Hcond. rewrite <- (no_local_ty_G_var_bind_lt lt_local Γ n). exact Hn'.
+    + exact Hnl.
+  - (* type_ty_all *) intros B A IHB IHA Γ Sb n G' HS Hcond Hnl. simpl in Hnl |- *.
+    apply Bool.andb_true_iff in Hnl. destruct Hnl as [HnlB HnlA].
+    rewrite (IHB Γ Sb n G' HS Hcond HnlB).
+    rewrite (IHA (bind_ty B :: Γ) (shift_ty 1 0 Sb) (S n)
+              (bind_ty (subst_ty n Sb B) :: G')).
+    + reflexivity.
+    + apply SubstTy_ty. exact HS.
+    + intro Hn'.
+      apply (no_local_ty_G_InsTy G' Sb 0 (bind_ty (subst_ty n Sb B) :: G')
+               (InsTy_here (subst_ty n Sb B) G')).
+      apply Hcond. rewrite <- (no_local_ty_G_var_bind_ty_S B Γ n). exact Hn'.
+    + exact HnlA.
+  - (* nil *) intros Γ Sb n G' HS Hcond Hnl. reflexivity.
+  - (* cons *) intros A Ts IHA IHTs Γ Sb n G' HS Hcond Hnl. simpl in *.
+    apply Bool.andb_true_iff in Hnl. destruct Hnl as [HnlA HnlTs].
+    rewrite (IHA Γ Sb n G' HS Hcond HnlA), (IHTs Γ Sb n G' HS Hcond HnlTs). reflexivity.
 Qed.
