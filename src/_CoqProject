@@ -1,10 +1,26 @@
--Q . ""
-Syntax.v
-Substitution.v
-Semantics.v
-Typing.v
-SubstitutionTheory.v
-Safety.v
-Sugar.v
-Examples.v
-ExamplesProofs.v
+-Q core ""
+-Q subst ""
+-Q safety ""
+-Q examples ""
+core/Syntax.v
+core/Substitution.v
+core/Semantics.v
+core/Typing.v
+subst/STShiftLaws.v
+subst/STInsertions.v
+subst/STSubstLt.v
+subst/STSubstTy.v
+subst/STSubstTm.v
+subst/STEvalCtx.v
+subst/STTypingSubstTy.v
+subst/SubstitutionTheory.v
+safety/SafetyMarkers.v
+safety/SafetyProgress.v
+safety/SafetyElim1.v
+safety/SafetyElim2.v
+safety/SafetyConfinement.v
+safety/SafetyPreservation.v
+safety/Safety.v
+examples/Sugar.v
+examples/Examples.v
+examples/ExamplesProofs.v
