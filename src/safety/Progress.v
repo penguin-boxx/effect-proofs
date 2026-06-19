@@ -6,8 +6,8 @@ Require Import Syntax.
 Require Import Substitution.
 Require Import Semantics.
 Require Import Typing.
-Require Import SubstitutionTheory.
-Require Import SafetyMarkers.
+Require Import Subst.
+Require Import Markers.
 
 Definition perform_escape (ms : list marker) (t : term) : Prop :=
   exists E_tag m n_beta Ts T_R op_body Ss v P,

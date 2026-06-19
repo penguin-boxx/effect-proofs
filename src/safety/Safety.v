@@ -5,9 +5,9 @@
 (* dependency-ordered modules (see _CoqProject); this shim re-exports  *)
 (* them so downstream files keep `Require Import Safety`.              *)
 (* ================================================================== *)
-Require Export SafetyMarkers.
-Require Export SafetyProgress.
-Require Export SafetyElim1.
-Require Export SafetyElim2.
-Require Export SafetyConfinement.
-Require Export SafetyPreservation.
+Require Export Markers.
+Require Export Progress.
+Require Export Variance.
+Require Export Inversions.
+Require Export Confinement.
+Require Export Preservation.

@@ -5,7 +5,7 @@ Import ListNotations.
 Require Import Syntax.
 Require Import Substitution.
 Require Import Typing.
-Require Import STShiftLaws.
+Require Import ShiftLaws.
 
 (* ================================================================== *)
 (* Depth-general bind_ty weakening for subtyping.                     *)

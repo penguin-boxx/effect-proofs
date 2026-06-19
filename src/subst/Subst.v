@@ -1,14 +1,14 @@
 (* ================================================================== *)
-(* SubstitutionTheory: re-export shim.                                *)
+(* Subst: re-export shim.                                *)
 (*                                                                    *)
 (* The substitution metatheory was split into seven dependency-       *)
 (* ordered modules (see _CoqProject).  This shim re-exports them so   *)
-(* downstream files can keep `Require Import SubstitutionTheory`.      *)
+(* downstream files can keep `Require Import Subst`.      *)
 (* ================================================================== *)
-Require Export STShiftLaws.
-Require Export STInsertions.
-Require Export STSubstLt.
-Require Export STSubstTy.
-Require Export STSubstTm.
-Require Export STEvalCtx.
-Require Export STTypingSubstTy.
+Require Export ShiftLaws.
+Require Export Insertions.
+Require Export SubstLt.
+Require Export SubstTy.
+Require Export SubstTm.
+Require Export EvalCtx.
+Require Export TypingSubstTy.

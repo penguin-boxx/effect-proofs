@@ -6,10 +6,10 @@ Require Import Syntax.
 Require Import Substitution.
 Require Import Semantics.
 Require Import Typing.
-Require Import SubstitutionTheory.
-Require Import SafetyMarkers.
-Require Import SafetyProgress.
-Require Import SafetyElim1.
+Require Import Subst.
+Require Import Markers.
+Require Import Progress.
+Require Import Variance.
 
 (* ================================================================== *)
 (* Piece 7: sound positive iterated-elim soundness (assembly).        *)

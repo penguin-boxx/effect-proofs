@@ -5,11 +5,11 @@ Import ListNotations.
 Require Import Syntax.
 Require Import Substitution.
 Require Import Typing.
-Require Import STShiftLaws.
-Require Import STInsertions.
-Require Import STSubstLt.
-Require Import STSubstTy.
-Require Import STSubstTm.
+Require Import ShiftLaws.
+Require Import Insertions.
+Require Import SubstLt.
+Require Import SubstTy.
+Require Import SubstTm.
 
 (* ================================================================== *)
 (* Evaluation contexts (program-level typing contexts).               *)

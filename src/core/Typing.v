@@ -324,6 +324,8 @@ Definition lt_of_ty_G (Γ : ctx) (T : type) : lifetime :=
 
 (* ================================================================== *)
 (* "no local in σ" — syntactic check for T_Lam return-type side cond. *)
+(*                                                                    *)
+(* Very conservative on polymorphic variables.                        *)
 (* ================================================================== *)
 
 Fixpoint no_local_lt (l : lifetime) : bool :=

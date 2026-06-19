@@ -6,10 +6,10 @@ Require Import Syntax.
 Require Import Substitution.
 Require Import Semantics.
 Require Import Typing.
-Require Import SubstitutionTheory.
+Require Import Subst.
 
 Require Import Typing.
-Require Import SubstitutionTheory.
+Require Import Subst.
 
 (* ================================================================== *)
 (*                                                                    *)

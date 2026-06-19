@@ -5,10 +5,10 @@ Import ListNotations.
 Require Import Syntax.
 Require Import Substitution.
 Require Import Typing.
-Require Import STShiftLaws.
-Require Import STInsertions.
-Require Import STSubstLt.
-Require Import STSubstTy.
+Require Import ShiftLaws.
+Require Import Insertions.
+Require Import SubstLt.
+Require Import SubstTy.
 
 (* ================================================================== *)
 (* SubstTm : substitute a term for a tm-binder at depth n             *)

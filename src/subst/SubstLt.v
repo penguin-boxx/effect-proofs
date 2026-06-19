@@ -5,8 +5,8 @@ Import ListNotations.
 Require Import Syntax.
 Require Import Substitution.
 Require Import Typing.
-Require Import STShiftLaws.
-Require Import STInsertions.
+Require Import ShiftLaws.
+Require Import Insertions.
 
 (* ============================================================ *)
 (* SubstLt : substitute a lifetime for an lt-binder at depth n  *)

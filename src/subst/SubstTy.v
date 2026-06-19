@@ -5,9 +5,9 @@ Import ListNotations.
 Require Import Syntax.
 Require Import Substitution.
 Require Import Typing.
-Require Import STShiftLaws.
-Require Import STInsertions.
-Require Import STSubstLt.
+Require Import ShiftLaws.
+Require Import Insertions.
+Require Import SubstLt.
 
 (* ================================================================== *)
 (* SubstTy : substitute a type for a ty-binder at depth n             *)
