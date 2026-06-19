@@ -15,27 +15,27 @@ Require Import STSubstTy.
 (* ================================================================== *)
 
 Inductive SubstTm : term -> nat -> ctx -> ctx -> Prop :=
-| SubstTm_here : forall Gamma T v,
-    value v ->
-    Gamma ⊢ₜ v : T ->
-    SubstTm v 0 (bind_tm T :: Gamma) Gamma
-| SubstTm_tm : forall v n G G' A,
-    SubstTm v n G G' ->
-    SubstTm (shift_tm 1 0 v) (S n) (bind_tm A :: G) (bind_tm A :: G')
-| SubstTm_ty : forall v n G G' B,
-    SubstTm v n G G' ->
-    SubstTm (shift_ty_in_tm 1 0 v) n (bind_ty B :: G) (bind_ty B :: G')
-| SubstTm_lt : forall v n G G' D,
-    SubstTm v n G G' ->
-    SubstTm (shift_lt_in_tm 1 0 v) n (bind_lt D :: G) (bind_lt D :: G')
-| SubstTm_ctor : forall v n G G' K n_lt n_ty fields result,
-    SubstTm v n G G' ->
-    SubstTm v n (bind_ctor K n_lt n_ty fields result :: G)
-                (bind_ctor K n_lt n_ty fields result :: G')
-| SubstTm_eff : forall v n G G' E n_a n_b sig ret,
-    SubstTm v n G G' ->
-    SubstTm v n (bind_eff E n_a n_b sig ret :: G)
-                (bind_eff E n_a n_b sig ret :: G').
+  | SubstTm_here : forall Gamma T v,
+      value v ->
+      Gamma ⊢ₜ v : T ->
+      SubstTm v 0 (bind_tm T :: Gamma) Gamma
+  | SubstTm_tm : forall v n G G' A,
+      SubstTm v n G G' ->
+      SubstTm (shift_tm 1 0 v) (S n) (bind_tm A :: G) (bind_tm A :: G')
+  | SubstTm_ty : forall v n G G' B,
+      SubstTm v n G G' ->
+      SubstTm (shift_ty_in_tm 1 0 v) n (bind_ty B :: G) (bind_ty B :: G')
+  | SubstTm_lt : forall v n G G' D,
+      SubstTm v n G G' ->
+      SubstTm (shift_lt_in_tm 1 0 v) n (bind_lt D :: G) (bind_lt D :: G')
+  | SubstTm_ctor : forall v n G G' K n_lt n_ty fields result,
+      SubstTm v n G G' ->
+      SubstTm v n (bind_ctor K n_lt n_ty fields result :: G)
+                  (bind_ctor K n_lt n_ty fields result :: G')
+  | SubstTm_eff : forall v n G G' E n_a n_b sig ret,
+      SubstTm v n G G' ->
+      SubstTm v n (bind_eff E n_a n_b sig ret :: G)
+                  (bind_eff E n_a n_b sig ret :: G').
 
 Lemma SubstTm_length : forall v n G G', SubstTm v n G G' -> length G = S (length G').
 Proof. intros v n G G' H. induction H; simpl; lia. Qed.

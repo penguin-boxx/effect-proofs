@@ -18,7 +18,7 @@ Definition progress_result (ms : list marker) (t : term) : Prop :=
   value t \/ (exists t', t ==> t') \/ perform_escape ms t.
 
 (* Schema regularity for effect receivers: a value inhabiting an   *)
-(** effect capability type is a runtime capability.                *)
+(* effect capability type is a runtime capability.                 *)
 
 (* This is the dual of `canonical_ctor_data`: there the `T_Cap` case was        *)
 (* impossible because the data tag has `ctx_lookup_eff = None`; here the        *)

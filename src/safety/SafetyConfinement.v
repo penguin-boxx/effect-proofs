@@ -137,7 +137,7 @@ Qed.
 (*                                                                    *)
 (*                   CAPABILITY CONFINEMENT                           *)
 (*                                                                    *)
-(* A runtime capability `cap_E^m _ _` is the only construct whose      *)
+(* A runtime capability `cap_E^m _ _` is the only construct whose     *)
 (* typing rule (`T_Cap`) consults the effect environment: it is       *)
 (* well-typed solely in a context that *binds* the effect tag `E`.    *)
 (* Capabilities are minted by `S_Handle`, which wraps each one        *)

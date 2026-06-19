@@ -7,7 +7,7 @@ Require Import Semantics.
 Require Import Typing.
 
 (* ================================================================== *)
-(* Core examples: definitions and statements only.                     *)
+(* Core examples: definitions and statements only.                    *)
 (*                                                                    *)
 (* Placement discipline for this file:                                *)
 (*   1. term/type/context definitions                                 *)
@@ -105,8 +105,7 @@ Definition T_Box (l : lifetime) : type := type_ctor box_tag l [].
 (* data Unit = Unit *)
 Definition unit_sig : binding := bind_ctor unit_tag 0 0 [] T_Unit.
 
-(* data Option<a> = None | Some(a)
-   Internally the datatype carries an explicit result lifetime la. *)
+(* data Option<a> = None | Some(a) *)
 Definition none_sig : binding :=
   bind_ctor none_tag 1 1 [] (T_Option (`L 0) (`T 0)).
 Definition some_sig : binding :=

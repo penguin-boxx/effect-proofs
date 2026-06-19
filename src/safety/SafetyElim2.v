@@ -34,16 +34,6 @@ Proof.
   exact Hpeel.
 Qed.
 
-(* The old `elim_ty_n_sound` (induction on the witness list, depending  *)
-(* on the FALSE `iter_subst_lt_in_ty_mono`) has been removed and        *)
-(* replaced by the sound `elim_ty_n_sound_pos` above.                   *)
-
-(* The parallel-substitution preservation lemmas (subst_list_lt_in_ty_each, *)
-(* subst_list_lt_in_tm_lemma, subst_list_tm_lemma,                     *)
-(* subst_list_lt_in_ty_eq_iter, ctor_lts_chain_bounded,                *)
-(* inst_ctor_type_subst_eq) are now                                    *)
-(* in SubstitutionTheory.v.                                            *)
-
 (* ------------------------------------------------------------------ *)
 (* Inversion lemmas for T_Match and T_Ctor                            *)
 (* ------------------------------------------------------------------ *)

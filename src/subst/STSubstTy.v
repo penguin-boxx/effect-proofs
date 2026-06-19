@@ -404,6 +404,272 @@ Lemma lt_of_ty_inst_lt_vars : forall n lts T,
   lt_of_ty (inst_lt_vars n lts T) = multi_subst_lt 0 lts (lt_of_ty T).
 Proof. intros n lts T. unfold inst_lt_vars. apply lt_of_ty_multi_subst_lt_in_ty. Qed.
 
+(* lt_of_ty commutes with (any-amount) lifetime-variable shifting.       *)
+Lemma lt_of_ty_shift_lt_amt : forall T a c,
+  lt_of_ty (shift_lt_in_ty a c T) = shift_lt a c (lt_of_ty T).
+Proof.
+  apply (type_list_ind
+    (fun T => forall a c, lt_of_ty (shift_lt_in_ty a c T) = shift_lt a c (lt_of_ty T))
+    (fun Ts => forall a c,
+      lt_of_ty_list (List.map (shift_lt_in_ty a c) Ts) = shift_lt a c (lt_of_ty_list Ts))).
+  - reflexivity.
+  - reflexivity.
+  - intros K l Ts HTs a c. rewrite shift_lt_in_ty_ctor_eq. rewrite !lt_of_ty_ctor_eq.
+    rewrite shift_lt_min_eq. rewrite HTs. reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - intros a c. reflexivity.
+  - intros A Ts HA HTs a c. cbn [List.map]. rewrite !lt_of_ty_list_cons.
+    rewrite shift_lt_min_eq. rewrite HA, HTs. reflexivity.
+Qed.
+
+Lemma lt_of_ty_list_shift_lt_amt : forall Ts a c,
+  lt_of_ty_list (List.map (shift_lt_in_ty a c) Ts) = shift_lt a c (lt_of_ty_list Ts).
+Proof.
+  induction Ts as [|T Ts IH]; intros a c; [reflexivity|].
+  cbn [List.map]. rewrite !lt_of_ty_list_cons. rewrite shift_lt_min_eq.
+  rewrite lt_of_ty_shift_lt_amt, IH. reflexivity.
+Qed.
+
+(* ================================================================== *)
+(* Parallel lifetime substitution (multi_subst_lt 0 lts) closes the    *)
+(* n_lt schema lt-parameter binders.  These lemmas let us push a       *)
+(* push_lt_vars-context subtyping down to G' — the final ingredient of  *)
+(* the T_Ctor escape-premise alignment.                                *)
+(* ================================================================== *)
+
+Lemma push_lt_vars_app : forall n b G,
+  push_lt_vars n b G = List.repeat (bind_lt b) n ++ G.
+Proof.
+  induction n as [|n IH]; intros b G; simpl; [reflexivity|].
+  rewrite IH.
+  assert (H : forall m, List.repeat (bind_lt b) m ++ (bind_lt b :: G)
+                        = bind_lt b :: List.repeat (bind_lt b) m ++ G).
+  { induction m as [|m IHm]; simpl; [reflexivity | rewrite IHm; reflexivity]. }
+  apply H.
+Qed.
+
+(* A pushed (x < n) lt-binder bounded by lt_local looks up to lt_local. *)
+Lemma ctx_lookup_lt_push_lt_local : forall n G x,
+  x < n -> ctx_lookup_lt (push_lt_vars n lt_local G) x = Some lt_local.
+Proof.
+  intros n G x. rewrite push_lt_vars_app. revert n G.
+  induction x as [|x IH]; intros n G Hlt; destruct n as [|n]; try lia; simpl.
+  - reflexivity.
+  - rewrite IH by lia. reflexivity.
+Qed.
+
+(* Ambient (x >= n) lookups resolve in the base context (shifted).      *)
+Lemma ctx_lookup_lt_push_ge : forall n b G x,
+  n <= x ->
+  ctx_lookup_lt (push_lt_vars n b G) x
+  = option_map (shift_lt n 0) (ctx_lookup_lt G (x - n)).
+Proof.
+  intros n b G x. rewrite push_lt_vars_app. revert b G x.
+  induction n as [|n IH]; intros b G x Hle; simpl.
+  - rewrite Nat.sub_0_r. destruct (ctx_lookup_lt G x) as [d|]; simpl;
+      [rewrite shift_lt_zero; reflexivity | reflexivity].
+  - destruct x as [|x]; [lia|]. simpl.
+    rewrite IH by lia.
+    replace (x - n) with (S x - S n) by lia.
+    destruct (ctx_lookup_lt G (S x - S n)) as [d|]; simpl; [|reflexivity].
+    rewrite shift_lt_fuse. replace (1 + n) with (S n) by lia. reflexivity.
+Qed.
+
+(* Parallel lt-substitution preserves well-formedness, collapsing the   *)
+(* pushed binders to the base context.                                 *)
+Lemma multi_subst_lt_wf : forall l lts G,
+  Forall (lt_wf G) lts ->
+  lt_wf (push_lt_vars (List.length lts) lt_local G) l ->
+  lt_wf G (multi_subst_lt 0 lts l).
+Proof.
+  induction l as [x| | |l1 IH1 l2 IH2]; intros lts G HF Hwf.
+  - cbn [multi_subst_lt]. rewrite Nat.sub_0_r.
+    destruct (Nat.ltb_spec x (List.length lts)).
+    + rewrite shift_lt_zero.
+      rewrite Forall_forall in HF. apply HF. apply nth_In. exact H.
+    + assert (Hlk : ctx_lookup_lt (push_lt_vars (List.length lts) lt_local G) x <> None).
+      { inversion Hwf as [Γ0 x0 Δ Hlk0| | |]; subst. rewrite Hlk0. discriminate. }
+      rewrite (ctx_lookup_lt_push_ge (List.length lts) lt_local G x ltac:(lia)) in Hlk.
+      destruct (ctx_lookup_lt G (x - List.length lts)) as [Δ'|] eqn:E; [|simpl in Hlk; contradiction].
+      apply (LWF_Var G (x - List.length lts) Δ'). exact E.
+  - cbn [multi_subst_lt]. apply LWF_Free.
+  - cbn [multi_subst_lt]. apply LWF_Local.
+  - inversion Hwf; subst. cbn [multi_subst_lt]. apply LWF_Min; [apply IH1|apply IH2]; assumption.
+Qed.
+
+(* MONOTONICITY: parallel lt-substitution preserves subtyping, closing  *)
+(* the pushed lt-parameter binders.  (Bound lt_local makes the LS_Var   *)
+(* parameter case trivial; ambient vars resolve via the cancel lemma.)  *)
+Lemma multi_subst_lt_lt_sub : forall a b lts G,
+  Forall (lt_wf G) lts ->
+  (push_lt_vars (List.length lts) lt_local G) ⊢ₗ a <: b ->
+  G ⊢ₗ multi_subst_lt 0 lts a <: multi_subst_lt 0 lts b.
+Proof.
+  intros a b lts G HF Hsub.
+  remember (push_lt_vars (List.length lts) lt_local G) as Gp eqn:HGp.
+  induction Hsub as [Γ l Hwf|Γ l Hwf|Γ x Δ Hlk Hwf|Γ l Hwf
+                    |Γ l1 l2 l3 H1 IH1 H2 IH2|Γ l1 l2 l H1 IH1 H2 IH2
+                    |Γ l l1 l2 H1 IH1 Hwf2|Γ l l1 l2 H1 IH1 Hwf1]; subst Γ.
+  - (* LS_Free *) cbn [multi_subst_lt]. apply LS_Free. apply multi_subst_lt_wf; assumption.
+  - (* LS_Local *) cbn [multi_subst_lt]. apply LS_Local. apply multi_subst_lt_wf; assumption.
+  - (* LS_Var: lt_var x <: Δ *)
+    cbn [multi_subst_lt]. rewrite Nat.sub_0_r.
+    destruct (Nat.ltb_spec x (List.length lts)).
+    + (* parameter: lts[x] <: multi_subst_lt Δ, where Δ = lt_local *)
+      rewrite shift_lt_zero.
+      assert (HwfNth : lt_wf G (nth x lts lt_free))
+        by (rewrite Forall_forall in HF; apply HF; apply nth_In; exact H).
+      rewrite (ctx_lookup_lt_push_lt_local (List.length lts) G x H) in Hlk.
+      injection Hlk as HΔ; subst Δ. cbn [multi_subst_lt].
+      apply LS_Local. exact HwfNth.
+    + (* ambient: lt_var (x - n) <: multi_subst_lt Δ, with Δ = shift_lt n 0 Δ' (cancels) *)
+      rewrite (ctx_lookup_lt_push_ge (List.length lts) lt_local G x ltac:(lia)) in Hlk.
+      destruct (ctx_lookup_lt G (x - List.length lts)) as [Δ'|] eqn:E; [|simpl in Hlk; discriminate].
+      simpl in Hlk. injection Hlk as HΔ; subst Δ.
+      rewrite (multi_subst_lt_shift_cancel0 (List.length lts) lts Δ' eq_refl).
+      apply (LS_Var G (x - List.length lts) Δ'). exact E.
+      eapply (multi_subst_lt_wf (shift_lt (List.length lts) 0 Δ') lts G HF) in Hwf.
+      rewrite (multi_subst_lt_shift_cancel0 (List.length lts) lts Δ' eq_refl) in Hwf. exact Hwf.
+  - (* LS_Refl *) apply LS_Refl. apply multi_subst_lt_wf; assumption.
+  - (* LS_Trans *) eapply LS_Trans; [apply IH1; auto | apply IH2; auto].
+  - (* LS_MinL *) cbn [multi_subst_lt]. apply LS_MinL; [apply IH1; auto | apply IH2; auto].
+  - (* LS_MinR1 *) cbn [multi_subst_lt]. apply LS_MinR1; [apply IH1; auto | apply multi_subst_lt_wf; assumption].
+  - (* LS_MinR2 *) cbn [multi_subst_lt]. apply LS_MinR2; [apply IH1; auto | apply multi_subst_lt_wf; assumption].
+Qed.
+
+(* Lower bound, stated with an lt_wf premise on the RESULT (convenient   *)
+(* for iterating through inst_ty_vars).                                 *)
+Lemma lt_of_ty_subst_ty_ge_wf : forall T n Sb G,
+  lt_wf G (lt_of_ty Sb) -> lt_wf G (lt_of_ty (subst_ty n Sb T)) ->
+  G ⊢ₗ lt_of_ty T <: lt_of_ty (subst_ty n Sb T).
+Proof.
+  apply (type_list_ind
+    (fun T => forall n Sb G, lt_wf G (lt_of_ty Sb) -> lt_wf G (lt_of_ty (subst_ty n Sb T)) ->
+       G ⊢ₗ lt_of_ty T <: lt_of_ty (subst_ty n Sb T))
+    (fun Ts => forall n Sb G, lt_wf G (lt_of_ty Sb) ->
+       lt_wf G (lt_of_ty_list (List.map (subst_ty n Sb) Ts)) ->
+       G ⊢ₗ lt_of_ty_list Ts <: lt_of_ty_list (List.map (subst_ty n Sb) Ts))).
+  - intros x n Sb G HSb HT. rewrite subst_ty_var_eq. destruct (Nat.eqb_spec x n).
+    + apply LS_Free. exact HSb.
+    + destruct (Nat.ltb n x); apply LS_Free; apply LWF_Free.
+  - intros A l B IHA IHB n Sb G HSb HT.
+    rewrite subst_ty_fun_eq in HT. cbn [lt_of_ty] in HT |- *. apply LS_Refl. exact HT.
+  - intros K l Ts IHTs n Sb G HSb HT.
+    rewrite subst_ty_ctor_eq, !lt_of_ty_ctor_eq in HT. rewrite subst_ty_ctor_eq, !lt_of_ty_ctor_eq.
+    inversion HT as [| | |G0 a b Hwfl HwfTs]; subst.
+    apply lt_min_mono; [apply LS_Refl; exact Hwfl | apply IHTs; [exact HSb | exact HwfTs]].
+  - intros A IHA n Sb G HSb HT. rewrite subst_ty_ltall_eq. cbn [lt_of_ty]. apply LS_Refl. apply LWF_Local.
+  - intros B A IHB IHA n Sb G HSb HT. rewrite subst_ty_tyall_eq. cbn [lt_of_ty]. apply LS_Refl. apply LWF_Local.
+  - intros n Sb G HSb HT. apply LS_Free. apply LWF_Free.
+  - intros A Ts IHA IHTs n Sb G HSb HT.
+    cbn [List.map] in HT |- *. rewrite !lt_of_ty_list_cons in HT. rewrite !lt_of_ty_list_cons.
+    inversion HT as [| | |G0 a b HwfA HwfTs]; subst.
+    apply lt_min_mono; [apply IHA; [exact HSb|exact HwfA] | apply IHTs; [exact HSb|exact HwfTs]].
+Qed.
+
+(* LOWER bound through type-variable instantiation.                      *)
+Lemma lt_of_ty_inst_ty_vars_ge : forall Ts T G,
+  lt_wf G (lt_of_ty T) ->
+  Forall (fun U => lt_wf G (lt_of_ty U)) Ts ->
+  G ⊢ₗ lt_of_ty T <: lt_of_ty (inst_ty_vars (List.length Ts) Ts T).
+Proof.
+  induction Ts as [|U rest IH]; intros T G HT HF.
+  - simpl. apply LS_Refl. exact HT.
+  - inversion HF as [|U0 rest0 HwfU HwfRest]; subst.
+    cbn [inst_ty_vars List.length].
+    assert (HwfShiftU : lt_wf G (lt_of_ty (shift_ty (List.length rest) 0 U)))
+      by (rewrite lt_of_ty_shift_ty_amt; exact HwfU).
+    assert (HwfT1 : lt_wf G (lt_of_ty (subst_ty 0 (shift_ty (List.length rest) 0 U) T))).
+    { destruct (lt_sub_wf _ _ _ (lt_of_ty_subst_ty_le T 0 (shift_ty (List.length rest) 0 U) G HT HwfShiftU))
+        as [Hwf _]. exact Hwf. }
+    eapply LS_Trans.
+    + apply (lt_of_ty_subst_ty_ge_wf T 0 (shift_ty (List.length rest) 0 U) G HwfShiftU HwfT1).
+    + apply IH; [exact HwfT1 | exact HwfRest].
+Qed.
+
+(* List LOWER bound under type substitution.                            *)
+Lemma lt_of_ty_list_subst_ty_ge : forall Ts n Sb G,
+  lt_wf G (lt_of_ty Sb) ->
+  types_wf G (List.map (subst_ty n Sb) Ts) ->
+  G ⊢ₗ lt_of_ty_list Ts <: lt_of_ty_list (List.map (subst_ty n Sb) Ts).
+Proof.
+  induction Ts as [|T Ts IH]; intros n Sb G HSb HwfM; cbn [List.map] in *.
+  - rewrite !lt_of_ty_list_nil. apply LS_Free. apply LWF_Free.
+  - inversion HwfM as [|G0 a b HwfT HwfTs]; subst.
+    rewrite !lt_of_ty_list_cons. apply lt_min_mono.
+    + apply lt_of_ty_subst_ty_ge; [exact HSb | exact HwfT].
+    + apply IH; [exact HSb | exact HwfTs].
+Qed.
+
+(* Substituting at an index above the ty-closedness bound is identity.  *)
+Lemma subst_ty_ty_closed_id : forall T c n Sb,
+  ty_ty_closed c T -> c <= n -> subst_ty n Sb T = T.
+Proof.
+  apply (type_list_ind
+    (fun T => forall c n Sb, ty_ty_closed c T -> c <= n -> subst_ty n Sb T = T)
+    (fun Ts => forall c n Sb, tys_ty_closed c Ts -> c <= n ->
+       List.map (subst_ty n Sb) Ts = Ts)).
+  - intros x c n Sb Hc Hle. rewrite subst_ty_var_eq. simpl in Hc.
+    destruct (Nat.eqb_spec x n); [lia|].
+    destruct (Nat.ltb_spec n x); [lia | reflexivity].
+  - intros A l B IHA IHB c n Sb Hc Hle. rewrite subst_ty_fun_eq. simpl in Hc.
+    destruct Hc as [HA HB]. rewrite (IHA c n Sb HA Hle), (IHB c n Sb HB Hle). reflexivity.
+  - intros K l Ts IHTs c n Sb Hc Hle. rewrite subst_ty_ctor_eq. simpl in Hc.
+    rewrite (IHTs c n Sb Hc Hle). reflexivity.
+  - intros A IHA c n Sb Hc Hle. rewrite subst_ty_ltall_eq. simpl in Hc.
+    rewrite (IHA c n (shift_lt_in_ty 1 0 Sb) Hc Hle). reflexivity.
+  - intros B A IHB IHA c n Sb Hc Hle. rewrite subst_ty_tyall_eq. simpl in Hc.
+    destruct Hc as [HB HA]. rewrite (IHB c n Sb HB Hle).
+    rewrite (IHA (S c) (S n) (shift_ty 1 0 Sb) HA ltac:(lia)). reflexivity.
+  - intros c n Sb Hc Hle. reflexivity.
+  - intros A Ts IHA IHTs c n Sb Hc Hle. cbn [List.map]. simpl in Hc.
+    destruct Hc as [HA HTs]. rewrite (IHA c n Sb HA Hle), (IHTs c n Sb HTs Hle). reflexivity.
+Qed.
+
+(* lt_of_ty preserves lt-closedness.                                     *)
+Lemma ty_lt_closed_lt_of_ty : forall T c,
+  ty_lt_closed c T -> lt_lt_closed c (lt_of_ty T).
+Proof.
+  apply (type_list_ind
+    (fun T => forall c, ty_lt_closed c T -> lt_lt_closed c (lt_of_ty T))
+    (fun Ts => forall c, tys_lt_closed c Ts -> lt_lt_closed c (lt_of_ty_list Ts))).
+  - intros x c Hc. exact I.
+  - intros A l B IHA IHB c Hc. cbn [lt_of_ty]. simpl in Hc. destruct Hc as [HA [Hl HB]]. exact Hl.
+  - intros K l Ts IHTs c Hc. rewrite lt_of_ty_ctor_eq. simpl in Hc. destruct Hc as [Hl HTs].
+    simpl. split; [exact Hl | apply IHTs; exact HTs].
+  - intros A IHA c Hc. exact I.
+  - intros B A IHB IHA c Hc. exact I.
+  - intros c Hc. rewrite lt_of_ty_list_nil. exact I.
+  - intros A Ts IHA IHTs c Hc. rewrite lt_of_ty_list_cons. simpl in Hc. destruct Hc as [HA HTs].
+    simpl. split; [apply IHA; exact HA | apply IHTs; exact HTs].
+Qed.
+
+(* An lt-closed lifetime is well-formed in the pushed-binder context.    *)
+Lemma lt_lt_closed_lt_wf_push : forall l n G,
+  lt_lt_closed n l -> lt_wf (push_lt_vars n lt_local G) l.
+Proof.
+  induction l as [x| | |l1 IH1 l2 IH2]; intros n G Hc; simpl in Hc.
+  - apply (LWF_Var (push_lt_vars n lt_local G) x lt_local).
+    apply ctx_lookup_lt_push_lt_local. exact Hc.
+  - apply LWF_Free.
+  - apply LWF_Local.
+  - destruct Hc as [Hc1 Hc2]. apply LWF_Min; [apply IH1|apply IH2]; assumption.
+Qed.
+
+(* Shifting over n pushed binders preserves well-formedness.             *)
+Lemma lt_wf_shift_push : forall l n b G,
+  lt_wf G l -> lt_wf (push_lt_vars n b G) (shift_lt n 0 l).
+Proof.
+  intros l n b G Hwf. induction Hwf as [Γ x Δ Hlk|Γ|Γ|Γ l1 l2 H1 IH1 H2 IH2]; cbn [shift_lt].
+  - apply (LWF_Var (push_lt_vars n b Γ) (x + n) (shift_lt n 0 Δ)).
+    rewrite (ctx_lookup_lt_push_ge n b Γ (x + n) ltac:(lia)).
+    replace (x + n - n) with x by lia. rewrite Hlk. reflexivity.
+  - apply LWF_Free.
+  - apply LWF_Local.
+  - apply LWF_Min; assumption.
+Qed.
+
 Lemma lt_of_ty_G_mono_sub : forall G T1 T2, G ⊢ T1 <:: T2 ->
   G ⊢ₗ lt_of_ty_G G T1 <: lt_of_ty_G G T2.
 Proof.

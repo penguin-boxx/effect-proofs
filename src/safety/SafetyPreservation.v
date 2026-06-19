@@ -301,7 +301,7 @@ Proof. exact step_preserves_typing. Qed.
 (* possible).                                                         *)
 (* ================================================================== *)
 
-(* Type soundness, UNCONDITIONAL: a well-typed, marker-safe term never  *)
+(* Type soundness, UNCONDITIONAL: a well-typed, marker-safe term never   *)
 (* reaches a stuck state.  Subject reduction (preservation) and the two  *)
 (* marker step-preservation facts are now supplied internally from the   *)
 (* proved lemmas (step_preserves_marker_ok, preservation) and the        *)

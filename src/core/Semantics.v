@@ -110,8 +110,8 @@ Fixpoint shift_ectx_tm (amount cutoff : nat) (E : ectx) : ectx :=
                                                  (shift_ectx_tm amount cutoff E1)
   end.
 
-(* Runtime markers occurring in a term.  This is used only to choose a
-   fresh delimiter marker when a source-level handle reduces. *)
+(* Runtime markers occurring in a term.  This is used only to choose a *)
+(* fresh delimiter marker when a source-level handle reduces.          *)
 Fixpoint markers_in (t : term) : list marker :=
   let fix markers_in_list_local (ts : list term) : list marker :=
     match ts with
@@ -259,7 +259,7 @@ where "t '-->h' t'" := (head_step t t').
 Hint Constructors head_step : core.
 
 (* ------------------------------------------------------------------ *)
-(* 2. Evaluation context well-formedness                               *)
+(* 2. Evaluation context well-formedness                              *)
 (* ------------------------------------------------------------------ *)
 
 (* Well-formedness: arguments to the left of an evaluation hole must  *)
@@ -290,7 +290,7 @@ Inductive ectx_wf : ectx -> Prop :=
 Hint Constructors ectx_wf : core.
 
 (* ------------------------------------------------------------------ *)
-(* 3. Reduction = head step under any well-formed evaluation context   *)
+(* 3. Reduction = head step under any well-formed evaluation context  *)
 (* ------------------------------------------------------------------ *)
 
 Reserved Notation "t '==>' t'" (at level 40).
@@ -634,11 +634,11 @@ Proof.
     inversion Hhandle.
 Qed.
 
-(* App-shape inversion: an `term_app t1 t2` step is exactly one of
-   - β-reduction (t1 a lambda, t2 a value);
-  - resumption application (t1 = term_resume m T_B T_R b, t2 a value);
-   - left-congruence (t1 stepped); or
-   - right-congruence (t1 a value, t2 stepped).                         *)
+(* App-shape inversion: an `term_app t1 t2` step is exactly one of      *)
+(* - β-reduction (t1 a lambda, t2 a value);                             *)
+(* - resumption application (t1 = term_resume m T_B T_R b, t2 a value); *)
+(* - left-congruence (t1 stepped); or                                   *)
+(* - right-congruence (t1 a value, t2 stepped).                         *)
 Lemma step_app_inv : forall t1 t2 t',
   term_app t1 t2 ==> t' ->
     (exists body T v,

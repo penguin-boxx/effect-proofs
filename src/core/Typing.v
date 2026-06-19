@@ -286,7 +286,7 @@ Definition lt_of_ty_list (Ts : list type) : lifetime :=
   List.fold_right (fun T acc => lt_min (lt_of_ty T) acc) lt_free Ts.
 
 (* ================================================================== *)
-(* Γ-aware lt_Γ(τ): paper-faithful variant of lt_of_ty                *)
+(* Γ-aware lt_Γ(τ)                                                    *)
 (*                                                                    *)
 (*   lt_Γ(α) = lt_Γ(B)    if (α <: B) ∈ Γ                             *)
 (*   lt_Γ(α) = free       otherwise                                   *)

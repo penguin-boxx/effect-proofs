@@ -33,6 +33,7 @@ Inductive eval_ctx : ctx -> Prop :=
   | ec_ctor  : forall K n_lt n_ty f r Γ,
       tys_lt_closed n_lt f ->
       ty_lt_closed n_lt r ->
+      tys_ty_closed n_ty f ->
       eval_ctx Γ -> eval_ctx (bind_ctor K n_lt n_ty f r :: Γ)
   | ec_eff   : forall E n_α n_β sig ret Γ,
       E <> any_tag ->
@@ -271,7 +272,7 @@ Lemma eval_ctx_lookup_ctor_lt_closed : forall Γ K n_lt n_ty fields result,
 Proof.
   intros Γ K n_lt n_ty fields result Hec.
   induction Hec as
-      [|K0 n_lt0 n_ty0 fields0 result0 Γ Hfields0 Hresult0 Hec IH
+      [|K0 n_lt0 n_ty0 fields0 result0 Γ Hfields0 Hresult0 Htyc0 Hec IH
        |E0 n_α n_β sig ret Γ Hne Hsig Hret Hec IH]; intro Hlk; simpl in Hlk.
   - discriminate.
   - destruct (Nat.eqb K K0) eqn:Heq.
@@ -287,13 +288,120 @@ Lemma eval_ctx_lookup_eff_lt_closed : forall Γ E n_α n_β sig ret,
 Proof.
   intros Γ E n_α n_β sig ret Hec.
   induction Hec as
-      [|K0 n_lt n_ty fields result Γ Hfields Hresult Hec IH
+      [|K0 n_lt n_ty fields result Γ Hfields Hresult Htyc Hec IH
        |E0 n_α0 n_β0 sig0 ret0 Γ Hne Hsig0 Hret0 Hec IH]; intro Hlk; simpl in Hlk.
   - discriminate.
   - apply IH. exact Hlk.
   - destruct (Nat.eqb E E0) eqn:Heq.
     + inversion Hlk; subst. split; assumption.
     + apply IH. exact Hlk.
+Qed.
+
+(* Extract field ty-closedness from eval_ctx (mirrors the lt version).  *)
+Lemma eval_ctx_lookup_ctor_ty_closed : forall Γ K n_lt n_ty fields result,
+  eval_ctx Γ ->
+  ctx_lookup_ctor Γ K = Some (n_lt, n_ty, fields, result) ->
+  tys_ty_closed n_ty fields.
+Proof.
+  intros Γ K n_lt n_ty fields result Hec.
+  induction Hec as
+      [|K0 n_lt0 n_ty0 fields0 result0 Γ Hfields0 Hresult0 Htyc0 Hec IH
+       |E0 n_α n_β sig ret Γ Hne Hsig Hret Hec IH]; intro Hlk; simpl in Hlk.
+  - discriminate.
+  - destruct (Nat.eqb K K0) eqn:Heq.
+    + inversion Hlk; subst. exact Htyc0.
+    + apply IH. exact Hlk.
+  - apply IH. exact Hlk.
+Qed.
+
+(* Maps of (lt-/ty-)closed types are fixed by shifts at the closedness  *)
+(* bound (the constructor-signature shifts sit above the schema params). *)
+Lemma map_shift_ty_closed : forall f c a,
+  tys_ty_closed c f -> List.map (shift_ty a c) f = f.
+Proof.
+  induction f as [|T f IH]; intros c a Hc; simpl in *; [reflexivity|].
+  destruct Hc as [HT Hf]. rewrite shift_ty_in_ty_closed by exact HT.
+  rewrite IH by exact Hf. reflexivity.
+Qed.
+
+Lemma map_shift_lt_closed : forall f c a,
+  tys_lt_closed c f -> List.map (shift_lt_in_ty a c) f = f.
+Proof.
+  induction f as [|T f IH]; intros c a Hc; simpl in *; [reflexivity|].
+  destruct Hc as [HT Hf]. rewrite shift_lt_in_type_closed by exact HT.
+  rewrite IH by exact Hf. reflexivity.
+Qed.
+
+(* The constructor-field-closedness invariant threaded through           *)
+(* typing_SubstTy (needed for the T_Ctor escape-premise alignment).      *)
+Definition ctor_fields_closed (Γ : ctx) : Prop :=
+  forall K n_lt n_ty fields result,
+    ctx_lookup_ctor Γ K = Some (n_lt, n_ty, fields, result) ->
+    tys_lt_closed n_lt fields /\ tys_ty_closed n_ty fields.
+
+Lemma eval_ctx_ctor_fields_closed : forall Γ, eval_ctx Γ -> ctor_fields_closed Γ.
+Proof.
+  intros Γ Hec K n_lt n_ty fields result Hlk. split.
+  - destruct (eval_ctx_lookup_ctor_lt_closed Γ K n_lt n_ty fields result Hec Hlk) as [Hf _]. exact Hf.
+  - apply (eval_ctx_lookup_ctor_ty_closed Γ K n_lt n_ty fields result Hec Hlk).
+Qed.
+
+Lemma ctor_fields_closed_bind_tm : forall A Γ,
+  ctor_fields_closed Γ -> ctor_fields_closed (bind_tm A :: Γ).
+Proof. intros A Γ H K n_lt n_ty f r Hlk. simpl in Hlk. apply (H K n_lt n_ty f r Hlk). Qed.
+
+Lemma ctor_fields_closed_bind_ty : forall B Γ,
+  ctor_fields_closed Γ -> ctor_fields_closed (bind_ty B :: Γ).
+Proof.
+  intros B Γ H K n_lt n_ty fields result Hlk. simpl in Hlk.
+  destruct (ctx_lookup_ctor Γ K) as [[[[n_lt0 n_ty0] f0] r0]|] eqn:E; [|discriminate].
+  destruct (H K n_lt0 n_ty0 f0 r0 E) as [Hlt Hty].
+  cbn [option_map] in Hlk. unfold shift_ty_ctor_sig in Hlk. inversion Hlk; subst.
+  rewrite Nat.add_0_r. rewrite (map_shift_ty_closed f0 n_ty 1 Hty).
+  split; [exact Hlt | exact Hty].
+Qed.
+
+Lemma ctor_fields_closed_bind_lt : forall D Γ,
+  ctor_fields_closed Γ -> ctor_fields_closed (bind_lt D :: Γ).
+Proof.
+  intros D Γ H K n_lt n_ty fields result Hlk. simpl in Hlk.
+  destruct (ctx_lookup_ctor Γ K) as [[[[n_lt0 n_ty0] f0] r0]|] eqn:E; [|discriminate].
+  destruct (H K n_lt0 n_ty0 f0 r0 E) as [Hlt Hty].
+  cbn [option_map] in Hlk. unfold shift_lt_ctor_sig in Hlk. inversion Hlk; subst.
+  rewrite Nat.add_0_r. rewrite (map_shift_lt_closed f0 n_lt 1 Hlt).
+  split; [exact Hlt | exact Hty].
+Qed.
+
+Lemma ctor_fields_closed_push_ty_vars : forall k B Γ,
+  ctor_fields_closed Γ -> ctor_fields_closed (push_ty_vars k B Γ).
+Proof.
+  induction k; intros B Γ H; simpl; [exact H|].
+  apply IHk. apply ctor_fields_closed_bind_ty. exact H.
+Qed.
+
+Lemma ctor_fields_closed_push_lt_vars : forall k D Γ,
+  ctor_fields_closed Γ -> ctor_fields_closed (push_lt_vars k D Γ).
+Proof.
+  induction k; intros D Γ H; simpl; [exact H|].
+  apply IHk. apply ctor_fields_closed_bind_lt. exact H.
+Qed.
+
+Lemma ctor_fields_closed_fold_bind_tm : forall rhos Γ,
+  ctor_fields_closed Γ ->
+  ctor_fields_closed (List.fold_right (fun rho G0 => bind_tm rho :: G0) Γ rhos).
+Proof.
+  induction rhos as [|rho rhos IH]; intros Γ H; simpl; [exact H|].
+  apply ctor_fields_closed_bind_tm. apply IH. exact H.
+Qed.
+
+(* Bridge to the per-field Forall used by the escape alignment.          *)
+Lemma tys_closed_Forall_and : forall n_lt n_ty f,
+  tys_lt_closed n_lt f -> tys_ty_closed n_ty f ->
+  Forall (fun S => ty_lt_closed n_lt S /\ ty_ty_closed n_ty S) f.
+Proof.
+  induction f as [|T f IH]; intros Hlt Hty; [constructor|].
+  simpl in Hlt, Hty. destruct Hlt as [HltT Hltf], Hty as [HtyT Htyf].
+  constructor; [split; assumption | apply IH; assumption].
 Qed.
 
 Lemma InsLt_lookup_ctor_eval_ctx_closed : forall Γ Γ' c K n_lt n_ty fields result,
