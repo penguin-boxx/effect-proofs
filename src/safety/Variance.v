@@ -9,6 +9,7 @@ Require Import Typing.
 Require Import Subst.
 Require Import Markers.
 Require Import Progress.
+Require Import Narrowing.
 
 (* =================================================================== *)
 (* Variance soundness for `elim_ty` / `elim_lt`                        *)

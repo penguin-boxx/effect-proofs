@@ -23,22 +23,89 @@ Proof.
   eapply ms_step; eauto.
 Qed.
 
+(* ================================================================== *)
+(* Evaluation-context congruence for multi-step reduction.            *)
+(*                                                                    *)
+(* Reduction lifts through an application/ty-/lt-application frame.    *)
+(* For [ty_app]/[lt_app] the frame carries no marker, so the lift is   *)
+(* unconditional.  For [app] the sibling operand's markers join the    *)
+(* term, so a [S_HandleCtx] (handler allocation) step would need a     *)
+(* marker fresh in the sibling too — we require the sibling to be      *)
+(* marker-free, which holds for every closed value/argument here.      *)
+(* ================================================================== *)
+
+Lemma step_ty_app : forall t t' S, t ==> t' -> term_ty_app t S ==> term_ty_app t' S.
+Proof.
+  intros t t' S H. inversion H; subst.
+  - apply (S_step (EC_ty_app E S)); [ apply wf_ty_app; assumption | assumption ].
+  - apply (S_HandleCtx (EC_ty_app E S)); [ apply wf_ty_app; assumption | cbn; assumption ].
+Qed.
+
+Lemma step_lt_app : forall t t' l, t ==> t' -> term_lt_app t l ==> term_lt_app t' l.
+Proof.
+  intros t t' l H. inversion H; subst.
+  - apply (S_step (EC_lt_app E l)); [ apply wf_lt_app; assumption | assumption ].
+  - apply (S_HandleCtx (EC_lt_app E l)); [ apply wf_lt_app; assumption | cbn; assumption ].
+Qed.
+
+Lemma step_app1 : forall t t' u, markers_in u = [] -> t ==> t' -> term_app t u ==> term_app t' u.
+Proof.
+  intros t t' u Hu H. inversion H; subst.
+  - apply (S_step (EC_app1 E u)); [ apply wf_app1; assumption | assumption ].
+  - apply (S_HandleCtx (EC_app1 E u)); [ apply wf_app1; assumption | ].
+    cbn. rewrite Hu. rewrite app_nil_r. assumption.
+Qed.
+
+Lemma step_app2 : forall v t t', value v -> markers_in v = [] -> t ==> t' ->
+  term_app v t ==> term_app v t'.
+Proof.
+  intros v t t' Hv Hm H. inversion H; subst.
+  - apply (S_step (EC_app2 v E)); [ apply wf_app2; assumption | assumption ].
+  - apply (S_HandleCtx (EC_app2 v E)); [ apply wf_app2; assumption | ].
+    cbn. rewrite Hm. cbn. assumption.
+Qed.
+
+Lemma ms_ty_app : forall t t' S, t ==>> t' -> term_ty_app t S ==>> term_ty_app t' S.
+Proof.
+  intros t t' S H. induction H; [ apply ms_refl |].
+  eapply ms_step; [ apply step_ty_app; eassumption | assumption ].
+Qed.
+
+Lemma ms_lt_app : forall t t' l, t ==>> t' -> term_lt_app t l ==>> term_lt_app t' l.
+Proof.
+  intros t t' l H. induction H; [ apply ms_refl |].
+  eapply ms_step; [ apply step_lt_app; eassumption | assumption ].
+Qed.
+
+Lemma ms_app1 : forall t t' u, markers_in u = [] -> t ==>> t' -> term_app t u ==>> term_app t' u.
+Proof.
+  intros t t' u Hu H. induction H; [ apply ms_refl |].
+  eapply ms_step; [ apply step_app1; eassumption | assumption ].
+Qed.
+
+Lemma ms_app2 : forall v t t', value v -> markers_in v = [] -> t ==>> t' ->
+  term_app v t ==>> term_app v t'.
+Proof.
+  intros v t t' Hv Hm H. induction H; [ apply ms_refl |].
+  eapply ms_step; [ apply step_app2; eassumption | assumption ].
+Qed.
+
 Lemma unit_v_value : value unit_v.
 Proof. unfold unit_v. constructor. constructor. Qed.
 
 Lemma file_v_value : value file_v.
 Proof. unfold file_v. constructor. constructor. Qed.
 
-Lemma int2_v_value : value int2_v.
-Proof. unfold int2_v. constructor. constructor. Qed.
+Lemma two_v_value : value two_v.
+Proof. unfold two_v, suc_v, zero_v. repeat constructor. Qed.
 
-Lemma int42_v_value : value int42_v.
-Proof. unfold int42_v. constructor. constructor. Qed.
+Lemma three_v_value : value three_v.
+Proof. unfold three_v, suc_v, zero_v. repeat constructor. Qed.
 
-Lemma some_int42_value : value (some_v `Lf (T_Int `Lf) int42_v).
-Proof. unfold some_v. constructor. repeat constructor; apply int42_v_value. Qed.
+Lemma some_three_value : value (some_v (T_Nat `Lf) three_v).
+Proof. unfold some_v. constructor. repeat constructor; apply three_v_value. Qed.
 
-Hint Resolve unit_v_value file_v_value int2_v_value int42_v_value some_int42_value : core.
+Hint Resolve unit_v_value file_v_value two_v_value three_v_value some_three_value : core.
 
 (* [solve_wf] discharges well-formedness side conditions ([ty_wf],
    [types_wf], [lt_wf], [lifetimes_wf]) and the context-lookup equations
@@ -109,6 +176,19 @@ Ltac solve_ctor :=
     | apply Forall2_nil | apply Forall_nil
     | apply Forall2_cons | apply Forall_cons ].
 
+(* [solve_nat] types a Peano numeral [Suc (Suc ... Zero)] at [T_Nat `Lf] in
+   any context whose constructor table is computable by [cbn].  It is
+   [solve_ctor] with the constructor rule itself added as a fallback, so the
+   nested [Suc]-fields (themselves constructor applications) are typed
+   recursively rather than left for [solve_var]. *)
+Ltac solve_nat :=
+  unfold two_v, three_v, suc_v, zero_v;
+  repeat first
+    [ solve_var | solve_lt | progress solve_wf | progress cbn
+    | apply Forall2_nil | apply Forall_nil
+    | apply Forall2_cons | apply Forall_cons
+    | eapply T_Ctor; cbn; try reflexivity ].
+
 (* ================================================================== *)
 (* Constructor/value typing statements                                 *)
 (* ================================================================== *)
@@ -119,11 +199,11 @@ Proof. unfold typed_unit, unit_v, data_ctx; solve_nullary_ctor. Qed.
 Theorem typed_file_proof : typed_file.
 Proof. unfold typed_file, file_v, data_ctx; solve_nullary_ctor. Qed.
 
-Theorem typed_int2_proof : typed_int2.
-Proof. unfold typed_int2, int2_v, data_ctx; solve_nullary_ctor. Qed.
+Theorem typed_two_proof : typed_two.
+Proof. unfold typed_two, data_ctx. solve_nat. Qed.
 
-Theorem typed_int42_proof : typed_int42.
-Proof. unfold typed_int42, int42_v, data_ctx; solve_nullary_ctor. Qed.
+Theorem typed_three_proof : typed_three.
+Proof. unfold typed_three, data_ctx. solve_nat. Qed.
 
 Lemma typed_file_local : data_ctx ⊢ₜ file_v : T_File `Ll.
 Proof.
@@ -186,33 +266,105 @@ Proof.
     + cbn. solve_free_sub.
 Qed.
 
+(* ================================================================== *)
+(* Example terms that USE the polymorphic functions: typing + reduction. *)
+(* ================================================================== *)
+
+Theorem typed_id_example_proof : typed_id_example.
+Proof.
+  unfold typed_id_example, id_example.
+  pose proof typed_id_proof as H. unfold typed_id in H.
+  eapply T_TyApp with (S := T_Unit) in H;
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; apply LS_Local; solve_wf ]
+    | cbn; reflexivity ]. cbn in H.
+  eapply T_App; [ exact H | exact typed_unit_proof ].
+Qed.
+
+Theorem typed_downcast_example_proof : typed_downcast_example.
+Proof.
+  unfold typed_downcast_example, downcast_example.
+  pose proof typed_downcast_proof as H. unfold typed_downcast in H.
+  eapply T_TyApp with (S := T_Unit) in H;
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; apply LS_Local; solve_wf ]
+    | cbn; reflexivity ]. cbn in H.
+  eapply T_App; [ exact H | exact typed_unit_proof ].
+Qed.
+
+Theorem typed_withFile_example_proof : typed_withFile_example.
+Proof.
+  unfold typed_withFile_example, withFile_example.
+  pose proof typed_withFile_proof as H. unfold typed_withFile in H.
+  eapply T_TyApp with (S := T_Unit) in H;
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; apply LS_Local; solve_wf ]
+    | cbn; reflexivity ]. cbn in H.
+  eapply T_App; [ exact H | ].
+  apply T_Lam; [ solve_wf | solve_wf | unfold unit_v; solve_nullary_ctor | cbn; solve_free_sub ].
+Qed.
+
+Theorem red_id_example_proof : red_id_example.
+Proof.
+  unfold red_id_example, id_example, id_poly, unit_v.
+  eapply ms_trans. { apply ms_app1; [ reflexivity | ]. apply ms_one. apply S_TyBeta. } cbn.
+  apply ms_one. apply S_Beta. repeat constructor.
+Qed.
+
+Theorem red_downcast_example_proof : red_downcast_example.
+Proof.
+  unfold red_downcast_example, downcast_example, downcast, unit_v.
+  eapply ms_trans. { apply ms_app1; [ reflexivity | ]. apply ms_one. apply S_TyBeta. } cbn.
+  apply ms_one. apply S_Beta. repeat constructor.
+Qed.
+
+Theorem red_withFile_example_proof : red_withFile_example.
+Proof.
+  unfold red_withFile_example, withFile_example, withFile, unit_v, file_v.
+  eapply ms_trans. { apply ms_app1; [ reflexivity | ]. apply ms_one. apply S_TyBeta. } cbn.
+  eapply ms_trans. { apply ms_one. apply S_Beta. repeat constructor. } cbn.
+  apply ms_one. apply S_Beta. repeat constructor.
+Qed.
+
+(* [solve_cmd] types a State command [get]/[put n] : Cmd<Nat> (the [put] field
+   is a Nat numeral, typed by [solve_nat]). *)
+Ltac solve_cmd :=
+  eapply T_Ctor; cbn; try reflexivity;
+  repeat first
+    [ progress solve_wf | solve_lt
+    | apply Forall_nil | apply Forall2_nil
+    | apply Forall2_cons; [ solve_nat | ] ].
+
+(* [solve_state_perform] discharges a [perform st.<cmd>() : Nat] goal (the 11
+   premises of T_Perform for the single State operation [Cmd<Nat> -> Nat]). *)
+Ltac solve_state_perform :=
+  eapply T_Perform with (Ss := (@nil type));
+  [ solve_var | cbn; reflexivity | reflexivity | reflexivity | solve_wf
+  | reflexivity | cbn; reflexivity | cbn; reflexivity | cbn; reflexivity
+  | solve_wf | solve_cmd ].
+
+
 Theorem typed_cons_proof : typed_cons.
 Proof.
   unfold typed_cons, cons_fn.
-  apply T_LtLam.
+  apply T_TyLam.
+  - solve_wf.
   - solve_wf.
   - reflexivity.
-  - apply T_TyLam.
+  - apply T_Lam.
     + solve_wf.
     + solve_wf.
-    + reflexivity.
     + apply T_Lam.
       * solve_wf.
       * solve_wf.
-      * apply T_Lam.
-        -- solve_wf.
-        -- solve_wf.
-        -- unfold cons_v.
-           eapply T_Ctor with
-             (lts := [`L 0]) (Ts := [`T 0])
-             (rho_fields := [`T 0; T_List (`L 0) (`T 0)]);
-             cbn; try reflexivity; try solve [solve_wf].
-            ++ solve_lt_sub.
-            ++ constructor; [solve_lt_sub | constructor].
-            ++ constructor; [solve_var|].
-              constructor; [solve_var|constructor].
-          -- cbn. solve_lt_sub.
-      * cbn. solve_free_sub.
+      * unfold cons_v.
+        eapply T_Ctor with
+          (lts := []) (Ts := [`T 0])
+          (rho_fields := [`T 0; T_List `Lf (`T 0)]);
+          cbn; try reflexivity; try solve [solve_wf].
+        -- solve_lt_sub.
+        -- constructor.
+        -- constructor; [solve_var|].
+           constructor; [solve_var|constructor].
+      * cbn. solve_lt_sub.
+    + cbn. solve_free_sub.
 Qed.
 
 Theorem typed_list_example_proof : typed_list_example.
@@ -220,12 +372,8 @@ Proof.
   unfold typed_list_example, list_example.
   eapply T_App.
   - eapply T_TyApp with (B := T_Any `Ll) (S := T_File `Ll)
-      (U := (`T 0 -{ `Lf }-> T_List `Ll (`T 0) -{ `Ll }-> T_List `Ll (`T 0))).
-    + eapply T_LtApp with (l := `Ll)
-        (T := type_ty_all (T_Any (`L 0))
-                (`T 0 -{ `Lf }-> T_List (`L 0) (`T 0) -{ `L 0 }-> T_List (`L 0) (`T 0))).
-      * exact typed_cons_proof.
-      * solve_wf.
+      (U := (`T 0 -{ `Lf }-> T_List `Lf (`T 0) -{ `Ll }-> T_List `Lf (`T 0))).
+    + exact typed_cons_proof.
     + solve_wf.
     + apply SA_Any; [ solve_wf | solve_wf | cbn; apply LS_Local; solve_wf ].
     + cbn. reflexivity.
@@ -248,6 +396,75 @@ Proof.
   - eapply T_App; solve_var.
 Qed.
 
+Theorem typed_succ_proof : typed_succ.
+Proof.
+  unfold typed_succ, succ_fn.
+  apply T_Lam.
+  - solve_wf.
+  - solve_wf.
+  - solve_nat.
+  - cbn. solve_free_sub.
+Qed.
+
+(* Built forward: instantiate compose_fn's polymorphic type one elimination
+   at a time (so each input type is concrete, avoiding higher-order
+   inversion of [subst_ty]/[subst_lt_in_ty]), then apply to succ/succ/Zero. *)
+Theorem typed_compose_example_proof : typed_compose_example.
+Proof.
+  unfold typed_compose_example, compose_example.
+  pose proof typed_compose_proof as H. unfold typed_compose in H.
+  eapply T_LtApp with (l := `Lf) in H; [ | solve_wf ]. cbn in H.
+  eapply T_LtApp with (l := `Lf) in H; [ | solve_wf ]. cbn in H.
+  eapply T_TyApp with (S := T_Nat `Lf) in H;
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; apply LS_Local; solve_wf ]
+    | cbn; reflexivity ]. cbn in H.
+  eapply T_TyApp with (S := T_Nat `Lf) in H;
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; apply LS_Local; solve_wf ]
+    | cbn; reflexivity ]. cbn in H.
+  eapply T_TyApp with (S := T_Nat `Lf) in H;
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; apply LS_Local; solve_wf ]
+    | cbn; reflexivity ]. cbn in H.
+  eapply T_App; [ | solve_nat ].
+  eapply T_App; [ | exact typed_succ_proof ].
+  eapply T_App; [ exact H | exact typed_succ_proof ].
+Qed.
+
+Theorem red_compose_example_proof : red_compose_example.
+Proof.
+  unfold red_compose_example, compose_example, compose_fn, succ_fn, two_v, suc_v, zero_v.
+  (* Phase 1: reduce the instantiated polymorphic head to the triple lambda,
+     lifting each head beta through the [ty_app]/[lt_app] and outer [app] frames. *)
+  eapply ms_trans.
+  { apply ms_app1; [ reflexivity | ].
+    apply ms_app1; [ reflexivity | ].
+    apply ms_app1; [ reflexivity | ].
+    eapply ms_trans.
+    { do 3 apply ms_ty_app. apply ms_lt_app. apply ms_one. apply S_LtBeta. }
+    cbn.
+    eapply ms_trans. { do 3 apply ms_ty_app. apply ms_one. apply S_LtBeta. } cbn.
+    eapply ms_trans. { do 2 apply ms_ty_app. apply ms_one. apply S_TyBeta. } cbn.
+    eapply ms_trans. { apply ms_ty_app. apply ms_one. apply S_TyBeta. } cbn.
+    apply ms_one. apply S_TyBeta. }
+  cbn.
+  (* Phase 2: apply the "+2" function to succ, succ, Zero. *)
+  eapply ms_trans.
+  { apply ms_app1; [ reflexivity | ].
+    apply ms_app1; [ reflexivity | ].
+    apply ms_one. apply S_Beta. repeat constructor. }
+  cbn.
+  eapply ms_trans.
+  { apply ms_app1; [ reflexivity | ].
+    apply ms_one. apply S_Beta. repeat constructor. }
+  cbn.
+  eapply ms_trans. { apply ms_one. apply S_Beta. repeat constructor. } cbn.
+  (* now [succ (succ Zero)] — reduce the inner argument under [succ]. *)
+  eapply ms_trans.
+  { apply ms_app2; [ repeat constructor | reflexivity | ].
+    apply ms_one. apply S_Beta. repeat constructor. }
+  cbn.
+  apply ms_one. apply S_Beta. repeat constructor.
+Qed.
+
 (* The following effect-heavy statements exercise the handler typing rules.
    [readerExample] and [exampleOptionality] are fully closed; the remaining
    polymorphic-handler statements document the intended typing targets. *)
@@ -258,7 +475,7 @@ Proof.
   - apply SA_Refl. solve_wf.
   - cbn. eapply T_App.
     + solve_var.
-    + unfold int2_v. solve_ctor.
+    + solve_nat.
   - cbn. eapply T_Perform with (Ss := (@nil type)).
     + solve_var.
     + cbn; reflexivity.
@@ -275,7 +492,7 @@ Qed.
 
 Theorem typed_withReader_proof : typed_withReader.
 Proof.
-  unfold typed_withReader, withReader, withReader_op_body.
+  unfold typed_withReader, withReader.
   apply T_LtLam; [ solve_wf | reflexivity |].
   apply T_TyLam; [ solve_wf | solve_wf | reflexivity |].
   apply T_TyLam; [ solve_wf | solve_wf | reflexivity |].
@@ -340,6 +557,29 @@ Proof.
       * solve_var.
 Qed.
 
+Theorem typed_withState_example_proof : typed_withState_example.
+Proof.
+  unfold typed_withState_example, withState_example.
+  pose proof typed_withState_proof as H. unfold typed_withState in H.
+  eapply T_LtApp with (l := `Lf) in H; [ | solve_wf ]. cbn in H.
+  eapply T_TyApp with (S := T_Nat `Lf) in H;
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; solve_lt ] | cbn; reflexivity ]. cbn in H.
+  eapply T_TyApp with (S := T_Nat `Lf) in H;
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; solve_lt ] | cbn; reflexivity ]. cbn in H.
+  eapply T_App; [ | solve_nat ].
+  eapply T_App; [ exact H | ].
+  unfold withState_prog.
+  apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt_sub ].
+  cbn.
+  eapply T_App with (l := `Ll).
+  - apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt_sub ].
+    cbn.
+    eapply T_App with (l := `Ll).
+    + apply T_Lam; [ solve_wf | solve_wf | solve_state_perform | cbn; solve_lt_sub ].
+    + solve_state_perform.
+  - solve_state_perform.
+Qed.
+
 Theorem typed_withException_proof : typed_withException.
 Proof.
   unfold typed_withException, withException, withException_op_body.
@@ -363,17 +603,17 @@ Theorem typed_exampleException_proof : typed_exampleException.
 Proof.
   unfold typed_exampleException, exampleException, exampleException_body.
   eapply T_App with
-    (A := T_Exception `Ll (T_Int `Lf) -{ `Lf }-> T_File `Lf)
+    (A := T_Exception `Ll (T_Nat `Lf) -{ `Lf }-> T_File `Lf)
     (l := `Lf)
-    (B := T_Result `Lf (T_Int `Lf) (T_File `Lf)).
+    (B := T_Result `Lf (T_Nat `Lf) (T_File `Lf)).
   eapply T_TyApp with
     (B := T_Any `Lf)
     (S := T_File `Lf)
-    (U := (T_Exception `Ll (T_Int `Lf) -{ `Lf }-> `T 0) -{ `Lf }->
-          T_Result `Lf (T_Int `Lf) (`T 0)).
+    (U := (T_Exception `Ll (T_Nat `Lf) -{ `Lf }-> `T 0) -{ `Lf }->
+          T_Result `Lf (T_Nat `Lf) (`T 0)).
   eapply T_TyApp with
     (B := T_Any `Lf)
-    (S := T_Int `Lf)
+    (S := T_Nat `Lf)
     (U := type_ty_all (T_Any `Lf)
             ((T_Exception `Ll (`T 1) -{ `Lf }-> `T 0) -{ `Lf }->
              T_Result `Lf (`T 1) (`T 0))).
@@ -396,7 +636,7 @@ Proof.
     + cbn; reflexivity.
     + cbn; reflexivity.
     + solve_wf.
-    + unfold int42_v; solve_ctor.
+    + solve_nat.
 Qed.
 
 Theorem typed_withId_proof : typed_withId.
@@ -416,7 +656,7 @@ Proof.
   eapply T_Handle; try (cbn; reflexivity); try solve_wf.
   - apply SA_Refl. solve_wf.
   - cbn. eapply T_App; [ solve_var | unfold some_v; solve_ctor ].
-  - cbn. eapply T_Perform with (Ss := [T_Int `Lf]).
+  - cbn. eapply T_Perform with (Ss := [T_Nat `Lf]).
     + solve_var.
     + cbn; reflexivity.
     + reflexivity.
@@ -427,7 +667,7 @@ Proof.
     + cbn; reflexivity.
     + cbn; reflexivity.
     + solve_wf.
-    + unfold int42_v; solve_ctor.
+    + solve_nat.
 Qed.
 
 Theorem typed_lazyMap_body_proof : typed_lazyMap_body.
@@ -463,11 +703,6 @@ Theorem red_list_example_proof : red_list_example.
 Proof.
   unfold red_list_example, list_example, cons_fn, cons_v.
   eapply ms_step.
-  { apply (S_step (EC_app1 (EC_ty_app EC_hole (T_File `Ll)) file_v)).
-    - repeat constructor.
-    - apply H_LtBeta. }
-  cbn.
-  eapply ms_step.
   { apply (S_step (EC_app1 EC_hole file_v)).
     - repeat constructor.
     - apply H_TyBeta. }
@@ -481,20 +716,20 @@ Theorem red_readerExample_proof : red_readerExample.
 Proof.
   unfold red_readerExample, readerExample, readerExample_op_body.
   eapply ms_step.
-  { apply (S_Handle Reader_tag 0 [T_Int `Lf] (T_Int `Lf) (T_Int `Lf) (($$ 1) @· int2_v)
+  { apply (S_Handle Reader_tag 0 [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) (($$ 1) @· two_v)
              (term_perform ($$ 0) [] unit_v) 0).
     cbn. intros H. inversion H. }
   cbn.
   eapply ms_step.
   { apply (S_step EC_hole). constructor.
-    apply (H_Perform Reader_tag 0 0 [T_Int `Lf] (T_Int `Lf) (T_Int `Lf) (($$ 1) @· int2_v) [] unit_v EC_hole);
+    apply (H_Perform Reader_tag 0 0 [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) (($$ 1) @· two_v) [] unit_v EC_hole);
       [apply unit_v_value | constructor]. }
   cbn.
   eapply ms_step.
-  { apply (S_step EC_hole). constructor. apply H_Resume, int2_v_value. }
+  { apply (S_step EC_hole). constructor. apply H_Resume, two_v_value. }
   cbn.
   eapply ms_step.
-  { apply (S_step EC_hole). constructor. apply H_Return, int2_v_value. }
+  { apply (S_step EC_hole). constructor. apply H_Return, two_v_value. }
   apply ms_refl.
 Qed.
 
@@ -502,17 +737,17 @@ Theorem red_exampleOptionality_proof : red_exampleOptionality.
 Proof.
   unfold red_exampleOptionality, exampleOptionality, optionality_op_body, some_v.
   eapply ms_step.
-  { apply (S_Handle Optionality_tag 1 [] (T_Option `Lf (T_Int `Lf)) (T_Option `Lf (T_Int `Lf))
-             (($$ 1) @· term_ctor some_tag `Lf [`Lf] [`T 0] [$$ 0])
-             (term_perform ($$ 0) [T_Int `Lf] int42_v) 0).
+  { apply (S_Handle Optionality_tag 1 [] (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf (T_Nat `Lf))
+             (($$ 1) @· term_ctor some_tag `Lf [] [`T 0] [$$ 0])
+             (term_perform ($$ 0) [T_Nat `Lf] three_v) 0).
     cbn. intros H. inversion H. }
   cbn.
   eapply ms_step.
   { apply (S_step EC_hole). constructor.
-    apply (H_Perform Optionality_tag 0 1 [] (T_Option `Lf (T_Int `Lf)) (T_Option `Lf (T_Int `Lf))
-             (($$ 1) @· term_ctor some_tag `Lf [`Lf] [`T 0] [$$ 0])
-             [T_Int `Lf] int42_v EC_hole);
-      [apply int42_v_value | constructor]. }
+    apply (H_Perform Optionality_tag 0 1 [] (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf (T_Nat `Lf))
+             (($$ 1) @· term_ctor some_tag `Lf [] [`T 0] [$$ 0])
+             [T_Nat `Lf] three_v EC_hole);
+      [apply three_v_value | constructor]. }
   cbn.
   eapply ms_step.
   { apply (S_step EC_hole). constructor.

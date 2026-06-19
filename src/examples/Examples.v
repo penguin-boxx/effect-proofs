@@ -73,9 +73,9 @@ Definition list_tag : ctor_tag := 50.
 Definition nil_tag  : ctor_tag := 51.
 Definition cons_tag : ctor_tag := 52.
 
-Definition int_tag   : ctor_tag := 60.
-Definition int2_tag  : ctor_tag := 62.
-Definition int42_tag : ctor_tag := 642.
+Definition nat_tag  : ctor_tag := 60.
+Definition zero_tag : ctor_tag := 61.
+Definition suc_tag  : ctor_tag := 62.
 
 Definition lazy_list_tag  : ctor_tag := 70.
 Definition lnil_tag       : ctor_tag := 71.
@@ -88,13 +88,16 @@ Definition endo_tag  : ctor_tag := 91.
 Definition trash_tag : ctor_tag := 92.
 Definition box_tag   : ctor_tag := 93.
 
+(* Readable type abbreviations.  Each [type_ctor K l args] is the surface     *)
+(* type [K<args>'l]: a data type [K] at lifetime [l] applied to type args.    *)
+(* So e.g. [T_Option `Ll A] is [Option<A>'local] and [T_Nat `Lf] is [Nat'free]. *)
 Definition T_Any (l : lifetime) : type := type_ctor any_tag l [].
 Definition T_Unit : type := type_ctor unit_tag `Lf [].
 Definition T_Option (l : lifetime) (A : type) : type := type_ctor option_tag l [A].
 Definition T_Result (l : lifetime) (E A : type) : type := type_ctor result_tag l [E; A].
 Definition T_File (l : lifetime) : type := type_ctor file_tag l [].
 Definition T_List (l : lifetime) (A : type) : type := type_ctor list_tag l [A].
-Definition T_Int (l : lifetime) : type := type_ctor int_tag l [].
+Definition T_Nat (l : lifetime) : type := type_ctor nat_tag l [].
 Definition T_LazyList (l : lifetime) (A : type) : type := type_ctor lazy_list_tag l [A].
 Definition T_Pair (l : lifetime) (A B : type) : type := type_ctor pair_tag l [A; B].
 Definition T_EndoI (l : lifetime) : type := type_ctor endoi_tag l [].
@@ -107,32 +110,32 @@ Definition unit_sig : binding := bind_ctor unit_tag 0 0 [] T_Unit.
 
 (* data Option<a> = None | Some(a) *)
 Definition none_sig : binding :=
-  bind_ctor none_tag 1 1 [] (T_Option (`L 0) (`T 0)).
+  bind_ctor none_tag 0 1 [] (T_Option `Lf (`T 0)).
 Definition some_sig : binding :=
-  bind_ctor some_tag 1 1 [`T 0] (T_Option (`L 0) (`T 0)).
+  bind_ctor some_tag 0 1 [`T 0] (T_Option `Lf (`T 0)).
 
 (* data Result<e, a> = Error(e) | Ok(a) *)
 Definition error_sig : binding :=
-  bind_ctor error_tag 1 2 [`T 0] (T_Result (`L 0) (`T 0) (`T 1)).
+  bind_ctor error_tag 0 2 [`T 0] (T_Result `Lf (`T 0) (`T 1)).
 Definition ok_sig : binding :=
-  bind_ctor ok_tag 1 2 [`T 1] (T_Result (`L 0) (`T 0) (`T 1)).
+  bind_ctor ok_tag 0 2 [`T 1] (T_Result `Lf (`T 0) (`T 1)).
 
 (* data File = File *)
 Definition file_sig : binding := bind_ctor file_tag 0 0 [] (T_File `Lf).
 
 (* data List<a> = Nil | Cons(a, List<a>) *)
 Definition nil_sig : binding :=
-  bind_ctor nil_tag 1 1 [] (T_List (`L 0) (`T 0)).
+  bind_ctor nil_tag 0 1 [] (T_List `Lf (`T 0)).
 Definition cons_sig : binding :=
-  bind_ctor cons_tag 1 1 [`T 0; T_List (`L 0) (`T 0)] (T_List (`L 0) (`T 0)).
+  bind_ctor cons_tag 0 1 [`T 0; T_List `Lf (`T 0)] (T_List `Lf (`T 0)).
 
-(* Int is represented as a tiny constructor family for the literals used here. *)
-Definition int2_sig : binding := bind_ctor int2_tag 0 0 [] (T_Int `Lf).
-Definition int42_sig : binding := bind_ctor int42_tag 0 0 [] (T_Int `Lf).
+(* data Nat = Zero | Suc(Nat) *)
+Definition zero_sig : binding := bind_ctor zero_tag 0 0 [] (T_Nat `Lf).
+Definition suc_sig : binding := bind_ctor suc_tag 0 0 [T_Nat `Lf] (T_Nat `Lf).
 
 (* data LazyList<a> = LNil | LCons[lh, lt, ll](()'lh -> a, ()'lt -> LazyList<a>'ll) *)
 Definition lnil_sig : binding :=
-  bind_ctor lnil_tag 1 1 [] (T_LazyList (`L 0) (`T 0)).
+  bind_ctor lnil_tag 0 1 [] (T_LazyList `Lf (`T 0)).
 Definition lcons_sig : binding :=
   bind_ctor lcons_tag 4 1
     [ T_Unit -{ `L 2 }-> `T 0
@@ -141,27 +144,29 @@ Definition lcons_sig : binding :=
 
 (* data Pair<a, b> = Pair(a, b) *)
 Definition pair_sig : binding :=
-  bind_ctor pair_tag 1 2 [`T 0; `T 1] (T_Pair (`L 0) (`T 0) (`T 1)).
+  bind_ctor pair_tag 0 2 [`T 0; `T 1] (T_Pair `Lf (`T 0) (`T 1)).
 
-(* data EndoI = EndoI[l]((Int'l) -> Int'l) *)
+(* data EndoI = EndoI[l]((Nat'l) -> Nat'l) *)
 Definition endoi_sig : binding :=
-  bind_ctor endoi_tag 1 0 [T_Int (`L 0) -{ `Lf }-> T_Int (`L 0)] (T_EndoI (`L 0)).
+  bind_ctor endoi_tag 1 0 [T_Nat (`L 0) -{ `Lf }-> T_Nat (`L 0)] (T_EndoI (`L 0)).
 
 (* data Endo<a> = Endo((a) -> a) *)
 Definition endo_sig : binding :=
-  bind_ctor endo_tag 1 1 [`T 0 -{ `Lf }-> `T 0] (T_Endo (`L 0) (`T 0)).
+  bind_ctor endo_tag 0 1 [`T 0 -{ `Lf }-> `T 0] (T_Endo `Lf (`T 0)).
 
-(* data Trash = Trash[l](Endo<Int'l>) *)
+(* data Trash = Trash[l](Endo<Nat'l>) *)
 Definition trash_sig : binding :=
-  bind_ctor trash_tag 1 0 [T_Endo (`L 0) (T_Int (`L 0))] (T_Trash (`L 0)).
+  bind_ctor trash_tag 1 0 [T_Endo (`L 0) (T_Nat (`L 0))] (T_Trash (`L 0)).
 
-(* data Box = Box[l](Option<Int'l>) *)
+(* data Box = Box[l](Option<Nat'l>) *)
 Definition box_sig : binding :=
-  bind_ctor box_tag 1 0 [T_Option (`L 0) (T_Int (`L 0))] (T_Box (`L 0)).
+  bind_ctor box_tag 1 0 [T_Option (`L 0) (T_Nat (`L 0))] (T_Box (`L 0)).
 
+(* [data_ctx]: the typing context holding every data-constructor signature    *)
+(* above (the program's data declarations).  Used to type the pure examples.  *)
 Definition data_ctx : ctx :=
   [ box_sig; trash_sig; endo_sig; endoi_sig; pair_sig; lcons_sig; lnil_sig
-  ; int42_sig; int2_sig; cons_sig; nil_sig; file_sig; ok_sig; error_sig
+  ; suc_sig; zero_sig; cons_sig; nil_sig; file_sig; ok_sig; error_sig
   ; some_sig; none_sig; unit_sig ].
 
 (* ================================================================== *)
@@ -188,9 +193,9 @@ Definition T_Cmd (l : lifetime) (S : type) : type := type_ctor cmd_tag l [S].
 (* effect Reader<e> { op ask(): e } *)
 Definition reader_sig : binding := bind_eff Reader_tag 1 0 T_Unit (`T 0).
 
-(* effect State<s> { op get(): s; op put(s): Unit }
-   The core calculus has one operation per effect, so State is encoded
-   as a command effect Cmd<s> -> s. Put returns the new state. *)
+(* effect State<s> { op get(): s; op put(s): Unit }                    *)
+(* The core calculus has one operation per effect, so State is encoded *)
+(* as a command effect Cmd<s> -> s. Put returns the new state.         *)
 Definition get_sig : binding := bind_ctor get_tag 0 1 [] (T_Cmd `Lf (`T 0)).
 Definition put_sig : binding := bind_ctor put_tag 0 1 [`T 0] (T_Cmd `Lf (`T 0)).
 Definition state_sig : binding := bind_eff State_tag 1 0 (T_Cmd `Lf (`T 0)) (`T 0).
@@ -205,9 +210,11 @@ Definition id_sig : binding := bind_eff Id_tag 0 1 (`T 0) (`T 0).
 Definition optionality_sig : binding :=
   bind_eff Optionality_tag 0 1 (`T 0) (T_Option `Lf (`T 0)).
 
+(* [effect_ctx]: the effect declarations (and their command constructors).    *)
 Definition effect_ctx : ctx :=
   [ optionality_sig; id_sig; exception_sig; state_sig; put_sig; get_sig; reader_sig ].
 
+(* [full_ctx]: data + effects; used to type the effectful (handler) examples.  *)
 Definition full_ctx : ctx := data_ctx ++ effect_ctx.
 
 (* ================================================================== *)
@@ -220,25 +227,34 @@ Definition unit_v : term := term_ctor unit_tag `Lf [] [] [].
 (* File() *)
 Definition file_v : term := term_ctor file_tag `Lf [] [] [].
 
-(* 2 and 42 *)
-Definition int2_v : term := term_ctor int2_tag `Lf [] [] [].
-Definition int42_v : term := term_ctor int42_tag `Lf [] [] [].
+(* Zero, Suc, and the numerals 2 = Suc(Suc Zero) and 3 = Suc(Suc(Suc Zero)) *)
+Definition zero_v : term := term_ctor zero_tag `Lf [] [] [].
+Definition suc_v (n : term) : term := term_ctor suc_tag `Lf [] [] [n].
+Definition two_v : term := suc_v (suc_v zero_v).
+Definition three_v : term := suc_v (suc_v (suc_v zero_v)).
+
+(* fun succ(n: Nat'free): Nat'free = Suc(n)
+   The successor; the calculus has no fixpoint, so "+k" is the k-fold
+   composition of [succ] — see [compose_example] (which builds "+2"). *)
+Definition succ_fn : term :=
+  λ: T_Nat `Lf \\
+    suc_v ($$ 0).
 
 (* None<a>() and Some<a>(x) *)
-Definition none_v (l : lifetime) (A : type) : term := term_ctor none_tag l [l] [A] [].
-Definition some_v (l : lifetime) (A : type) (x : term) : term :=
-  term_ctor some_tag l [l] [A] [x].
+Definition none_v (A : type) : term := term_ctor none_tag `Lf [] [A] [].
+Definition some_v (A : type) (x : term) : term :=
+  term_ctor some_tag `Lf [] [A] [x].
 
 (* Error<e,a>(e) and Ok<e,a>(a) *)
-Definition error_v (l : lifetime) (E A : type) (e : term) : term :=
-  term_ctor error_tag l [l] [E; A] [e].
-Definition ok_v (l : lifetime) (E A : type) (a : term) : term :=
-  term_ctor ok_tag l [l] [E; A] [a].
+Definition error_v (E A : type) (e : term) : term :=
+  term_ctor error_tag `Lf [] [E; A] [e].
+Definition ok_v (E A : type) (a : term) : term :=
+  term_ctor ok_tag `Lf [] [E; A] [a].
 
 (* Nil<a>() and Cons<a>(x, xs) *)
-Definition nil_v (l : lifetime) (A : type) : term := term_ctor nil_tag l [l] [A] [].
-Definition cons_v (l : lifetime) (A : type) (x xs : term) : term :=
-  term_ctor cons_tag l [l] [A] [x; xs].
+Definition nil_v (A : type) : term := term_ctor nil_tag `Lf [] [A] [].
+Definition cons_v (A : type) (x xs : term) : term :=
+  term_ctor cons_tag `Lf [] [A] [x; xs].
 
 (* fun withFile<r>(f: (File'local) -> r): r = f(File()) *)
 Definition withFile : term :=
@@ -246,24 +262,23 @@ Definition withFile : term :=
     λ: (T_File `Ll -{ `Lf }-> `T 0) \\
       ($$ 0) @· file_v.
 
-(* fun cons[la]<a <: Any'la>(x: a): (List<a>)'la -> List<a> =
-     fun(xs: List<a>) Cons<a>(x, xs) *)
+(* fun cons<a <: Any'local>(x: a): List<a> -> List<a> = *)
+(*   fun(xs: List<a>) Cons<a>(x, xs)                    *)
 Definition cons_fn : term :=
-  Λl \\
-  Λt: T_Any (`L 0) \\
+  Λt: T_Any `Ll \\
     λ: `T 0 \\
-    λ: T_List (`L 0) (`T 0) \\
-      cons_v (`L 0) (`T 0) ($$ 1) ($$ 0).
+    λ: T_List `Lf (`T 0) \\
+      cons_v (`T 0) ($$ 1) ($$ 0).
 
-(* let list = cons[local]<File'local>(File()) *)
+(* let list = cons<File'local>(File()) *)
 Definition list_example : term :=
-  (cons_fn @lt[ `Ll ] @ty[ T_File `Ll ]) @· file_v.
+  (cons_fn @ty[ T_File `Ll ]) @· file_v.
 
-(* fun compose
-     [lf, lg]
-     <a <: Any'local, b <: Any'local, c <: Any'local>
-     (f: (b)'lf -> c, g: (a)'lg -> b): (a)'lf+lg -> c =
-     fun(x : a) f(g(x)) *)
+(* fun compose                                           *)
+(*   [lf, lg]                                            *)
+(*   <a <: Any'local, b <: Any'local, c <: Any'local>    *)
+(*   (f: (b)'lf -> c, g: (a)'lg -> b): (a)'lf+lg -> c =  *)
+(*   fun(x : a) f(g(x))                                  *)
 Definition compose_fn : term :=
   Λl \\
   Λl \\
@@ -274,6 +289,12 @@ Definition compose_fn : term :=
     λ: (`T 2 -{ `L 0 }-> `T 1) \\
     λ: `T 2 \\
       ($$ 2) @· (($$ 1) @· ($$ 0)).
+
+(* let twice = compose[free, free]<Nat, Nat, Nat>(succ, succ)
+   The "+2" function; applied to Zero it computes Suc(Suc Zero) = 2. *)
+Definition compose_example : term :=
+  ((compose_fn @lt[ `Lf ] @lt[ `Lf ]
+      @ty[ T_Nat `Lf ] @ty[ T_Nat `Lf ] @ty[ T_Nat `Lf ]) @· succ_fn @· succ_fn) @· zero_v.
 
 (* let id = fun<a <: Any'local>(x: a) x *)
 Definition id_poly : term :=
@@ -287,33 +308,55 @@ Definition downcast : term :=
     λ: `T 0 \\
       $$ 0.
 
-(* fun withReader[lr]<e <: Any'free, r <: Any'free>(
-  f: context(Reader<e>) ()'local -> r): (e)'local -> r = ... *)
-Definition withReader_op_body : term :=
-  λ: `T 1 \\
-    (($$ 2) @· ($$ 0)) @· ($$ 0).
+(* let idExample = id<Unit>(Unit()) *)
+Definition id_example : term := (id_poly @ty[ T_Unit ]) @· unit_v.
 
+(* let downcastExample = downcast<Unit>(Unit()) *)
+Definition downcast_example : term := (downcast @ty[ T_Unit ]) @· unit_v.
+
+(* let fileExample = withFile<Unit>(fun(f: File'local) Unit()) *)
+Definition withFile_example : term :=
+  (withFile @ty[ T_Unit ]) @· (λ: T_File `Ll \\ unit_v).
+
+(* fun withReader[lr]<e <: Any'free, r <: Any'free>(
+       f: context(Reader<e>) ()'local -> r
+   ): (e)'local -> r =
+       handle r: Reader<e> {
+           op ask() fun(e: e) resume(e)(e)
+       }
+       let x: r = f() in
+       fun(e: e) x *)
 Definition withReader : term :=
   Λl \\
   Λt: T_Any `Lf \\
   Λt: T_Any `Lf \\
     λ: (T_Reader `Ll (`T 1) -{ `Ll }-> `T 0) \\
-      term_handle Reader_tag 0 [`T 1]
-        (`T 1 -{ `Lf }-> `T 0) (`T 1 -{ `Ll }-> `T 0) withReader_op_body
+      term_handle Reader_tag 0 [`T 1] (`T 1 -{ `Lf }-> `T 0) (`T 1 -{ `Ll }-> `T 0)
+        (λ: `T 1 \\
+          (($$ 2) @· ($$ 0)) @· ($$ 0))
         (let: `T 0 <- (($$ 1) @· ($$ 0)) in
          λ: `T 1 \\
            $$ 1).
 
-(* let readerExample =
-     handle r: Reader<Int> { op ask() resume(2) }
-     perform r.ask() *)
-Definition readerExample_op_body : term := ($$ 1) @· int2_v.
+(* let readerExample =                             *)
+(*   handle r: Reader<Nat> { op ask() resume(2) }  *)
+(*   perform r.ask()                               *)
+Definition readerExample_op_body : term := ($$ 1) @· two_v.
 Definition readerExample : term :=
-  term_handle Reader_tag 0 [T_Int `Lf] (T_Int `Lf) (T_Int `Lf) readerExample_op_body
+  term_handle Reader_tag 0 [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) readerExample_op_body
     (term_perform ($$ 0) [] unit_v).
 
-(* fun withState ...
-   Encoded State uses Cmd<s> -> s; Put returns the written state. *)
+(* fun withState[lr]<s <: Any'free, r <: Any'free>(
+       f: context(State<s>) ()'local -> r
+   ): (s)'local -> r =
+       handle st: State<s> {
+           op get() fun(s: s) resume(s)(s)
+           op put(s) fun(old: s) resume(Unit())(s)
+       }
+       let x: r = f() in
+       fun(s: s) x
+   The core calculus has one operation per effect, so State is encoded with a
+   command type Cmd<s> -> s: [get] reads the state, [put] writes and returns it. *)
 Definition state_op_body : term :=
   λ: `T 1 \\
     term_match ($$ 1) get_tag 0 0
@@ -333,13 +376,33 @@ Definition withState : term :=
          λ: `T 1 \\
            $$ 1).
 
+(* let stateExample =
+     withState<Nat, Nat>(context(st: State<Nat>'local) fun()
+         let _ = perform st.get() in     // gets a number (the initial state)
+         let _ = perform st.put(3) in     // puts a number (3)
+         perform st.get()                 // gets a number (3) -- the result
+     )(2)
+   The State op is encoded as [Cmd<Nat> -> Nat]: [get] reads, [put n] writes. *)
+Definition withState_prog : term :=
+  λ: T_State `Ll (T_Nat `Lf) \\
+    let: T_Nat `Lf <- term_perform ($$ 0) [] (term_ctor get_tag `Lf [] [T_Nat `Lf] []) in
+    let: T_Nat `Lf <- term_perform ($$ 1) [] (term_ctor put_tag `Lf [] [T_Nat `Lf] [three_v]) in
+    term_perform ($$ 2) [] (term_ctor get_tag `Lf [] [T_Nat `Lf] []).
+
+Definition withState_example : term :=
+  (withState @lt[ `Lf ] @ty[ T_Nat `Lf ] @ty[ T_Nat `Lf ]) @· withState_prog @· two_v.
+
 (* error: testWithState stores a local Reader capability inside free state. *)
 Definition testWithState_escape_witness : Prop :=
   no_local_ty (T_Option `Lf (T_Reader `Ll T_Unit)) = false.
 
-(* fun withException<e <: Any'free, r>(f: context(Exception<e>) () -> r): Result<e, r> = ... *)
+(* fun withException<e <: Any'free, r>(f: context(Exception<e>) () -> r): Result<e, r> =
+       handle h: Exception<e> {
+           op throw<a>(e) Error<e, r>(e)
+       }
+       Ok<e, r>(f(h;)) *)
 Definition withException_op_body : term :=
-  error_v `Lf (`T 2) (`T 1) ($$ 0).
+  error_v (`T 2) (`T 1) ($$ 0).
 
 Definition withException : term :=
   Λt: T_Any `Lf \\
@@ -347,23 +410,31 @@ Definition withException : term :=
     λ: (T_Exception `Ll (`T 1) -{ `Lf }-> `T 0) \\
       term_handle Exception_tag 1 [`T 1]
         (T_Result `Lf (`T 1) (`T 0)) (T_Result `Lf (`T 1) (`T 0)) withException_op_body
-        (ok_v `Lf (`T 1) (`T 0) (($$ 1) @· ($$ 0))).
+        (ok_v (`T 1) (`T 0) (($$ 1) @· ($$ 0))).
 
-(* let exampleException = withException<Int, File>(context(h) fun() perform h.throw<File>(42)) *)
+(* let exampleException = withException<Nat, File>(context(h) fun() perform h.throw<File>(3)) *)
 Definition exampleException_body : term :=
-  term_perform ($$ 0) [T_File `Lf] int42_v.
+  term_perform ($$ 0) [T_File `Lf] three_v.
 
 Definition exampleException : term :=
-  (withException @ty[ T_Int `Lf ] @ty[ T_File `Lf ]) @·
-    (λ: T_Exception `Ll (T_Int `Lf) \\
+  (withException @ty[ T_Nat `Lf ] @ty[ T_File `Lf ]) @·
+    (λ: T_Exception `Ll (T_Nat `Lf) \\
       exampleException_body).
 
-(* fun lazyMap ...
+(* fun lazyMap[lf, la, lb]<a <: Any'la, b <: Any'lb>(
+       xs: LazyList<a>, f: (a)'lf -> b
+   ): LazyList<b>'lf+la =
+       match xs {
+           case LNil() -> LNil<b>()
+           case LCons(h, t) -> LCons[lf+la, lf+la, lf+la]<b>(
+               fun() f(h()),
+               fun() lazyMap[lf, la, lb]<a, b>(t(), f))
+       }
    The core calculus has no fixpoint; this is the open recursive body
    under a self binder at de Bruijn index 2. *)
 Definition lazyMap_body : term :=
-  term_match ($$ 1) lnil_tag 1 0
-    (term_ctor lnil_tag (`L 1 +l `L 2) [`L 1 +l `L 2] [`T 0] [])
+  term_match ($$ 1) lnil_tag 0 0
+    (term_ctor lnil_tag `Lf [] [`T 0] [])
     (term_match ($$ 1) lcons_tag 4 2
        (term_ctor lcons_tag (`L 1 +l `L 2)
           [`L 1 +l `L 2; `L 1 +l `L 2; `L 1 +l `L 2; `L 1 +l `L 2]
@@ -372,9 +443,12 @@ Definition lazyMap_body : term :=
               ($$ 4) @· (($$ 1) @· unit_v)
           ; λ: T_Unit \\
               (($$ 5) @· (($$ 1) @· unit_v)) @· ($$ 4) ])
-       (term_ctor lnil_tag (`L 1 +l `L 2) [`L 1 +l `L 2] [`T 0] [])).
+       (term_ctor lnil_tag `Lf [] [`T 0] [])).
 
-(* fun mapFirst ... match p { case Pair(x, y) -> Pair<c, b>(f(x), y) } *)
+(* fun mapFirst[la, lb, lc]<a <: Any'la, b <: Any'lb, c <: Any'lc>(
+       p: Pair<a, b>, f: (a)'local -> c
+   ): Pair<c, b> =
+       match p { case Pair(x, y) -> Pair<c, b>(f(x), y) } *)
 Definition mapFirst : term :=
   Λl \\
   Λl \\
@@ -382,31 +456,31 @@ Definition mapFirst : term :=
   Λt: T_Any (`L 2) \\
   Λt: T_Any (`L 1) \\
   Λt: T_Any (`L 0) \\
-    λ: T_Pair (`L 2 +l `L 1) (`T 2) (`T 1) \\
+    λ: T_Pair `Lf (`T 2) (`T 1) \\
     λ: (`T 2 -{ `Ll }-> `T 0) \\
-      term_match ($$ 1) pair_tag 1 2
-        (term_ctor pair_tag (`L 0 +l `L 1) [`L 0 +l `L 1] [`T 0; `T 1]
+      term_match ($$ 1) pair_tag 0 2
+        (term_ctor pair_tag `Lf [] [`T 0; `T 1]
            [($$ 3) @· ($$ 1); $$ 0])
-        (term_ctor pair_tag (`L 0 +l `L 1) [`L 0 +l `L 1] [`T 0; `T 1]
+        (term_ctor pair_tag `Lf [] [`T 0; `T 1]
            [($$ 0) @· ($$ 0); $$ 0]).
 
-(* fun foldEndo[l0](_: Int'l0, endo: EndoI'l0): Int'l0 =
-     match endo { case EndoI(f) -> f(42) } *)
+(* fun foldEndo[l0](_: Nat'l0, endo: EndoI'l0): Nat'l0 =
+     match endo { case EndoI(f) -> f(3) } *)
 Definition foldEndo : term :=
   Λl \\
-    λ: T_Int (`L 0) \\
+    λ: T_Nat (`L 0) \\
     λ: T_EndoI (`L 0) \\
-      term_match ($$ 0) endoi_tag 1 1 (($$ 0) @· int42_v) ($$ 1).
+      term_match ($$ 0) endoi_tag 1 1 (($$ 0) @· three_v) ($$ 1).
 
-(* error: crashEndo uses an existentially forgotten local Int lifetime contravariantly. *)
+(* error: crashEndo uses an existentially forgotten local Nat lifetime contravariantly. *)
 Definition crashEndo_variance_witness : Prop :=
-  elim_ty_n 1 `Ll var_pos (T_Endo (`L 0) (T_Int (`L 0))) = None.
+  elim_ty_n 1 `Ll var_pos (T_Endo (`L 0) (T_Nat (`L 0))) = None.
 
-(* error: crashBox tries to expose Option<Int'local> as Option<Int'*>. *)
+(* error: crashBox tries to expose Option<Nat'local> as Option<Nat'*>. *)
 Definition crashBox_local_witness : Prop :=
-  no_local_ty (T_Option `Ll (T_Int `Ll)) = false.
+  no_local_ty (T_Option `Ll (T_Nat `Ll)) = false.
 
-(* context(x: Int'free, y: Int'local) fun clash(): Unit = Unit() *)
+(* context(x: Nat'free, y: Nat'local) fun clash(): Unit = Unit() *)
 Definition clash_ignored_local_witness : Prop :=
   no_local_ty T_Unit = true.
 
@@ -420,37 +494,46 @@ Definition withId : term :=
 
 (* let exampleOptionality =
      handle o: Optionality { op mkSome<b>(x) resume(Some<b>(x)) }
-     perform o.mkSome<Int>(42) *)
+     perform o.mkSome<Nat>(3) *)
 Definition optionality_op_body : term :=
-  ($$ 1) @· (some_v `Lf (`T 0) ($$ 0)).
+  ($$ 1) @· (some_v (`T 0) ($$ 0)).
 
 Definition exampleOptionality : term :=
   term_handle Optionality_tag 1 []
-    (T_Option `Lf (T_Int `Lf)) (T_Option `Lf (T_Int `Lf)) optionality_op_body
-    (term_perform ($$ 0) [T_Int `Lf] int42_v).
+    (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf (T_Nat `Lf)) optionality_op_body
+    (term_perform ($$ 0) [T_Nat `Lf] three_v).
 
 (* ================================================================== *)
 (* 4. Typing statements                                               *)
 (* ================================================================== *)
 
+(*   Unit()  :  Unit                                            *)
 Definition typed_unit : Prop := data_ctx ⊢ₜ unit_v : T_Unit.
+(*   File()  :  File'free                                       *)
 Definition typed_file : Prop := data_ctx ⊢ₜ file_v : T_File `Lf.
-Definition typed_int2 : Prop := data_ctx ⊢ₜ int2_v : T_Int `Lf.
-Definition typed_int42 : Prop := data_ctx ⊢ₜ int42_v : T_Int `Lf.
+(*   2 = Suc(Suc Zero)  :  Nat'free                             *)
+Definition typed_two : Prop := data_ctx ⊢ₜ two_v : T_Nat `Lf.
+(*   3 = Suc(Suc(Suc Zero))  :  Nat'free                        *)
+Definition typed_three : Prop := data_ctx ⊢ₜ three_v : T_Nat `Lf.
 
+(*   withFile  :  <r>. (File'local -> r) -> r                   *)
 Definition typed_withFile : Prop :=
   data_ctx ⊢ₜ withFile
     : type_ty_all (T_Any `Ll)
         ((T_File `Ll -{ `Lf }-> `T 0) -{ `Lf }-> `T 0).
 
+(*   cons  :  <a <: Any'local>. a -> (List<a> -local-> List<a>) *)
 Definition typed_cons : Prop :=
   data_ctx ⊢ₜ cons_fn
-    : type_lt_all (type_ty_all (T_Any (`L 0))
-        (`T 0 -{ `Lf }-> T_List (`L 0) (`T 0) -{ `L 0 }-> T_List (`L 0) (`T 0))).
+    : type_ty_all (T_Any `Ll)
+        (`T 0 -{ `Lf }-> T_List `Lf (`T 0) -{ `Ll }-> T_List `Lf (`T 0)).
 
+(*   list  :  List<File'local> -local-> List<File'local>        *)
 Definition typed_list_example : Prop :=
-  data_ctx ⊢ₜ list_example : (T_List `Ll (T_File `Ll) -{ `Ll }-> T_List `Ll (T_File `Ll)).
+  data_ctx ⊢ₜ list_example : (T_List `Lf (T_File `Ll) -{ `Ll }-> T_List `Lf (T_File `Ll)).
 
+(*   compose : [lf,lg]<a,b,c>.                                  *)
+(*     (b -lf-> c) -> (a -lg-> b) -> (a -(lf+lg)-> c)           *)
 Definition typed_compose : Prop :=
   data_ctx ⊢ₜ compose_fn
     : type_lt_all (type_lt_all (type_ty_all (T_Any `Ll) (type_ty_all (T_Any `Ll) (type_ty_all (T_Any `Ll)
@@ -458,43 +541,74 @@ Definition typed_compose : Prop :=
          (`T 2 -{ `L 0 }-> `T 1) -{ `L 1 }->
          `T 2 -{ (`L 1 +l `L 0) }-> `T 0))))).
 
+(*   succ  :  Nat -> Nat                                        *)
+Definition typed_succ : Prop :=
+  data_ctx ⊢ₜ succ_fn : (T_Nat `Lf -{ `Lf }-> T_Nat `Lf).
+
+(*   compose[free,free]<Nat,Nat,Nat>(succ, succ)(Zero)  :  Nat  *)
+Definition typed_compose_example : Prop :=
+  data_ctx ⊢ₜ compose_example : T_Nat `Lf.
+
+(*   id  :  <a <: Any'local>. a -> a                            *)
 Definition typed_id : Prop :=
   data_ctx ⊢ₜ id_poly : type_ty_all (T_Any `Ll) (`T 0 -{ `Lf }-> `T 0).
 
+(*   downcast  :  <t>. t -> t                                   *)
 Definition typed_downcast : Prop :=
   data_ctx ⊢ₜ downcast : type_ty_all (T_Any `Ll) (`T 0 -{ `Lf }-> `T 0).
 
-Definition typed_readerExample : Prop :=
-  full_ctx ⊢ₜ readerExample : T_Int `Lf.
+(*   id<Unit>(Unit())        :  Unit                            *)
+Definition typed_id_example : Prop := data_ctx ⊢ₜ id_example : T_Unit.
+(*   downcast<Unit>(Unit())  :  Unit                            *)
+Definition typed_downcast_example : Prop := data_ctx ⊢ₜ downcast_example : T_Unit.
+(*   withFile<Unit>(fun(f) Unit())  :  Unit                     *)
+Definition typed_withFile_example : Prop := data_ctx ⊢ₜ withFile_example : T_Unit.
 
+(*   readerExample  :  Nat                                      *)
+Definition typed_readerExample : Prop :=
+  full_ctx ⊢ₜ readerExample : T_Nat `Lf.
+
+(*   withReader : [lr]<e,r>.                                    *)
+(*     (context(Reader<e>) ()'local -> r) -> (e'local -> r)     *)
 Definition typed_withReader : Prop :=
   full_ctx ⊢ₜ withReader
     : type_lt_all (type_ty_all (T_Any `Lf) (type_ty_all (T_Any `Lf)
         ((T_Reader `Ll (`T 1) -{ `Ll }-> `T 0) -{ `Lf }->
          `T 1 -{ `Ll }-> `T 0))).
 
+(*   withState : [lr]<s,r>.                                     *)
+(*     (context(State<s>) ()'local -> r) -> (s'local -> r)      *)
 Definition typed_withState : Prop :=
   full_ctx ⊢ₜ withState
     : type_lt_all (type_ty_all (T_Any `Lf) (type_ty_all (T_Any `Lf)
         ((T_State `Ll (`T 1) -{ `Ll }-> `T 0) -{ `Lf }->
          `T 1 -{ `Ll }-> `T 0))).
 
+(*   withState<Nat,Nat>(get; put 3; get)(2)  :  Nat            *)
+Definition typed_withState_example : Prop :=
+  full_ctx ⊢ₜ withState_example : T_Nat `Lf.
+
+(*   withException : <e,r>.                                     *)
+(*     (context(Exception<e>) () -> r) -> Result<e, r>          *)
 Definition typed_withException : Prop :=
   full_ctx ⊢ₜ withException
     : type_ty_all (T_Any `Lf) (type_ty_all (T_Any `Lf)
         ((T_Exception `Ll (`T 1) -{ `Lf }-> `T 0) -{ `Lf }->
          T_Result `Lf (`T 1) (`T 0))).
 
+(*   exampleException  :  Result<Nat, File>                     *)
 Definition typed_exampleException : Prop :=
-  full_ctx ⊢ₜ exampleException : T_Result `Lf (T_Int `Lf) (T_File `Lf).
+  full_ctx ⊢ₜ exampleException : T_Result `Lf (T_Nat `Lf) (T_File `Lf).
 
+(*   withId  :  <r>. (context(Id) () -> r) -> r                 *)
 Definition typed_withId : Prop :=
   full_ctx ⊢ₜ withId
     : type_ty_all (T_Any `Lf)
         ((T_Id `Ll -{ `Lf }-> `T 0) -{ `Lf }-> `T 0).
 
+(*   exampleOptionality  :  Option<Nat>                         *)
 Definition typed_exampleOptionality : Prop :=
-  full_ctx ⊢ₜ exampleOptionality : T_Option `Lf (T_Int `Lf).
+  full_ctx ⊢ₜ exampleOptionality : T_Option `Lf (T_Nat `Lf).
 
 (* Recursive/open bodies: statements keep the intended typing surface visible. *)
 Definition typed_lazyMap_body : Prop := True.
@@ -511,11 +625,28 @@ Definition typed_clash_ignored_local : Prop := clash_ignored_local_witness.
 (* 5. Reduction statements                                            *)
 (* ================================================================== *)
 
+(*   cons<File'local>(File())  ~~>*  fun(xs) Cons(File(), xs)   *)
 Definition red_list_example : Prop :=
-  list_example ==>> (λ: T_List `Ll (T_File `Ll) \\
-                       cons_v `Ll (T_File `Ll) file_v ($$ 0)).
+  list_example ==>> (λ: T_List `Lf (T_File `Ll) \\
+                       cons_v (T_File `Ll) file_v ($$ 0)).
 
-Definition red_readerExample : Prop := readerExample ==>> int2_v.
+(*   compose(succ, succ)(Zero)  ~~>*  Suc(Suc Zero) = 2         *)
+Definition red_compose_example : Prop := compose_example ==>> two_v.
 
+(*   id<Unit>(Unit())        ~~>*  Unit()                       *)
+Definition red_id_example : Prop := id_example ==>> unit_v.
+(*   downcast<Unit>(Unit())  ~~>*  Unit()                       *)
+Definition red_downcast_example : Prop := downcast_example ==>> unit_v.
+(*   withFile<Unit>(fun(f) Unit())  ~~>*  Unit()                *)
+Definition red_withFile_example : Prop := withFile_example ==>> unit_v.
+
+(*   withState(get; put 3; get)(2)  ~~>*  3   (the 2nd get)     *)
+Definition red_withState_example : Prop := withState_example ==>> three_v.
+
+(*   handle { ask() resume(2) } perform ask()  ~~>*  2          *)
+Definition red_readerExample : Prop := readerExample ==>> two_v.
+
+(*   handle { mkSome(x) resume(Some x) } perform mkSome(3)      *)
+(*       ~~>*  Some(3)                                          *)
 Definition red_exampleOptionality : Prop :=
-  exampleOptionality ==>> some_v `Lf (T_Int `Lf) int42_v.
+  exampleOptionality ==>> some_v (T_Nat `Lf) three_v.

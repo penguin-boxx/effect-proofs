@@ -12,9 +12,7 @@ Require Import Subst.
 (* Frames: preservation infrastructure.                               *)
 (*                                                                    *)
 (* Principal-type inversions for the runtime effect forms and the     *)
-(* evaluation-context congruence ("frame") lemmas.  Consumed only by  *)
-(* Preservation; split out of the former Confinement module so that   *)
-(* Escape carries only the escape-safety deliverables.                *)
+(* evaluation-context congruence ("frame") lemmas.                    *)
 (* ================================================================== *)
 
 (* Principal-type inversions for the runtime effect forms, in the     *)

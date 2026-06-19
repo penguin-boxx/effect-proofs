@@ -16,6 +16,7 @@ subst/TypingSubstTy.v
 subst/Subst.v
 safety/Markers.v
 safety/Progress.v
+safety/Narrowing.v
 safety/Variance.v
 safety/Inversions.v
 safety/Frames.v

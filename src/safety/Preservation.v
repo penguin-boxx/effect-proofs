@@ -9,6 +9,7 @@ Require Import Typing.
 Require Import Subst.
 Require Import Markers.
 Require Import Progress.
+Require Import Narrowing.
 Require Import Variance.
 Require Import Inversions.
 Require Import Frames.
@@ -290,4 +291,3 @@ Qed.
 Theorem preservation : forall Γ t t' T,
   eval_ctx Γ -> Γ ⊢ₜ t : T -> t ==> t' -> Γ ⊢ₜ t' : T.
 Proof. exact step_preserves_typing. Qed.
-

@@ -9,13 +9,9 @@ Require Import Typing.
 Require Import Subst.
 Require Import Markers.
 Require Import Progress.
+Require Import Narrowing.
 Require Import Variance.
 
-(* ================================================================== *)
-(* Piece 7: sound positive iterated-elim soundness (assembly).        *)
-(* Replaces the old `elim_ty_n_sound` (which depended on the FALSE    *)
-(* `iter_subst_lt_in_ty_mono`).                                       *)
-(* ================================================================== *)
 Lemma elim_ty_n_sound_pos : forall n Delta lts eta elim_result Γ,
   elim_ty_n n (shift_lt n 0 Delta) var_pos eta = Some elim_result ->
   List.length lts = n ->
@@ -598,4 +594,3 @@ Proof.
   - reflexivity.
   - exfalso. eapply no_step_value; eauto.
 Qed.
-

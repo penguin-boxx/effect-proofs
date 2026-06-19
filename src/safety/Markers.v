@@ -11,16 +11,6 @@ Require Import Subst.
 Require Import Typing.
 Require Import Subst.
 
-(* ================================================================== *)
-(*                                                                    *)
-(*                 PROGRESS AND PRESERVATION                          *)
-(*                                                                    *)
-(* We prove type safety for CoreΔ under a top-level evaluation ctx    *)
-(* that contains only lifetime and constructor bindings (no bind_tm,  *)
-(* no bind_ty).  This blocks SA_VarCtx at the top level and matches   *)
-(* the paper's "program-level" evaluation scenario.                   *)
-(* ================================================================== *)
-
 (* ------------------------------------------------------------------ *)
 (* Effect-handler invariant                                           *)
 (*                                                                    *)
@@ -1258,15 +1248,15 @@ Proof.
   - apply IH. apply marker_ok_subst_ty_in_tm. exact Hm.
 Qed.
 
-(* ================================================================ *)
-(* AXIOM 5: marker_ok preservation for the handler-elimination head  *)
+(* ================================================================== *)
+(* AXIOM 5: marker_ok preservation for the handler-elimination head   *)
 (* steps (H_Return / H_Perform), whose redex is `term_handler_m m`.   *)
 (* These delete the delimiter m, so re-establishing marker_ok at the  *)
 (* smaller scope requires capability confinement (the returned/       *)
 (* resumed term contains no dangling m), which follows from typing —  *)
 (* NOT from a structural argument.  Stated with the typing +          *)
 (* marker_types_safe premises so it is sound (true, just hard).       *)
-(* ================================================================ *)
+(* ================================================================== *)
 Axiom marker_ok_step_handler_elim : forall Γ m T_B T_R body r' Tr,
   Γ ⊢ₜ term_handler_m m T_B T_R body : Tr ->
   marker_types_safe (term_handler_m m T_B T_R body) ->
@@ -1309,7 +1299,7 @@ Qed.
 
 (* One reduction step preserves marker_ok [].  S_step lifts the head  *)
 (* lemma through the evaluation context via marker_ok_plug_replace;   *)
-(* S_HandleCtx installs the fresh delimiter (purely structural). *)
+(* S_HandleCtx installs the fresh delimiter (purely structural).      *)
 Lemma step_preserves_marker_ok : forall Γ t t' T,
   eval_ctx Γ -> marker_ok [] t -> marker_types_safe t -> Γ ⊢ₜ t : T ->
   t ==> t' -> marker_ok [] t'.
@@ -1350,4 +1340,3 @@ Qed.
 Axiom step_preserves_marker_types_safe : forall Γ t t' T,
   eval_ctx Γ -> marker_ok [] t -> marker_types_safe t -> Γ ⊢ₜ t : T ->
   t ==> t' -> marker_types_safe t'.
-
