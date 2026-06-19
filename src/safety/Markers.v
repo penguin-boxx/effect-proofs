@@ -1248,6 +1248,61 @@ Proof.
   - apply IH. apply marker_ok_subst_ty_in_tm. exact Hm.
 Qed.
 
+(* has_rt_cap on a constructor reduces to has_rt_cap_list on its       *)
+(* argument list (the in-body fixpoint equals the named list version).  *)
+Lemma has_rt_cap_ctor_eq : forall K l lts Ts ts,
+  has_rt_cap (term_ctor K l lts Ts ts) = has_rt_cap_list ts.
+Proof.
+  intros K l lts Ts ts. simpl.
+  induction ts as [|u rest IH]; simpl; [reflexivity | rewrite IH; reflexivity].
+Qed.
+
+(* CONFINEMENT BUILDING BLOCK 1 (structural).  When a term carries no    *)
+(* runtime capability, marker_ok is insensitive to the marker scope: an  *)
+(* extra delimiter m at the front can be dropped.  The only constructs   *)
+(* that read the scope (cap / handler_m / resume) all set has_rt_cap to  *)
+(* true, so the hypothesis makes their cases vacuous; everything else     *)
+(* recurses.  This is the half of handler-elimination that does NOT need *)
+(* typing — it reduces the goal to "the returned value has no cap".       *)
+Lemma marker_ok_strengthen_no_cap : forall t ms m,
+  has_rt_cap t = false -> marker_ok (m :: ms) t -> marker_ok ms t.
+Proof.
+  apply (term_list_ind
+    (fun t => forall ms m, has_rt_cap t = false ->
+       marker_ok (m :: ms) t -> marker_ok ms t)
+    (fun ts => forall ms m, has_rt_cap_list ts = false ->
+       marker_ok_list (m :: ms) ts -> marker_ok_list ms ts)).
+  - (* var *) intros n ms m Hcap Hm. exact I.
+  - (* app *) intros t1 t2 H1 H2 ms m Hcap Hm. simpl in *.
+    apply Bool.orb_false_iff in Hcap as [Hc1 Hc2].
+    destruct Hm as [Ha Hb]. split; [eapply H1 | eapply H2]; eauto.
+  - (* lam *) intros body T H ms m Hcap Hm. simpl in *. eapply H; eauto.
+  - (* ty_app *) intros t T H ms m Hcap Hm. simpl in *. eapply H; eauto.
+  - (* ty_lam *) intros bound body H ms m Hcap Hm. simpl in *. eapply H; eauto.
+  - (* lt_app *) intros t l H ms m Hcap Hm. simpl in *. eapply H; eauto.
+  - (* lt_lam *) intros body H ms m Hcap Hm. simpl in *. eapply H; eauto.
+  - (* ctor *) intros K l lts Ts ts HQ ms m Hcap Hm.
+    rewrite has_rt_cap_ctor_eq in Hcap.
+    rewrite marker_ok_ctor_eq in Hm |- *. eapply HQ; eauto.
+  - (* match *) intros scrut tag n_lt arity yes no Hs Hy Hn ms m Hcap Hm. simpl in *.
+    apply Bool.orb_false_iff in Hcap as [Hc1 Hc23].
+    apply Bool.orb_false_iff in Hc23 as [Hc2 Hc3].
+    destruct Hm as [H1 [H2 H3]]. repeat split; [eapply Hs | eapply Hy | eapply Hn]; eauto.
+  - (* handle *) intros E n_beta Ts T_B T_R op body Hop Hb ms m Hcap Hm. simpl in *.
+    apply Bool.orb_false_iff in Hcap as [Hc1 Hc2].
+    destruct Hm as [H1 H2]. split; [eapply Hop | eapply Hb]; eauto.
+  - (* perform *) intros t Ss arg Ht Ha ms m Hcap Hm. simpl in *.
+    apply Bool.orb_false_iff in Hcap as [Hc1 Hc2].
+    destruct Hm as [H1 H2]. split; [eapply Ht | eapply Ha]; eauto.
+  - (* cap *) intros E m0 n_beta Ts T_R op Hop ms m Hcap Hm. simpl in Hcap. discriminate.
+  - (* handler_m *) intros m0 T_B T_R t H ms m Hcap Hm. simpl in Hcap. discriminate.
+  - (* resume *) intros m0 T_B T_R b H ms m Hcap Hm. simpl in Hcap. discriminate.
+  - (* nil *) intros ms m Hcap Hm. exact I.
+  - (* cons *) intros u ts Hu Hts ms m Hcap Hm. simpl in *.
+    apply Bool.orb_false_iff in Hcap as [Hc1 Hc2].
+    destruct Hm as [Ha Hb]. split; [eapply Hu | eapply Hts]; eauto.
+Qed.
+
 (* ================================================================== *)
 (* AXIOM 5: marker_ok preservation for the handler-elimination head   *)
 (* steps (H_Return / H_Perform), whose redex is `term_handler_m m`.   *)
@@ -1256,6 +1311,39 @@ Qed.
 (* resumed term contains no dangling m), which follows from typing —  *)
 (* NOT from a structural argument.  Stated with the typing +          *)
 (* marker_types_safe premises so it is sound (true, just hard).       *)
+(*                                                                    *)
+(* REDUCTION OF THE PROOF (investigated; sound, not a gap):           *)
+(*  - H_Return is `handler_m m T_B T_R v -->h v` with `value v` and    *)
+(*    `marker_ok ms (handler_m ... v) = marker_ok (m::ms) v`; so the   *)
+(*    goal is exactly `marker_ok (m::ms) v -> marker_ok ms v`.  By     *)
+(*    [marker_ok_strengthen_no_cap] (above, PROVEN) this collapses to  *)
+(*    the CONFINEMENT obligation `has_rt_cap v = false`.               *)
+(*  - H_Perform reduces to the same confinement on the perform-arg `w` *)
+(*    (typed at the no-local operation parameter) plus marker_ok-under- *)
+(*    substitution for the operation body with the re-introduced       *)
+(*    `term_resume m` (which re-binds m for its own body).             *)
+(*                                                                    *)
+(*  CONFINEMENT (the remaining gap): a CLOSED value typed at a         *)
+(*  no_local type carries no runtime capability                        *)
+(*    `eval_ctx Γ -> Γ ⊢ₜ v : T -> value v -> free_tm_vars 0 v = [] -> *)
+(*     no_local_ty_G Γ T = true -> has_rt_cap v = false`.              *)
+(*  It is TRUE (capture-lifetime discipline: a cap is local, T_Lam     *)
+(*  bounds the closure lifetime by the captured-var lifetimes, and the *)
+(*  prenex-Λ restriction forces every value to bottom out at a λ whose *)
+(*  annotation `no_local_ty_G` checks).  But `lt_of_ty_G` is too       *)
+(*  COARSE to express it directly: it joins to `lt_local` at every     *)
+(*  ∀-type and at every cap-carrying ctor field, so the existing       *)
+(*  [typing_value_capture_lt_le_type] (`capture_lt v <: lt_of_ty_G T`) *)
+(*  is VACUOUS on ∀-typed values.  A real proof must peel the prenex   *)
+(*  Λ-chain to reach each innermost λ-annotation — which pushes the    *)
+(*  induction into contexts that are `eval_ctx` EXTENDED by Λ-binders  *)
+(*  (bind_ty bound / bind_lt lt_local), where both                     *)
+(*  [typing_value_capture_lt_le_type] and [lt_sub_no_local_mono]       *)
+(*  currently require plain `eval_ctx`.  Discharging it thus means     *)
+(*  generalizing that capture-lifetime layer from `eval_ctx` to        *)
+(*  `eval_ctx + prenex Λ-binders` (a foundational, match-kernel-sized  *)
+(*  effort), plus a schema lemma propagating `no_local` from a ctor's  *)
+(*  result type to its instantiated field types.                       *)
 (* ================================================================== *)
 Axiom marker_ok_step_handler_elim : forall Γ m T_B T_R body r' Tr,
   Γ ⊢ₜ term_handler_m m T_B T_R body : Tr ->

@@ -630,7 +630,7 @@ Definition red_list_example : Prop :=
   list_example ==>> (λ: T_List `Lf (T_File `Ll) \\
                        cons_v (T_File `Ll) file_v ($$ 0)).
 
-(*   compose(succ, succ)(Zero)  ~~>*  Suc(Suc Zero) = 2         *)
+(*   compose(succ, succ)(Zero)  ~~>*  Suc(Suc(Zero)) = 2         *)
 Definition red_compose_example : Prop := compose_example ==>> two_v.
 
 (*   id<Unit>(Unit())        ~~>*  Unit()                       *)
@@ -640,13 +640,13 @@ Definition red_downcast_example : Prop := downcast_example ==>> unit_v.
 (*   withFile<Unit>(fun(f) Unit())  ~~>*  Unit()                *)
 Definition red_withFile_example : Prop := withFile_example ==>> unit_v.
 
-(*   withState(get; put 3; get)(2)  ~~>*  3   (the 2nd get)     *)
+(*   withState(get; put(3); get)(2)  ~~>*  3   (the 2nd get)     *)
 Definition red_withState_example : Prop := withState_example ==>> three_v.
 
 (*   handle { ask() resume(2) } perform ask()  ~~>*  2          *)
 Definition red_readerExample : Prop := readerExample ==>> two_v.
 
-(*   handle { mkSome(x) resume(Some x) } perform mkSome(3)      *)
+(*   handle { mkSome(x) resume(Some(x)) } perform mkSome(3)      *)
 (*       ~~>*  Some(3)                                          *)
 Definition red_exampleOptionality : Prop :=
   exampleOptionality ==>> some_v (T_Nat `Lf) three_v.

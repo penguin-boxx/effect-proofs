@@ -3257,6 +3257,12 @@ Qed.
 (* restructure: the SETP constructors use 0-indexed closedness while *)
 (* typing_SubstTm threads a varying binder depth c, so discharging   *)
 (* the HrepAll closure structurally is a ~300-line rebuild (deferred).*)
+(* NOTE (investigated): the gap is exactly the [HrepAll] premise of   *)
+(* typing_SubstTm — its SubstTm_lt case needs an UNCONDITIONAL        *)
+(* lt-weakening (typing_InsLt), which is itself blocked at the        *)
+(* T_Match case (schema-origin closedness the bare statement lacks).  *)
+(* So this routes back through the same match-substitution kernel as  *)
+(* ltbeta / typing_SubstTy_match_case.                                *)
 (* ================================================================ *)
 Axiom typing_SubstTm_eval_ctx : forall Γ A t B v,
   eval_ctx Γ ->
