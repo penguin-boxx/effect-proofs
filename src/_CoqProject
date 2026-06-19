@@ -18,8 +18,10 @@ safety/Markers.v
 safety/Progress.v
 safety/Variance.v
 safety/Inversions.v
-safety/Confinement.v
+safety/Frames.v
 safety/Preservation.v
+safety/Soundness.v
+safety/Escape.v
 safety/Safety.v
 examples/Sugar.v
 examples/Examples.v

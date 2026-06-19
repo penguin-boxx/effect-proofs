@@ -9,5 +9,7 @@ Require Export Markers.
 Require Export Progress.
 Require Export Variance.
 Require Export Inversions.
-Require Export Confinement.
+Require Export Frames.
 Require Export Preservation.
+Require Export Soundness.
+Require Export Escape.

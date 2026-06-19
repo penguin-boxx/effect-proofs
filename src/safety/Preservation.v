@@ -11,7 +11,7 @@ Require Import Markers.
 Require Import Progress.
 Require Import Variance.
 Require Import Inversions.
-Require Import Confinement.
+Require Import Frames.
 
 (* ================================================================== *)
 (* Shifting commutes with plugging.                                   *)
@@ -291,48 +291,3 @@ Theorem preservation : forall Γ t t' T,
   eval_ctx Γ -> Γ ⊢ₜ t : T -> t ==> t' -> Γ ⊢ₜ t' : T.
 Proof. exact step_preserves_typing. Qed.
 
-(* ================================================================== *)
-(*                      TYPE SOUNDNESS (capstone)                     *)
-(*                                                                    *)
-(* Progress + preservation: a well-typed, marker-safe term never      *)
-(* reaches a stuck state.  Conditional on the same substitution-      *)
-(* preservation facts as `preservation`, plus step-preservation of    *)
-(* the two marker invariants (proved separately below where           *)
-(* possible).                                                         *)
-(* ================================================================== *)
-
-(* Type soundness, UNCONDITIONAL: a well-typed, marker-safe term never   *)
-(* reaches a stuck state.  Subject reduction (preservation) and the two  *)
-(* marker step-preservation facts are now supplied internally from the   *)
-(* proved lemmas (step_preserves_marker_ok, preservation) and the        *)
-(* explicit residual axioms (step_preserves_marker_types_safe, the four  *)
-(* redex preserves) — see Print Assumptions type_soundness.              *)
-Theorem type_soundness :
-  forall Γ t t' T,
-    eval_ctx Γ ->
-    safety_invariants Γ T t ->
-    multi_step t t' ->
-    ~ stuck t'.
-Proof.
-  intros Γ t t' T Hec Hinv Hms.
-  assert (Hreach : safety_invariants Γ T t').
-  { revert Hinv. induction Hms as [u | u1 u2 u3 Hstep Hms IH]; intros Hinv.
-    - exact Hinv.
-    - apply IH. destruct Hinv as [Hmok [Hmsafe Hty]].
-      split; [eapply step_preserves_marker_ok;
-                [exact Hec | exact Hmok | exact Hmsafe | exact Hty | exact Hstep] |].
-      split; [eapply step_preserves_marker_types_safe;
-                [exact Hec | exact Hmok | exact Hmsafe | exact Hty | exact Hstep] |].
-      eapply preservation; eauto. }
-  destruct Hreach as [Hmok [Hmsafe Hty]].
-  eapply safe_state_not_stuck; eauto.
-Qed.
-
-(* End-to-end safety from a single well-typed marker-safe state:       *)
-(* every reachable state is non-stuck (unconditional).                 *)
-Corollary type_safety_from_invariants : forall Γ t t' T,
-  eval_ctx Γ ->
-  safety_invariants Γ T t ->
-  multi_step t t' ->
-  ~ stuck t'.
-Proof. exact type_soundness. Qed.
