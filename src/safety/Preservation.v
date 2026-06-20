@@ -126,13 +126,18 @@ Qed.
 (*    bind_ty bound to a subtype under a typing derivation).  Only     *)
 (*    SUBTYPING narrowing (sub_NT) exists in the codebase; the typing  *)
 (*    analogue is a separate mutual-induction theorem (future work).   *)
-(*  - ltbeta_preserves   needs lt-β substitution preservation through  *)
-(*    typing_SubstLt with the closedness/schema bookkeeping.           *)
+(*  - ltbeta_preserves   needs a binder-removing lt-substitution       *)
+(*    theorem.  The available typing_SubstLt_closed_from is not that   *)
+(*    theorem: its closed-from premise excludes the index removed by   *)
+(*    SubstLt_here.                                                    *)
 (*  - matchyes_preserves needs the n_lt lt-var elimination + value     *)
-(*    list substitution (typing_SubstLt + Axiom 4) index plumbing.     *)
+(*    list substitution index plumbing through the specialised redex   *)
+(*    theorem below; in particular it needs term typing preservation   *)
+(*    for substituting the match branch's pushed lifetime binders.     *)
 (*  - perform_preserves  needs the Ss type substitution (typing_SubstTy)*)
-(*    + the [arg; resume] term-list substitution (Axiom 4).            *)
-(*                                                                    *)
+(*    + the [arg; resume] term-list substitution, plus a typing theorem*)
+(*    for the captured pure context used as the reified resumption.    *)
+(*                                                                     *)
 (* All four are SOUND (true; they are the standard substitution lemmas *)
 (* specialised to each redex) — they are stated exactly as the         *)
 (* preservation proof consumes them.                                   *)
@@ -146,6 +151,55 @@ Lemma subst_tm_preserves : forall Γ A t B v,
   Γ ⊢ₜ v : A ->
   Γ ⊢ₜ subst_tm 0 v t : B.
 Proof. exact typing_SubstTm_eval_ctx. Qed.
+
+Lemma subst_nl_here_from_ty_app_arg : forall Γ bound S,
+  ty_app_arg_no_local Γ bound S = true ->
+  subst_nl S 0 (bind_ty bound :: Γ) Γ.
+Proof.
+  intros Γ bound S Harg Hnl.
+  unfold ty_app_arg_no_local in Harg.
+  simpl in Hnl. rewrite is_any_at_free_bound_shift_ty in Hnl.
+  rewrite Hnl in Harg. exact Harg.
+Qed.
+
+Lemma tybeta_preserves_with_subst_nl : forall Γ bound body S T,
+  eval_ctx Γ ->
+  subst_nl S 0 (bind_ty bound :: Γ) Γ ->
+  Γ ⊢ₜ term_ty_app (term_ty_lam bound body) S : T ->
+  Γ ⊢ₜ subst_ty_in_tm 0 S body : T.
+Proof.
+  intros Γ bound body S T Hec Hnl Hty.
+  apply tyapp_typing_inv_p in Hty.
+  destruct Hty as [B [U [Hlam [HSB [_ Hres]]]]].
+  apply ty_lam_typing_inv in Hlam.
+  destruct Hlam as [U0 [Hbody Hallsub]].
+  destruct (sub_ty_all_inv_full Γ (type_ty_all bound U0) B U Hec Hallsub) as
+    [B' [U' [Heq [HBB' HUsub]]]].
+  inversion Heq; subst B' U'.
+  assert (HSbound : Γ ⊢ S <:: bound).
+  { eapply SA_Trans; eassumption. }
+  eapply T_Sub.
+  - eapply typing_SubstTy.
+    + exact Hbody.
+    + apply SubstTy_here. exact HSbound.
+    + exact Hnl.
+    + apply ctor_fields_closed_bind_ty.
+      apply eval_ctx_ctor_fields_closed. exact Hec.
+  - eapply SA_Trans.
+    + apply (sub_subst_ty Γ B U0 U S HUsub HSB).
+    + exact Hres.
+Qed.
+
+Lemma tybeta_preserves_declared_bound : forall Γ bound body S T,
+  eval_ctx Γ ->
+  ty_app_arg_no_local Γ bound S = true ->
+  Γ ⊢ₜ term_ty_app (term_ty_lam bound body) S : T ->
+  Γ ⊢ₜ subst_ty_in_tm 0 S body : T.
+Proof.
+  intros Γ bound body S T Hec Harg Hty.
+  eapply tybeta_preserves_with_subst_nl; [exact Hec| |exact Hty].
+  apply subst_nl_here_from_ty_app_arg. exact Harg.
+Qed.
 
 Axiom tybeta_preserves : forall Γ bound body S T,
   eval_ctx Γ ->

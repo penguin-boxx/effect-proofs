@@ -3271,17 +3271,6 @@ Axiom typing_SubstTm_eval_ctx : forall Γ A t B v,
   Γ ⊢ₜ v : A ->
   Γ ⊢ₜ subst_tm 0 v t : B.
 
-(* ================================================================ *)
-(* AXIOM 4: the list version of Axiom 3 (used by match / perform).   *)
-(* ================================================================ *)
-Axiom typing_subst_list_tm_eval_ctx : forall Γ vs rhos t T,
-  eval_ctx Γ ->
-  Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rhos ->
-  Forall value vs ->
-  List.concat (List.map (free_tm_vars 0) vs) = [] ->
-  (List.fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ rhos) ⊢ₜ t : T ->
-  Γ ⊢ₜ subst_list_tm vs t : T.
-
 Lemma typing_SubstTm_eval_ctx_global : forall Γ A t B v,
   eval_ctx Γ ->
   (bind_tm A :: Γ) ⊢ₜ t : B ->
