@@ -262,7 +262,7 @@ Proof.
     simpl in Hin. specialize (IH x Hin).
     intros Hnone. apply IH. simpl. rewrite Hnone. reflexivity.
   - (* T_TyApp *)
-    intros Γ t B U S Ht IH HwfS Hsub HnlArg x Hin. apply IH; exact Hin.
+    intros Γ t B U S Ht IH HwfS Hsub x Hin. apply IH; exact Hin.
   - (* T_LtLam *)
     intros Γ body T HwfT Hbody IH x Hin.
     simpl in Hin. specialize (IH x Hin).

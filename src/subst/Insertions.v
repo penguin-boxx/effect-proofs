@@ -1063,6 +1063,59 @@ Proof.
     + eapply lt_wf_InsTm; eauto.
 Qed.
 
+(* ---- escape side-condition transport: [lt_of_ty_G Γ T <: lt_free] ----  *)
+(* The handler/perform escape premise (paper: local ∉ lt_Γ(T)) is preserved *)
+(* by every context map: [lt_of_ty_G] commutes (= or <:) and [lt_sub_*]     *)
+(* transports, with shift/subst of [lt_free] being [lt_free].               *)
+Lemma sub_free_InsTm : forall G G' T,
+  InsTm G G' -> G ⊢ₗ lt_of_ty_G G T <: lt_free ->
+  G' ⊢ₗ lt_of_ty_G G' T <: lt_free.
+Proof.
+  intros G G' T HIns H. rewrite (lt_of_ty_G_InsTm G G' HIns T).
+  eapply lt_sub_InsTm; eauto.
+Qed.
+
+Lemma sub_free_list_InsTm : forall G G' Ss,
+  InsTm G G' -> Forall (fun S => G ⊢ₗ lt_of_ty_G G S <: lt_free) Ss ->
+  Forall (fun S => G' ⊢ₗ lt_of_ty_G G' S <: lt_free) Ss.
+Proof.
+  intros G G' Ss HIns H. induction H; constructor;
+    [eapply sub_free_InsTm; eauto | auto].
+Qed.
+
+Lemma sub_free_InsTy : forall c G G' T,
+  InsTy c G G' -> G ⊢ₗ lt_of_ty_G G T <: lt_free ->
+  G' ⊢ₗ lt_of_ty_G G' (shift_ty 1 c T) <: lt_free.
+Proof.
+  intros c G G' T HIns H. rewrite (lt_of_ty_G_InsTy c G G' HIns T).
+  eapply lt_sub_InsTy; eauto.
+Qed.
+
+Lemma sub_free_list_InsTy : forall c G G' Ss,
+  InsTy c G G' -> Forall (fun S => G ⊢ₗ lt_of_ty_G G S <: lt_free) Ss ->
+  Forall (fun S => G' ⊢ₗ lt_of_ty_G G' S <: lt_free) (List.map (shift_ty 1 c) Ss).
+Proof.
+  intros c G G' Ss HIns H. induction H; simpl; constructor;
+    [eapply sub_free_InsTy; eauto | auto].
+Qed.
+
+Lemma sub_free_InsLt : forall c G G' T,
+  InsLt c G G' -> G ⊢ₗ lt_of_ty_G G T <: lt_free ->
+  G' ⊢ₗ lt_of_ty_G G' (shift_lt_in_ty 1 c T) <: lt_free.
+Proof.
+  intros c G G' T HIns H. rewrite (lt_of_ty_G_InsLt c G G' HIns T).
+  change lt_free with (shift_lt 1 c lt_free) at 1.
+  eapply lt_sub_InsLt; eauto.
+Qed.
+
+Lemma sub_free_list_InsLt : forall c G G' Ss,
+  InsLt c G G' -> Forall (fun S => G ⊢ₗ lt_of_ty_G G S <: lt_free) Ss ->
+  Forall (fun S => G' ⊢ₗ lt_of_ty_G G' S <: lt_free) (List.map (shift_lt_in_ty 1 c) Ss).
+Proof.
+  intros c G G' Ss HIns H. induction H; simpl; constructor;
+    [eapply sub_free_InsLt; eauto | auto].
+Qed.
+
 Lemma sub_InsTm : forall G T1 T2, G ⊢ T1 <:: T2 ->
   forall G', InsTm G G' -> G' ⊢ T1 <:: T2.
 Proof.
@@ -1789,7 +1842,6 @@ Lemma typing_ind_forall2 :
      Γ ⊢ₜ t : type_ty_all B U -> P Γ t (type_ty_all B U) ->
       ty_wf Γ S ->
      Γ ⊢ S <:: B ->
-      ty_app_arg_no_local Γ B S = true ->
      P Γ (term_ty_app t S) (subst_ty 0 S U)) ->
   (forall Γ body T,
       ty_wf (bind_lt lt_local :: Γ) T ->
@@ -1864,7 +1916,7 @@ Lemma typing_ind_forall2 :
     types_wf Γ Ts ->
     ty_wf Γ T_B ->
     ty_wf Γ T_R ->
-    no_local_ty_G Γ T_B = true ->
+    Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
     Γ ⊢ T_B <:: T_R ->
       sig_β = inst_op_alpha n_α Ts n_β sig ->
       ret_β = inst_op_alpha n_α Ts n_β ret ->
@@ -1883,9 +1935,9 @@ Lemma typing_ind_forall2 :
      List.length Ts = n_α ->
      List.length Ss = n_β ->
     types_wf Γ Ss ->
-    forallb (no_local_ty_G Γ) Ss = true ->
+    Forall (fun S => Γ ⊢ₗ lt_of_ty_G Γ S <: lt_free) Ss ->
      sig_inst = inst_op_arg n_α Ts n_β Ss sig ->
-      no_local_ty_G Γ sig_inst = true ->
+      Γ ⊢ₗ lt_of_ty_G Γ sig_inst <: lt_free ->
      ret_inst = inst_op_arg n_α Ts n_β Ss ret ->
     ty_wf Γ ret_inst ->
      Γ ⊢ₜ arg : sig_inst -> P Γ arg sig_inst ->
@@ -1893,7 +1945,7 @@ Lemma typing_ind_forall2 :
   (forall Γ m T_B T_R t,
       ty_wf Γ T_B ->
       ty_wf Γ T_R ->
-      no_local_ty_G Γ T_B = true ->
+      Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
       Γ ⊢ T_B <:: T_R ->
       Γ ⊢ₜ t : T_B -> P Γ t T_B ->
       P Γ (term_handler_m m T_B T_R t) T_R) ->
@@ -1901,7 +1953,7 @@ Lemma typing_ind_forall2 :
       ty_wf Γ A ->
       ty_wf Γ T_B ->
       ty_wf Γ T_R ->
-      no_local_ty_G Γ T_B = true ->
+      Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
       Γ ⊢ T_B <:: T_R ->
      (bind_tm A :: Γ) ⊢ₜ b : T_B -> P (bind_tm A :: Γ) b T_B ->
     P Γ (term_resume m T_B T_R b) (type_fun A lt_local T_R)) ->
@@ -2220,6 +2272,29 @@ Proof.
   rewrite shift_lt_in_ty_list_closed in Hnl' by exact Hclosed. exact Hnl'.
 Qed.
 
+(* Closed-context variants of the escape-side-condition transport: when    *)
+(* the type is lt-closed at the insertion point, the shift is the identity. *)
+Lemma sub_free_InsLt_closed : forall c G G' T,
+  InsLt c G G' -> ty_lt_closed c T ->
+  G ⊢ₗ lt_of_ty_G G T <: lt_free ->
+  G' ⊢ₗ lt_of_ty_G G' T <: lt_free.
+Proof.
+  intros c G G' T HIns Hclosed H.
+  pose proof (sub_free_InsLt c G G' T HIns H) as Hs.
+  rewrite shift_lt_in_type_closed in Hs by exact Hclosed. exact Hs.
+Qed.
+
+Lemma sub_free_list_InsLt_closed : forall c G G' Ss,
+  InsLt c G G' -> tys_lt_closed c Ss ->
+  Forall (fun S => G ⊢ₗ lt_of_ty_G G S <: lt_free) Ss ->
+  Forall (fun S => G' ⊢ₗ lt_of_ty_G G' S <: lt_free) Ss.
+Proof.
+  intros c G G' Ss HIns Hclosed H.
+  pose proof (sub_free_list_InsLt c G G' Ss HIns H) as Hs.
+  change (List.map (shift_lt_in_ty 1 c) Ss) with (shift_lt_in_ty_list 1 c Ss) in Hs.
+  rewrite shift_lt_in_ty_list_closed in Hs by exact Hclosed. exact Hs.
+Qed.
+
 Lemma InsTy_push_ty_vars_any_at_free : forall n c G G',
   InsTy c G G' ->
   InsTy (n + c) (push_ty_vars n any_at_free G) (push_ty_vars n any_at_free G').
@@ -2400,12 +2475,11 @@ Proof.
     + eapply ty_wf_InsTm; [exact HwfT|]. apply InsTm_ty. apply InsTmAt_to_InsTm with (c := c). exact HIns.
     + rewrite is_abs_shift_tm. exact HisAbs.
     + apply IHbody. apply InsTmAt_ty. exact HIns.
-  - intros Γ t B U S Ht IHt HwfS Hsub HnlArg c G' HIns. simpl.
+  - intros Γ t B U S Ht IHt HwfS Hsub c G' HIns. simpl.
     eapply T_TyApp.
     + apply IHt. exact HIns.
     + eapply ty_wf_InsTm; [exact HwfS|]. apply InsTmAt_to_InsTm with (c := c). exact HIns.
     + apply (sub_InsTm Γ S B Hsub G' (InsTmAt_to_InsTm c Γ G' HIns)).
-    + eapply ty_app_arg_no_local_InsTm; [apply InsTmAt_to_InsTm with (c := c); exact HIns|exact HnlArg].
   - intros Γ body T HwfT HisAbs Hbody IHbody c G' HIns. simpl.
     apply T_LtLam.
     + eapply ty_wf_InsTm; [exact HwfT|]. apply InsTm_lt. apply InsTmAt_to_InsTm with (c := c). exact HIns.
@@ -2494,7 +2568,7 @@ Proof.
     + eapply types_wf_InsTm; [exact HwfTs|]. apply InsTmAt_to_InsTm with (c := c). exact HIns.
     + eapply ty_wf_InsTm; [exact HwfTB|]. apply InsTmAt_to_InsTm with (c := c). exact HIns.
     + eapply ty_wf_InsTm; [exact HwfTR|]. apply InsTmAt_to_InsTm with (c := c). exact HIns.
-    + eapply no_local_ty_G_InsTm; [apply InsTmAt_to_InsTm with (c := c); exact HIns|exact Hnolocal].
+    + eapply sub_free_InsTm; [apply InsTmAt_to_InsTm with (c := c); exact HIns|exact Hnolocal].
     + apply (sub_InsTm Γ T_B T_R Hsub G' (InsTmAt_to_InsTm c Γ G' HIns)).
     + exact Hsig.
     + exact Hret.
@@ -2512,9 +2586,9 @@ Proof.
     + exact HTs.
     + exact HSs.
     + eapply types_wf_InsTm; [exact HwfSs|]. apply InsTmAt_to_InsTm with (c := c). exact HIns.
-    + eapply forallb_no_local_ty_G_InsTm; [apply InsTmAt_to_InsTm with (c := c); exact HIns|exact HnoSs].
+    + eapply sub_free_list_InsTm; [apply InsTmAt_to_InsTm with (c := c); exact HIns|exact HnoSs].
     + exact Hsig.
-    + eapply no_local_ty_G_InsTm; [apply InsTmAt_to_InsTm with (c := c); exact HIns|exact HnoSig].
+    + eapply sub_free_InsTm; [apply InsTmAt_to_InsTm with (c := c); exact HIns|exact HnoSig].
     + exact Hret.
     + eapply ty_wf_InsTm; [exact HwfRet|]. apply InsTmAt_to_InsTm with (c := c). exact HIns.
     + apply IHarg. exact HIns.
@@ -2522,7 +2596,7 @@ Proof.
     apply T_HandlerM.
     + eapply ty_wf_InsTm; [exact HwfTB|]. apply InsTmAt_to_InsTm with (c := c). exact HIns.
     + eapply ty_wf_InsTm; [exact HwfTR|]. apply InsTmAt_to_InsTm with (c := c). exact HIns.
-    + eapply no_local_ty_G_InsTm; [apply InsTmAt_to_InsTm with (c := c); exact HIns|exact Hnolocal].
+    + eapply sub_free_InsTm; [apply InsTmAt_to_InsTm with (c := c); exact HIns|exact Hnolocal].
     + apply (sub_InsTm Γ T_B T_R Hsub G' (InsTmAt_to_InsTm c Γ G' HIns)).
     + apply IHt. exact HIns.
   - intros Γ m b A T_B T_R HwfA HwfTB HwfTR Hnolocal Hsub Hb IHb c G' HIns. simpl.
@@ -2530,7 +2604,7 @@ Proof.
     + eapply ty_wf_InsTm; [exact HwfA|]. apply InsTmAt_to_InsTm with (c := c). exact HIns.
     + eapply ty_wf_InsTm; [exact HwfTB|]. apply InsTmAt_to_InsTm with (c := c). exact HIns.
     + eapply ty_wf_InsTm; [exact HwfTR|]. apply InsTmAt_to_InsTm with (c := c). exact HIns.
-    + eapply no_local_ty_G_InsTm; [apply InsTmAt_to_InsTm with (c := c); exact HIns|exact Hnolocal].
+    + eapply sub_free_InsTm; [apply InsTmAt_to_InsTm with (c := c); exact HIns|exact Hnolocal].
     + apply (sub_InsTm Γ T_B T_R Hsub G' (InsTmAt_to_InsTm c Γ G' HIns)).
     + apply IHb. apply InsTmAt_tm. exact HIns.
 Qed.

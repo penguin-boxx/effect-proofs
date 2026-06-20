@@ -195,7 +195,7 @@ Proof.
   - intros Γ bound body T HwfBound HwfT HisAbs Hbody IH x Hin.
     simpl in Hin. specialize (IH x Hin).
     intros Hnone. apply IH. simpl. rewrite Hnone. reflexivity.
-  - intros Γ t B U S Ht IH HwfS Hsub HnlArg x Hin. apply IH. exact Hin.
+  - intros Γ t B U S Ht IH HwfS Hsub x Hin. apply IH. exact Hin.
   - intros Γ body T HwfT HisAbs Hbody IH x Hin.
     simpl in Hin. specialize (IH x Hin).
     intros Hnone. apply IH. simpl. rewrite Hnone. reflexivity.
@@ -1299,7 +1299,7 @@ Proof.
     split.
     + eapply ty_wf_ty_closed_from; eauto.
     + apply IHbody. apply ctx_ty_closed_from_bind_ty. exact Hctx.
-  - intros Γ t B U S Ht IH HwfS Hsub HnlArg c Hctx. simpl.
+  - intros Γ t B U S Ht IH HwfS Hsub c Hctx. simpl.
     split.
     + apply IH. exact Hctx.
     + eapply ty_wf_ty_closed_from; eauto.
@@ -1374,7 +1374,7 @@ Proof.
     split.
     + eapply ty_wf_lt_closed_from; eauto.
     + apply IHbody. apply ctx_lt_closed_from_bind_ty. exact Hctx.
-  - intros Γ t B U S Ht IH HwfS Hsub HnlArg c Hctx. simpl.
+  - intros Γ t B U S Ht IH HwfS Hsub c Hctx. simpl.
     split.
     + apply IH. exact Hctx.
     + eapply ty_wf_lt_closed_from; eauto.
@@ -1492,7 +1492,7 @@ Proof.
     inversion IH1; subst. assumption.
   - intros Γ bound body T HwfBound HwfT Hbody IHbody.
     constructor; assumption.
-  - intros Γ t B U S Ht IH HwfS Hsub HnlArg.
+  - intros Γ t B U S Ht IH HwfS Hsub.
     inversion IH; subst.
     eapply ty_wf_SubstTy; [exact H3|]. apply SubstTy_here. exact Hsub.
   - intros Γ body T HwfT Hbody IHbody.
@@ -1591,16 +1591,13 @@ Proof.
       * exact (InsLt_bind_ty_closed bound c Γ Γ' HIns HboundClosed).
       * apply ctx_lt_closed_from_bind_ty. exact Hlt.
       * apply ctx_schemas_lt_closed_from_bind_ty. exact Hschemas.
-  - intros Γ t B U S Ht IH HwfS Hsub HnlArg c Γ' HIns Hlt Hschemas.
+  - intros Γ t B U S Ht IH HwfS Hsub c Γ' HIns Hlt Hschemas.
     eapply T_TyApp.
     + apply (IH c Γ'); assumption.
     + eapply ty_wf_InsLt_closed; eauto.
       eapply ty_wf_lt_closed_from; eauto.
     + destruct (sub_wf _ _ _ Hsub) as [HwfS' HwfB].
       eapply sub_InsLt_closed; eauto;
-        eapply ty_wf_lt_closed_from; eauto.
-    + destruct (sub_wf _ _ _ Hsub) as [HwfS' HwfB].
-      eapply ty_app_arg_no_local_InsLt_closed; eauto;
         eapply ty_wf_lt_closed_from; eauto.
   - intros Γ body T HwfT HisAbs Hbody IHbody c Γ' HIns Hlt Hschemas.
     assert (HTClosed : ty_lt_closed (S c) T).
@@ -1765,7 +1762,7 @@ Proof.
     + exact (types_wf_InsLt_closed Γ Ts HwfTs c Γ' HIns HTsClosed).
     + exact (ty_wf_InsLt_closed Γ T_B HwfTB c Γ' HIns HTBClosed).
     + exact (ty_wf_InsLt_closed Γ T_R HwfTR c Γ' HIns HTRClosed).
-    + exact (no_local_ty_G_InsLt_closed Γ T_B c Γ' HIns HTBClosed HnoLocal).
+    + exact (sub_free_InsLt_closed c Γ Γ' T_B HIns HTBClosed HnoLocal).
     + exact (sub_InsLt_closed Γ T_B T_R Hsub c Γ' HIns HTBClosed HTRClosed).
     + exact Hsig.
     + exact Hret.
@@ -1810,9 +1807,9 @@ Proof.
     + exact Hlen_Ts.
     + exact Hlen_Ss.
     + exact (types_wf_InsLt_closed Γ Ss HwfSs c Γ' HIns HSsClosed).
-    + exact (forallb_no_local_ty_G_InsLt_closed Γ Ss c Γ' HIns HSsClosed HnoSs).
+    + exact (sub_free_list_InsLt_closed c Γ Γ' Ss HIns HSsClosed HnoSs).
     + exact Hsig.
-    + exact (no_local_ty_G_InsLt_closed Γ sig_inst c Γ' HIns HsigInstClosed HnoSig).
+    + exact (sub_free_InsLt_closed c Γ Γ' sig_inst HIns HsigInstClosed HnoSig).
     + exact Hret.
     + exact (ty_wf_InsLt_closed Γ ret_inst HwfRet c Γ' HIns HretInstClosed).
     + exact (IHarg c Γ' HIns Hlt HschemasAll).
@@ -1822,7 +1819,7 @@ Proof.
     apply T_HandlerM.
     + exact (ty_wf_InsLt_closed Γ T_B HwfTB c Γ' HIns HTBClosed).
     + exact (ty_wf_InsLt_closed Γ T_R HwfTR c Γ' HIns HTRClosed).
-    + exact (no_local_ty_G_InsLt_closed Γ T_B c Γ' HIns HTBClosed HnoLocal).
+    + exact (sub_free_InsLt_closed c Γ Γ' T_B HIns HTBClosed HnoLocal).
     + exact (sub_InsLt_closed Γ T_B T_R Hsub c Γ' HIns HTBClosed HTRClosed).
     + exact (IH c Γ' HIns Hlt Hschemas).
   - intros Γ m b A T_B T_R HwfA HwfTB HwfTR HnoLocal Hsub Hb IHb c Γ' HIns Hlt Hschemas.
@@ -1833,7 +1830,7 @@ Proof.
     + exact (ty_wf_InsLt_closed Γ A HwfA c Γ' HIns HAClosed).
     + exact (ty_wf_InsLt_closed Γ T_B HwfTB c Γ' HIns HTBClosed).
     + exact (ty_wf_InsLt_closed Γ T_R HwfTR c Γ' HIns HTRClosed).
-    + exact (no_local_ty_G_InsLt_closed Γ T_B c Γ' HIns HTBClosed HnoLocal).
+    + exact (sub_free_InsLt_closed c Γ Γ' T_B HIns HTBClosed HnoLocal).
     + exact (sub_InsLt_closed Γ T_B T_R Hsub c Γ' HIns HTBClosed HTRClosed).
     + apply (IHb c (bind_tm A :: Γ')).
       * exact (InsLt_bind_tm_closed A c Γ Γ' HIns HAClosed).
@@ -2836,13 +2833,12 @@ Proof.
       * apply ctx_lt_closed_from_bind_ty. exact Hlt.
       * apply ctx_schemas_lt_closed_from_bind_ty. exact Hschemas.
       * apply replacement_capture_bound_ty; assumption.
-  - intros Γ t B U S Ht IH HwfS Hsub HnlArg repl n G' HSub Hfree HtmTy HtmLt
+  - intros Γ t B U S Ht IH HwfS Hsub repl n G' HSub Hfree HtmTy HtmLt
       HtargetTy HtargetLt HrepAll c Hlt Hschemas Hcap.
     simpl. eapply T_TyApp.
     + apply (IH repl n G' HSub Hfree HtmTy HtmLt HtargetTy HtargetLt HrepAll c Hlt Hschemas Hcap).
     + eapply ty_wf_SubstTm; eauto.
     + eapply sub_SubstTm; eauto.
-    + eapply ty_app_arg_no_local_SubstTm; eauto.
   - intros Γ body T HwfT HisAbs Hbody IHbody repl n G' HSub Hfree HtmTy HtmLt
       HtargetTy HtargetLt HrepAll c Hlt Hschemas Hcap.
     simpl. apply T_LtLam.
@@ -3010,7 +3006,7 @@ Proof.
     + eapply types_wf_SubstTm; eauto.
     + eapply ty_wf_SubstTm; eauto.
     + eapply ty_wf_SubstTm; eauto.
-    + eapply no_local_ty_G_SubstTm; eauto.
+    + eapply sub_free_SubstTm; eauto.
     + eapply sub_SubstTm; eauto.
     + exact Hsig.
     + exact Hret.
@@ -3069,9 +3065,9 @@ Proof.
     + exact Hlen_Ts.
     + exact Hlen_Ss.
     + eapply types_wf_SubstTm; eauto.
-    + eapply forallb_no_local_ty_G_SubstTm; eauto.
+    + eapply sub_free_list_SubstTm; eauto.
     + exact Hsig.
-    + eapply no_local_ty_G_SubstTm; eauto.
+    + eapply sub_free_SubstTm; eauto.
     + exact Hret.
     + eapply ty_wf_SubstTm; eauto.
     + apply (IHarg repl n G' HSub Hfree HtmTy HtmLt HtargetTy HtargetLt HrepAll c Hlt Hschemas Hcap).
@@ -3080,7 +3076,7 @@ Proof.
     simpl. apply T_HandlerM.
     + eapply ty_wf_SubstTm; eauto.
     + eapply ty_wf_SubstTm; eauto.
-    + eapply no_local_ty_G_SubstTm; eauto.
+    + eapply sub_free_SubstTm; eauto.
     + eapply sub_SubstTm; eauto.
     + apply (IH repl n G' HSub Hfree HtmTy HtmLt HtargetTy HtargetLt HrepAll c Hlt Hschemas Hcap).
   - intros Γ m b A T_B T_R HwfA HwfTB HwfTR HnoLocal Hsub Hb IHb repl n G' HSub Hfree HtmTy HtmLt
@@ -3089,7 +3085,7 @@ Proof.
     + eapply ty_wf_SubstTm; eauto.
     + eapply ty_wf_SubstTm; eauto.
     + eapply ty_wf_SubstTm; eauto.
-    + eapply no_local_ty_G_SubstTm; eauto.
+    + eapply sub_free_SubstTm; eauto.
     + eapply sub_SubstTm; eauto.
     + refine (IHb (shift_tm 1 0 repl) (S n) (bind_tm A :: G')
       _ _ _ _ _ _ HrepAll c _ _ _).
@@ -3188,7 +3184,7 @@ Proof.
     destruct (has_rt_cap body) eqn:HcapBody.
     + apply LS_Refl. constructor.
     + apply LS_Free. constructor.
-  - intros Γ t B U S Ht IH HwfS Hsub HnlArg Hec Hval Hfree. inversion Hval.
+  - intros Γ t B U S Ht IH HwfS Hsub Hec Hval Hfree. inversion Hval.
   - intros Γ body T HwfT HisAbs Hbody IHbody Hec Hval Hfree.
     inversion Hval; subst.
     rewrite (capture_lt_closed Γ (term_lt_lam body) Hfree). simpl.

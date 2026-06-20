@@ -195,7 +195,6 @@ Lemma typing_ind2 :
      Γ ⊢ₜ t : type_ty_all B U -> P Γ t (type_ty_all B U) ->
     ty_wf Γ S ->
      Γ ⊢ S <:: B ->
-      ty_app_arg_no_local Γ B S = true ->
      P Γ (term_ty_app t S) (subst_ty 0 S U)) ->
   (forall Γ body T,
     ty_wf (bind_lt lt_local :: Γ) T ->
@@ -269,7 +268,7 @@ Lemma typing_ind2 :
     types_wf Γ Ts ->
     ty_wf Γ T_B ->
     ty_wf Γ T_R ->
-    no_local_ty_G Γ T_B = true ->
+    Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
     Γ ⊢ T_B <:: T_R ->
       sig_β = inst_op_alpha n_α Ts n_β sig ->
       ret_β = inst_op_alpha n_α Ts n_β ret ->
@@ -288,9 +287,9 @@ Lemma typing_ind2 :
      List.length Ts = n_α ->
      List.length Ss = n_β ->
     types_wf Γ Ss ->
-    forallb (no_local_ty_G Γ) Ss = true ->
+    Forall (fun S => Γ ⊢ₗ lt_of_ty_G Γ S <: lt_free) Ss ->
      sig_inst = inst_op_arg n_α Ts n_β Ss sig ->
-      no_local_ty_G Γ sig_inst = true ->
+      Γ ⊢ₗ lt_of_ty_G Γ sig_inst <: lt_free ->
      ret_inst = inst_op_arg n_α Ts n_β Ss ret ->
     ty_wf Γ ret_inst ->
      Γ ⊢ₜ arg : sig_inst -> P Γ arg sig_inst ->
@@ -298,7 +297,7 @@ Lemma typing_ind2 :
   (forall Γ m T_B T_R t,
     ty_wf Γ T_B ->
     ty_wf Γ T_R ->
-    no_local_ty_G Γ T_B = true ->
+    Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
     Γ ⊢ T_B <:: T_R ->
     Γ ⊢ₜ t : T_B -> P Γ t T_B ->
     P Γ (term_handler_m m T_B T_R t) T_R) ->
@@ -306,7 +305,7 @@ Lemma typing_ind2 :
     ty_wf Γ A ->
     ty_wf Γ T_B ->
     ty_wf Γ T_R ->
-    no_local_ty_G Γ T_B = true ->
+    Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
     Γ ⊢ T_B <:: T_R ->
      (bind_tm A :: Γ) ⊢ₜ b : T_B -> P (bind_tm A :: Γ) b T_B ->
     P Γ (term_resume m T_B T_R b) (type_fun A lt_local T_R)) ->
@@ -449,7 +448,7 @@ Proof.
   - (* T_TyLam *)
     intros Γ bound body T HwfBound HwfT Hbody IHbody ms Hmok Hsafe Hec. left; constructor.
   - (* T_TyApp *)
-    intros Γ t B U S Ht IH HwfS Hsub HnlArg ms Hmok Hsafe Hec.
+    intros Γ t B U S Ht IH HwfS Hsub ms Hmok Hsafe Hec.
     simpl in Hmok. specialize (IH ms Hmok Hsafe Hec).
     destruct IH as [Hv | [[t' Hs] | Hesc]].
     + destruct (canonical_ty_all _ _ _ _ Hec Ht Hv) as [bnd [body Heq]]; subst.

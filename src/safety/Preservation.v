@@ -60,15 +60,15 @@ Qed.
 Lemma tyapp_typing_inv_p : forall Γ t S T,
   Γ ⊢ₜ term_ty_app t S : T ->
   exists B U, Γ ⊢ₜ t : type_ty_all B U /\ Γ ⊢ S <:: B
-    /\ ty_app_arg_no_local Γ B S = true /\ Γ ⊢ subst_ty 0 S U <:: T.
+    /\ Γ ⊢ subst_ty 0 S U <:: T.
 Proof.
   intros Γ t S T H. remember (term_ty_app t S) as s eqn:Hs.
   induction H; try discriminate Hs.
-  - destruct (IHtyping Hs) as [B0 [U0 [Ht [HSb [Hnl Hsub]]]]].
-    exists B0, U0. split; [exact Ht|]. split; [exact HSb|]. split; [exact Hnl|].
+  - destruct (IHtyping Hs) as [B0 [U0 [Ht [HSb Hsub]]]].
+    exists B0, U0. split; [exact Ht|]. split; [exact HSb|].
     eapply SA_Trans; eassumption.
   - injection Hs; intros; subst.
-    exists B, U. split; [eassumption|]. split; [eassumption|]. split; [eassumption|].
+    exists B, U. split; [eassumption|]. split; [eassumption|].
     apply SA_Refl. eapply typing_implies_wf. eapply T_TyApp; eassumption.
 Qed.
 
@@ -91,7 +91,7 @@ Lemma resume_typing_inv_full : forall Γ m T_B T_R b T,
   Γ ⊢ₜ term_resume m T_B T_R b : T ->
   exists A,
     ty_wf Γ A /\ ty_wf Γ T_B /\ ty_wf Γ T_R /\
-    no_local_ty_G Γ T_B = true /\ Γ ⊢ T_B <:: T_R /\
+    Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free /\ Γ ⊢ T_B <:: T_R /\
     (bind_tm A :: Γ) ⊢ₜ b : T_B /\
     Γ ⊢ type_fun A lt_local T_R <:: T.
 Proof.
@@ -155,12 +155,7 @@ Proof. exact typing_SubstTm_eval_ctx. Qed.
 Lemma subst_nl_here_from_ty_app_arg : forall Γ bound S,
   ty_app_arg_no_local Γ bound S = true ->
   subst_nl S 0 (bind_ty bound :: Γ) Γ.
-Proof.
-  intros Γ bound S Harg Hnl.
-  unfold ty_app_arg_no_local in Harg.
-  simpl in Hnl. rewrite is_any_at_free_bound_shift_ty in Hnl.
-  rewrite Hnl in Harg. exact Harg.
-Qed.
+Proof. intros; exact I. Qed.
 
 Lemma tybeta_preserves_with_subst_nl : forall Γ bound body S T,
   eval_ctx Γ ->
@@ -170,7 +165,7 @@ Lemma tybeta_preserves_with_subst_nl : forall Γ bound body S T,
 Proof.
   intros Γ bound body S T Hec Hnl Hty.
   apply tyapp_typing_inv_p in Hty.
-  destruct Hty as [B [U [Hlam [HSB [_ Hres]]]]].
+  destruct Hty as [B [U [Hlam [HSB Hres]]]].
   apply ty_lam_typing_inv in Hlam.
   destruct Hlam as [U0 [Hbody Hallsub]].
   destruct (sub_ty_all_inv_full Γ (type_ty_all bound U0) B U Hec Hallsub) as
@@ -201,10 +196,20 @@ Proof.
   apply subst_nl_here_from_ty_app_arg. exact Harg.
 Qed.
 
-Axiom tybeta_preserves : forall Γ bound body S T,
+(* PROVEN (was Axiom): with the paper's escape side condition               *)
+(* [lt_of_ty_G Γ T_B <: lt_free] — which is monotone under type substitution *)
+(* (see [sub_free_SubstTy]) — type-beta preservation follows directly from    *)
+(* [typing_SubstTy].  The old structural [no_local_ty_G] side condition was   *)
+(* NOT substitution-monotone, which is exactly what the counterexample in     *)
+(* CounterexampleTyBetaHandle.v exploited.                                     *)
+Lemma tybeta_preserves : forall Γ bound body S T,
   eval_ctx Γ ->
   Γ ⊢ₜ term_ty_app (term_ty_lam bound body) S : T ->
   Γ ⊢ₜ subst_ty_in_tm 0 S body : T.
+Proof.
+  intros Γ bound body S T Hec Hty.
+  eapply tybeta_preserves_with_subst_nl; [exact Hec | exact I | exact Hty].
+Qed.
 
 Axiom ltbeta_preserves : forall Γ body l T,
   eval_ctx Γ ->
@@ -282,7 +287,7 @@ Lemma handle_typing_inv : forall Γ E_tag n_beta Ts T_B T_R op_body body T,
   exists n_α sig ret sig_β ret_β,
     ctx_lookup_eff Γ E_tag = Some (n_α, n_beta, sig, ret) /\
     List.length Ts = n_α /\ types_wf Γ Ts /\
-    ty_wf Γ T_B /\ ty_wf Γ T_R /\ no_local_ty_G Γ T_B = true /\ Γ ⊢ T_B <:: T_R /\
+    ty_wf Γ T_B /\ ty_wf Γ T_R /\ Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free /\ Γ ⊢ T_B <:: T_R /\
     sig_β = inst_op_alpha n_α Ts n_beta sig /\
     ret_β = inst_op_alpha n_α Ts n_beta ret /\
     (bind_tm sig_β

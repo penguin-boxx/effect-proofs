@@ -840,7 +840,6 @@ Inductive typing : ctx -> term -> type -> Prop :=
       Γ ⊢ₜ t : type_ty_all B U ->
       ty_wf Γ S ->
       Γ ⊢ S <:: B ->
-      ty_app_arg_no_local Γ B S = true ->
       Γ ⊢ₜ term_ty_app t S : subst_ty 0 S U
 
   (* --- Lifetime abstraction and application ----------------------- *)
@@ -963,7 +962,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       types_wf Γ Ts ->
       ty_wf Γ T_B ->
       ty_wf Γ T_R ->
-      no_local_ty_G Γ T_B = true ->
+      Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
       Γ ⊢ T_B <:: T_R ->
       sig_β = inst_op_alpha n_α Ts n_β sig ->
       ret_β = inst_op_alpha n_α Ts n_β ret ->
@@ -987,9 +986,9 @@ Inductive typing : ctx -> term -> type -> Prop :=
       List.length Ts = n_α ->
       List.length Ss = n_β ->
       types_wf Γ Ss ->
-      forallb (no_local_ty_G Γ) Ss = true ->
+      Forall (fun S => Γ ⊢ₗ lt_of_ty_G Γ S <: lt_free) Ss ->
       sig_inst = inst_op_arg n_α Ts n_β Ss sig ->
-      no_local_ty_G Γ sig_inst = true ->
+      Γ ⊢ₗ lt_of_ty_G Γ sig_inst <: lt_free ->
       ret_inst = inst_op_arg n_α Ts n_β Ss ret ->
       ty_wf Γ ret_inst ->
       Γ ⊢ₜ arg : sig_inst ->
@@ -999,7 +998,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
   | T_HandlerM : forall Γ m t T_B T_R,
       ty_wf Γ T_B ->
       ty_wf Γ T_R ->
-      no_local_ty_G Γ T_B = true ->
+      Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
       Γ ⊢ T_B <:: T_R ->
       Γ ⊢ₜ t : T_B ->
       Γ ⊢ₜ term_handler_m m T_B T_R t : T_R
@@ -1010,7 +1009,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       ty_wf Γ A ->
       ty_wf Γ T_B ->
       ty_wf Γ T_R ->
-      no_local_ty_G Γ T_B = true ->
+      Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
       Γ ⊢ T_B <:: T_R ->
       (bind_tm A :: Γ) ⊢ₜ b : T_B ->
       Γ ⊢ₜ term_resume m T_B T_R b : type_fun A lt_local T_R

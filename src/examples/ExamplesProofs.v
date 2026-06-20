@@ -275,8 +275,7 @@ Proof.
   unfold typed_id_example, id_example.
   pose proof typed_id_proof as H. unfold typed_id in H.
   eapply T_TyApp with (S := T_Unit) in H;
-    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; apply LS_Local; solve_wf ]
-    | cbn; reflexivity ]. cbn in H.
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; apply LS_Local; solve_wf ] ]. cbn in H.
   eapply T_App; [ exact H | exact typed_unit_proof ].
 Qed.
 
@@ -285,8 +284,7 @@ Proof.
   unfold typed_downcast_example, downcast_example.
   pose proof typed_downcast_proof as H. unfold typed_downcast in H.
   eapply T_TyApp with (S := T_Unit) in H;
-    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; apply LS_Local; solve_wf ]
-    | cbn; reflexivity ]. cbn in H.
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; apply LS_Local; solve_wf ] ]. cbn in H.
   eapply T_App; [ exact H | exact typed_unit_proof ].
 Qed.
 
@@ -295,8 +293,7 @@ Proof.
   unfold typed_withFile_example, withFile_example.
   pose proof typed_withFile_proof as H. unfold typed_withFile in H.
   eapply T_TyApp with (S := T_Unit) in H;
-    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; apply LS_Local; solve_wf ]
-    | cbn; reflexivity ]. cbn in H.
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; apply LS_Local; solve_wf ] ]. cbn in H.
   eapply T_App; [ exact H | ].
   apply T_Lam; [ solve_wf | solve_wf | unfold unit_v; solve_nullary_ctor | cbn; solve_free_sub ].
 Qed.
@@ -337,7 +334,7 @@ Ltac solve_cmd :=
 Ltac solve_state_perform :=
   eapply T_Perform with (Ss := (@nil type));
   [ solve_var | cbn; reflexivity | reflexivity | reflexivity | solve_wf
-  | reflexivity | cbn; reflexivity | cbn; reflexivity | cbn; reflexivity
+  | constructor | cbn; reflexivity | cbn; solve_lt_sub | cbn; reflexivity
   | solve_wf | solve_cmd ].
 
 
@@ -376,7 +373,6 @@ Proof.
     + exact typed_cons_proof.
     + solve_wf.
     + apply SA_Any; [ solve_wf | solve_wf | cbn; apply LS_Local; solve_wf ].
-    + cbn. reflexivity.
   - apply typed_file_local.
 Qed.
 
@@ -416,14 +412,11 @@ Proof.
   eapply T_LtApp with (l := `Lf) in H; [ | solve_wf ]. cbn in H.
   eapply T_LtApp with (l := `Lf) in H; [ | solve_wf ]. cbn in H.
   eapply T_TyApp with (S := T_Nat `Lf) in H;
-    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; apply LS_Local; solve_wf ]
-    | cbn; reflexivity ]. cbn in H.
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; apply LS_Local; solve_wf ] ]. cbn in H.
   eapply T_TyApp with (S := T_Nat `Lf) in H;
-    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; apply LS_Local; solve_wf ]
-    | cbn; reflexivity ]. cbn in H.
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; apply LS_Local; solve_wf ] ]. cbn in H.
   eapply T_TyApp with (S := T_Nat `Lf) in H;
-    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; apply LS_Local; solve_wf ]
-    | cbn; reflexivity ]. cbn in H.
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; apply LS_Local; solve_wf ] ]. cbn in H.
   eapply T_App; [ | solve_nat ].
   eapply T_App; [ | exact typed_succ_proof ].
   eapply T_App; [ exact H | exact typed_succ_proof ].
@@ -471,7 +464,7 @@ Qed.
 Theorem typed_readerExample_proof : typed_readerExample.
 Proof.
   unfold typed_readerExample, readerExample, readerExample_op_body.
-  eapply T_Handle; try (cbn; reflexivity); try solve_wf.
+  eapply T_Handle; try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
   - apply SA_Refl. solve_wf.
   - cbn. eapply T_App.
     + solve_var.
@@ -482,9 +475,9 @@ Proof.
     + reflexivity.
     + reflexivity.
     + solve_wf.
-    + reflexivity.
+    + constructor.
     + cbn; reflexivity.
-    + cbn; reflexivity.
+    + cbn; solve_lt_sub.
     + cbn; reflexivity.
     + solve_wf.
     + unfold unit_v. solve_ctor.
@@ -500,7 +493,7 @@ Proof.
   eapply T_Handle with
     (T_B := `T 1 -{ `Lf }-> `T 0)
     (T_R := `T 1 -{ `Ll }-> `T 0);
-    try (cbn; reflexivity); try solve_wf.
+    try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
   - eapply SA_Fun; [ apply SA_Refl; solve_wf | solve_lt | apply SA_Refl; solve_wf ].
   - cbn. apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
     eapply T_App with (A := `T 1) (l := `Ll) (B := `T 0).
@@ -532,7 +525,7 @@ Proof.
   eapply T_Handle with
     (T_B := `T 1 -{ `Lf }-> `T 0)
     (T_R := `T 1 -{ `Ll }-> `T 0);
-    try (cbn; reflexivity); try solve_wf.
+    try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
   - eapply SA_Fun; [ apply SA_Refl; solve_wf | solve_lt | apply SA_Refl; solve_wf ].
   - cbn. apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
     eapply T_Match with
@@ -563,9 +556,9 @@ Proof.
   pose proof typed_withState_proof as H. unfold typed_withState in H.
   eapply T_LtApp with (l := `Lf) in H; [ | solve_wf ]. cbn in H.
   eapply T_TyApp with (S := T_Nat `Lf) in H;
-    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; solve_lt ] | cbn; reflexivity ]. cbn in H.
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; solve_lt ] ]. cbn in H.
   eapply T_TyApp with (S := T_Nat `Lf) in H;
-    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; solve_lt ] | cbn; reflexivity ]. cbn in H.
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; solve_lt ] ]. cbn in H.
   eapply T_App; [ | solve_nat ].
   eapply T_App; [ exact H | ].
   unfold withState_prog.
@@ -586,7 +579,7 @@ Proof.
   apply T_TyLam; [ solve_wf | solve_wf | reflexivity |].
   apply T_TyLam; [ solve_wf | solve_wf | reflexivity |].
   apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
-  eapply T_Handle; try (cbn; reflexivity); try solve_wf.
+  eapply T_Handle; try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
   - apply SA_Refl. solve_wf.
   - (* op_body: re-raise the caught value as [Error]. *)
     cbn. unfold error_v. solve_ctor.
@@ -620,10 +613,8 @@ Proof.
   - exact typed_withException_proof.
   - solve_wf.
   - apply SA_Any; [ solve_wf | solve_wf | cbn; solve_lt ].
-  - cbn; reflexivity.
   - solve_wf.
   - apply SA_Any; [ solve_wf | solve_wf | cbn; solve_lt ].
-  - cbn; reflexivity.
   - cbn. apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
     cbn. eapply T_Perform with (Ss := [T_File `Lf]).
     + solve_var.
@@ -631,9 +622,9 @@ Proof.
     + reflexivity.
     + reflexivity.
     + solve_wf.
+    + constructor; [cbn; solve_lt_sub | constructor].
     + cbn; reflexivity.
-    + cbn; reflexivity.
-    + cbn; reflexivity.
+    + cbn; solve_lt_sub.
     + cbn; reflexivity.
     + solve_wf.
     + solve_nat.
@@ -644,7 +635,7 @@ Proof.
   unfold typed_withId, withId, withId_op_body.
   apply T_TyLam; [ solve_wf | solve_wf | reflexivity |].
   apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
-  eapply T_Handle; try (cbn; reflexivity); try solve_wf.
+  eapply T_Handle; try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
   - apply SA_Refl. solve_wf.
   - cbn. eapply T_App; [ solve_var | solve_var ].
   - cbn. eapply T_App; [ solve_var | solve_var ].
@@ -653,7 +644,7 @@ Qed.
 Theorem typed_exampleOptionality_proof : typed_exampleOptionality.
 Proof.
   unfold typed_exampleOptionality, exampleOptionality, optionality_op_body.
-  eapply T_Handle; try (cbn; reflexivity); try solve_wf.
+  eapply T_Handle; try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
   - apply SA_Refl. solve_wf.
   - cbn. eapply T_App; [ solve_var | unfold some_v; solve_ctor ].
   - cbn. eapply T_Perform with (Ss := [T_Nat `Lf]).
@@ -662,9 +653,9 @@ Proof.
     + reflexivity.
     + reflexivity.
     + solve_wf.
+    + constructor; [cbn; solve_lt_sub | constructor].
     + cbn; reflexivity.
-    + cbn; reflexivity.
-    + cbn; reflexivity.
+    + cbn; solve_lt_sub.
     + cbn; reflexivity.
     + solve_wf.
     + solve_nat.

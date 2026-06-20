@@ -22,7 +22,7 @@ Require Import Subst.
 
 Lemma handler_m_typing_inv : forall Γ m T_B T_R t T,
   Γ ⊢ₜ term_handler_m m T_B T_R t : T ->
-  Γ ⊢ₜ t : T_B /\ Γ ⊢ T_B <:: T_R /\ no_local_ty_G Γ T_B = true /\ Γ ⊢ T_R <:: T.
+  Γ ⊢ₜ t : T_B /\ Γ ⊢ T_B <:: T_R /\ Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free /\ Γ ⊢ T_R <:: T.
 Proof.
   intros Γ m T_B T_R t T H.
   remember (term_handler_m m T_B T_R t) as s eqn:Hs.
@@ -74,9 +74,9 @@ Lemma perform_typing_inv : forall Γ recv Ss arg T,
     List.length Ts = n_α /\
     List.length Ss = n_β /\
     types_wf Γ Ss /\
-    forallb (no_local_ty_G Γ) Ss = true /\
+    Forall (fun S => Γ ⊢ₗ lt_of_ty_G Γ S <: lt_free) Ss /\
     sig_inst = inst_op_arg n_α Ts n_β Ss sig /\
-    no_local_ty_G Γ sig_inst = true /\
+    Γ ⊢ₗ lt_of_ty_G Γ sig_inst <: lt_free /\
     ret_inst = inst_op_arg n_α Ts n_β Ss ret /\
     ty_wf Γ ret_inst /\
     Γ ⊢ₜ arg : sig_inst /\
@@ -146,7 +146,7 @@ Proof.
   induction H; intros Hs; try discriminate Hs.
   - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
   - injection Hs; intros; subst.
-    eapply T_TyApp; [apply Himpl; eassumption | assumption | assumption | assumption].
+    eapply T_TyApp; [apply Himpl; eassumption | assumption | assumption].
 Qed.
 
 Lemma lt_app_replace : forall Γ u u' l T,

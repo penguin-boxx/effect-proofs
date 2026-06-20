@@ -133,7 +133,7 @@ Lemma handle_typing_inv_for_markers : forall Γ E_tag n_beta Ts T_B T_R op_body 
   exists n_α sig ret sig_β ret_β,
     ctx_lookup_eff Γ E_tag = Some (n_α, n_beta, sig, ret) /\
     List.length Ts = n_α /\ types_wf Γ Ts /\
-    ty_wf Γ T_B /\ ty_wf Γ T_R /\ no_local_ty_G Γ T_B = true /\ Γ ⊢ T_B <:: T_R /\
+    ty_wf Γ T_B /\ ty_wf Γ T_R /\ Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free /\ Γ ⊢ T_B <:: T_R /\
     sig_β = inst_op_alpha n_α Ts n_beta sig /\
     ret_β = inst_op_alpha n_α Ts n_beta ret /\
     (bind_tm sig_β

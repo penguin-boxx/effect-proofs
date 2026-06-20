@@ -1627,13 +1627,12 @@ Proof.
     + eapply ty_wf_InsTy; [exact HwfT|]. apply InsTy_ty. exact HIns.
     + rewrite is_abs_shift_ty_in_tm. exact HisAbs.
     + apply IHbody. apply InsTy_ty. exact HIns.
-  - intros Γ t B U S Ht IHt HwfS Hsub HnlArg c G' HIns. simpl.
+  - intros Γ t B U S Ht IHt HwfS Hsub c G' HIns. simpl.
     rewrite shift_ty_subst_ty_comm_ge0.
     eapply T_TyApp.
     + apply IHt. exact HIns.
     + eapply ty_wf_InsTy; eauto.
     + apply (sub_InsTy Γ S B Hsub c G' HIns).
-    + eapply ty_app_arg_no_local_InsTy; eauto.
   - intros Γ body T HwfT HisAbs Hbody IHbody c G' HIns. simpl.
     apply T_LtLam.
     + eapply ty_wf_InsTy; [exact HwfT|]. apply InsTy_lt. exact HIns.
@@ -1747,7 +1746,7 @@ Proof.
     + eapply types_wf_InsTy; eauto.
     + eapply ty_wf_InsTy; eauto.
     + eapply ty_wf_InsTy; eauto.
-    + eapply no_local_ty_G_InsTy; eauto.
+    + eapply sub_free_InsTy; eauto.
     + apply (sub_InsTy Γ T_B T_R Hsub c G' HIns).
     + rewrite Hsig. symmetry. apply inst_op_alpha_shift_ty. exact HTs.
     + rewrite Hret. symmetry. apply inst_op_alpha_shift_ty. exact HTs.
@@ -1780,9 +1779,9 @@ Proof.
                 rewrite List.length_map; exact HSs
       end.
     + eapply types_wf_InsTy; eauto.
-    + eapply forallb_no_local_ty_G_InsTy; eauto.
+    + eapply sub_free_list_InsTy; eauto.
     + rewrite !shift_ty_go_eq_map. rewrite Hsig. symmetry. apply inst_op_arg_shift_ty; assumption.
-    + eapply no_local_ty_G_InsTy; eauto.
+    + eapply sub_free_InsTy; eauto.
     + rewrite !shift_ty_go_eq_map. rewrite Hret. symmetry. apply inst_op_arg_shift_ty; assumption.
     + eapply ty_wf_InsTy; eauto.
     + apply IHarg. exact HIns.
@@ -1790,7 +1789,7 @@ Proof.
     apply T_HandlerM.
     + eapply ty_wf_InsTy; eauto.
     + eapply ty_wf_InsTy; eauto.
-    + eapply no_local_ty_G_InsTy; eauto.
+    + eapply sub_free_InsTy; eauto.
     + apply (sub_InsTy Γ T_B T_R Hsub c G' HIns).
     + apply IH. exact HIns.
   - intros Γ m b A T_B T_R HwfA HwfTB HwfTR Hnolocal Hsub Hb IHb c G' HIns. simpl.
@@ -1798,7 +1797,7 @@ Proof.
     + eapply ty_wf_InsTy; eauto.
     + eapply ty_wf_InsTy; eauto.
     + eapply ty_wf_InsTy; eauto.
-    + eapply no_local_ty_G_InsTy; eauto.
+    + eapply sub_free_InsTy; eauto.
     + apply (sub_InsTy Γ T_B T_R Hsub c G' HIns).
     + apply IHb. apply InsTy_tm. exact HIns.
 Qed.
@@ -1956,13 +1955,12 @@ Proof.
     + eapply ty_wf_InsLt; [exact HwfT|]. apply InsLt_ty. exact HIns.
     + rewrite is_abs_shift_lt_in_tm. exact HisAbs.
     + apply IHbody. apply InsLt_ty. exact HIns.
-  - intros Γ t B U S Ht IH HwfS Hsub HnlArg c G' HIns. simpl.
+  - intros Γ t B U S Ht IH HwfS Hsub c G' HIns. simpl.
     rewrite shift_lt_in_ty_subst_ty_comm_for_typing_InsLt.
     eapply T_TyApp.
     + apply IH. exact HIns.
     + eapply ty_wf_InsLt; eauto.
     + apply (sub_InsLt Γ S B Hsub c G' HIns).
-    + eapply ty_app_arg_no_local_InsLt; eauto.
   - intros Γ body T HwfT HisAbs Hbody IHbody c G' HIns. simpl.
     apply T_LtLam.
     + eapply ty_wf_InsLt; [exact HwfT|]. apply InsLt_lt. exact HIns.
@@ -2077,7 +2075,7 @@ Proof.
     + eapply types_wf_InsLt; eauto.
     + eapply ty_wf_InsLt; eauto.
     + eapply ty_wf_InsLt; eauto.
-    + eapply no_local_ty_G_InsLt; eauto.
+    + eapply sub_free_InsLt; eauto.
     + apply (sub_InsLt Γ T_B T_R Hsub c G' HIns).
     + rewrite Hsig. symmetry. apply inst_op_alpha_shift_lt_for_typing_InsLt. exact HTs.
     + rewrite Hret. symmetry. apply inst_op_alpha_shift_lt_for_typing_InsLt. exact HTs.
@@ -2095,9 +2093,9 @@ Proof.
     + rewrite List.length_map. exact HTs.
     + rewrite List.length_map. exact HSs.
     + eapply types_wf_InsLt; eauto.
-    + eapply forallb_no_local_ty_G_InsLt; eauto.
+    + eapply sub_free_list_InsLt; eauto.
     + rewrite Hsig. symmetry. apply inst_op_arg_shift_lt_for_typing_InsLt; assumption.
-    + eapply no_local_ty_G_InsLt; eauto.
+    + eapply sub_free_InsLt; eauto.
     + rewrite Hret. symmetry. apply inst_op_arg_shift_lt_for_typing_InsLt; assumption.
     + eapply ty_wf_InsLt; eauto.
     + apply IHarg. exact HIns.
@@ -2105,7 +2103,7 @@ Proof.
     apply T_HandlerM.
     + eapply ty_wf_InsLt; eauto.
     + eapply ty_wf_InsLt; eauto.
-    + eapply no_local_ty_G_InsLt; eauto.
+    + eapply sub_free_InsLt; eauto.
     + apply (sub_InsLt Γ T_B T_R Hsub c G' HIns).
     + apply IH. exact HIns.
   - intros Γ m b A T_B T_R HwfA HwfTB HwfTR HnoLocal Hsub Hb IHb c G' HIns. simpl.
@@ -2113,7 +2111,7 @@ Proof.
     + eapply ty_wf_InsLt; eauto.
     + eapply ty_wf_InsLt; eauto.
     + eapply ty_wf_InsLt; eauto.
-    + eapply no_local_ty_G_InsLt; eauto.
+    + eapply sub_free_InsLt; eauto.
     + apply (sub_InsLt Γ T_B T_R Hsub c G' HIns).
     + apply IHb. apply InsLt_tm. exact HIns.
   Qed.

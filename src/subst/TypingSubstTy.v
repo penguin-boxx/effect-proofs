@@ -1256,6 +1256,24 @@ Proof.
   - rewrite lt_of_ty_subst_lt, IH. reflexivity.
 Qed.
 
+(* Escape side-condition transport under lifetime substitution. *)
+Lemma sub_free_SubstLt : forall R n G G' T,
+  SubstLt R n G G' -> G ⊢ₗ lt_of_ty_G G T <: lt_free ->
+  G' ⊢ₗ lt_of_ty_G G' (subst_lt_in_ty n R T) <: lt_free.
+Proof.
+  intros R n G G' T HS H. rewrite (lt_of_ty_G_SubstLt R n G G' HS T).
+  change lt_free with (subst_lt n R lt_free) at 1.
+  eapply lt_sub_SubstLt; eauto.
+Qed.
+
+Lemma sub_free_list_SubstLt : forall R n G G' Ss,
+  SubstLt R n G G' -> Forall (fun S => G ⊢ₗ lt_of_ty_G G S <: lt_free) Ss ->
+  Forall (fun S => G' ⊢ₗ lt_of_ty_G G' S <: lt_free) (List.map (subst_lt_in_ty n R) Ss).
+Proof.
+  intros R n G G' Ss HS H. induction H; simpl; constructor;
+    [eapply sub_free_SubstLt; eauto | auto].
+Qed.
+
 Lemma typing_SubstLt_closed_from : forall Γ t T,
   Γ ⊢ₜ t : T ->
   forall R n G',
@@ -1301,7 +1319,7 @@ Proof.
         (SubstLt_ty R n Γ G' bound HSub)
         (ctx_lt_closed_from_bind_ty n Γ bound Hlt)
         (ctx_schemas_lt_closed_from_bind_ty n Γ bound Hschemas)).
-  - intros Γ t B U S Ht IH HwfS Hsub HnlArg R n G' HSub Hlt Hschemas.
+  - intros Γ t B U S Ht IH HwfS Hsub R n G' HSub Hlt Hschemas.
     simpl. rewrite subst_lt_in_ty_subst_ty_comm.
     eapply T_TyApp.
     + eapply T_Sub.
@@ -1314,7 +1332,6 @@ Proof.
            apply SubstLt_ty. exact HSub.
     + eapply ty_wf_SubstLt; eauto.
     + apply SA_Refl. eapply ty_wf_SubstLt; eauto.
-    + apply ty_app_arg_no_local_self.
   - intros Γ body T HwfT HisAbs Hbody IHbody R n G' HSub Hlt Hschemas.
     simpl. apply T_LtLam.
     + eapply ty_wf_SubstLt; [exact HwfT|]. apply SubstLt_lt. exact HSub.
@@ -1475,7 +1492,7 @@ Proof.
     + eapply types_wf_SubstLt; eauto.
     + eapply ty_wf_SubstLt; eauto.
     + eapply ty_wf_SubstLt; eauto.
-    + eapply no_local_ty_G_SubstLt; eauto.
+    + eapply sub_free_SubstLt; eauto.
     + eapply sub_SubstLt; eauto.
     + subst sig_β. symmetry.
       change (inst_op_alpha n_α (List.map (subst_lt_in_ty n R) Ts) n_β (subst_lt_in_ty n R sig) =
@@ -1515,13 +1532,13 @@ Proof.
     + change (List.length (List.map (subst_lt_in_ty n R) Ss) = n_β).
       rewrite List.length_map. exact Hlen_Ss.
     + eapply types_wf_SubstLt; eauto.
-    + eapply forallb_no_local_ty_G_SubstLt; eauto.
+    + eapply sub_free_list_SubstLt; eauto.
     + subst sig_inst. symmetry.
       change (inst_op_arg n_α (List.map (subst_lt_in_ty n R) Ts)
         n_β (List.map (subst_lt_in_ty n R) Ss) (subst_lt_in_ty n R sig) =
         subst_lt_in_ty n R (inst_op_arg n_α Ts n_β Ss sig)).
       apply inst_op_arg_subst_lt.
-    + eapply no_local_ty_G_SubstLt; eauto.
+    + eapply sub_free_SubstLt; eauto.
     + subst ret_inst. symmetry.
       change (inst_op_arg n_α (List.map (subst_lt_in_ty n R) Ts)
         n_β (List.map (subst_lt_in_ty n R) Ss) (subst_lt_in_ty n R ret) =
@@ -1533,7 +1550,7 @@ Proof.
     simpl. apply T_HandlerM.
     + eapply ty_wf_SubstLt; eauto.
     + eapply ty_wf_SubstLt; eauto.
-    + eapply no_local_ty_G_SubstLt; eauto.
+    + eapply sub_free_SubstLt; eauto.
     + eapply sub_SubstLt; eauto.
     + apply (IH R n G' HSub Hlt Hschemas).
   - intros Γ m b A T_B T_R HwfA HwfTB HwfTR HnoLocal Hsub Hb IHb R n G' HSub Hlt Hschemas.
@@ -1541,7 +1558,7 @@ Proof.
     + eapply ty_wf_SubstLt; eauto.
     + eapply ty_wf_SubstLt; eauto.
     + eapply ty_wf_SubstLt; eauto.
-    + eapply no_local_ty_G_SubstLt; eauto.
+    + eapply sub_free_SubstLt; eauto.
     + eapply sub_SubstLt; eauto.
     + apply (IHb R n (bind_tm (subst_lt_in_ty n R A) :: G')
       (SubstLt_tm R n Γ G' A HSub)
@@ -1719,6 +1736,31 @@ Proof.
   - apply LS_MinR2; [apply (IH1 Sb n G' HS) | eapply lt_wf_SubstTy; eauto].
 Qed.
 
+(* Escape side-condition transport under type substitution.  Unlike the      *)
+(* lifetime/insertion cases this is a SUBTYPING (not an equality), but it     *)
+(* still composes by transitivity through [lt_of_ty_G_SubstTy_le] — and       *)
+(* needs NO [subst_nl] side condition (that is the whole point of the         *)
+(* [<: lt_free] relational formulation: it is monotone under substitution).   *)
+Lemma sub_free_SubstTy : forall Sb n G G' T,
+  SubstTy Sb n G G' -> ty_wf G T -> G ⊢ₗ lt_of_ty_G G T <: lt_free ->
+  G' ⊢ₗ lt_of_ty_G G' (subst_ty n Sb T) <: lt_free.
+Proof.
+  intros Sb n G G' T HS Hwf H.
+  eapply LS_Trans; [ eapply lt_of_ty_G_SubstTy_le; eauto | eapply lt_sub_SubstTy; eauto ].
+Qed.
+
+Lemma sub_free_list_SubstTy : forall Sb n G G' Ss,
+  SubstTy Sb n G G' -> types_wf G Ss ->
+  Forall (fun S => G ⊢ₗ lt_of_ty_G G S <: lt_free) Ss ->
+  Forall (fun S => G' ⊢ₗ lt_of_ty_G G' S <: lt_free) (List.map (subst_ty n Sb) Ss).
+Proof.
+  intros Sb n G G' Ss HS Hwf H. revert Hwf H.
+  induction Ss as [|x l IH]; intros Hwf H; simpl; [constructor|].
+  inversion Hwf as [|G0 T0 Ts0 Hwfx Hwfl]; subst.
+  inversion H as [|x0 l0 Hhx Hhl]; subst.
+  constructor; [eapply sub_free_SubstTy; eauto | apply IH; assumption].
+Qed.
+
 Lemma is_any_at_free_bound_subst_ty_true : forall B n Sb,
   is_any_at_free_bound B = true -> is_any_at_free_bound (subst_ty n Sb B) = true.
 Proof.
@@ -1807,60 +1849,34 @@ Qed.
    substituted variable n is treated as no-local (its bound is Any@free),
    the replacement Sb must itself be no-local.  This is exactly
    ty_app_arg_no_local, supplied by T_TyApp at the use sites. *)
-Definition subst_nl (Sb : type) (n : nat) (Γ G' : ctx) : Prop :=
-  no_local_ty_G Γ (type_var n) = true -> no_local_ty_G G' Sb = true.
+(* [subst_nl] is retained as a now-trivial premise slot.  The escape side    *)
+(* condition [Γ ⊢ₗ lt_of_ty_G Γ T <: lt_free] is preserved UNCONDITIONALLY   *)
+(* under type substitution (see [sub_free_SubstTy], by monotonicity of        *)
+(* lt_of_ty_G), so the old "if the variable is no-local then Sb is no-local"  *)
+(* hypothesis is no longer needed.  (The slot is kept to avoid churn at every *)
+(* call site; it can be removed wholesale in a later cleanup.)                *)
+Definition subst_nl (Sb : type) (n : nat) (Γ G' : ctx) : Prop := True.
 
 Lemma subst_nl_bind_ty : forall Sb n Γ G' B,
   subst_nl Sb n Γ G' ->
   subst_nl (shift_ty 1 0 Sb) (S n) (bind_ty B :: Γ) (bind_ty (subst_ty n Sb B) :: G').
-Proof.
-  intros Sb n Γ G' B H Hnl.
-  apply (no_local_ty_G_InsTy G' Sb 0 (bind_ty (subst_ty n Sb B) :: G') (InsTy_here _ _)).
-  apply H. rewrite no_local_ty_G_var_bind_ty_S in Hnl. exact Hnl.
-Qed.
+Proof. intros; exact I. Qed.
 
 Lemma subst_nl_bind_lt : forall Sb n Γ G' D,
   subst_nl Sb n Γ G' ->
   subst_nl (shift_lt_in_ty 1 0 Sb) n (bind_lt D :: Γ) (bind_lt D :: G').
-Proof.
-  intros Sb n Γ G' D H Hnl.
-  apply (no_local_ty_G_InsLt G' Sb 0 (bind_lt D :: G') (InsLt_here _ _)).
-  apply H. rewrite no_local_ty_G_var_bind_lt in Hnl. exact Hnl.
-Qed.
+Proof. intros; exact I. Qed.
 
 Lemma subst_nl_bind_tm : forall Sb n Γ G' A,
   subst_nl Sb n Γ G' ->
   subst_nl Sb n (bind_tm A :: Γ) (bind_tm (subst_ty n Sb A) :: G').
-Proof.
-  intros Sb n Γ G' A H Hnl.
-  apply (no_local_ty_G_InsTm G' Sb (bind_tm (subst_ty n Sb A) :: G') (InsTm_here _ _)).
-  apply H. cbn in Hnl. exact Hnl.
-Qed.
+Proof. intros; exact I. Qed.
 
 Lemma subst_nl_push_ty_vars : forall k Sb n Γ G',
   subst_nl Sb n Γ G' ->
   subst_nl (shift_ty k 0 Sb) (k + n)
     (push_ty_vars k any_at_free Γ) (push_ty_vars k any_at_free G').
-Proof.
-  induction k as [|k IH]; intros Sb n Γ G' H; simpl.
-  - rewrite shift_ty_zero. replace (0 + n) with n by lia. exact H.
-  - replace (shift_ty (S k) 0 Sb) with (shift_ty k 0 (shift_ty 1 0 Sb)).
-    2:{ rewrite shift_ty_fuse. replace (k + 1) with (S k) by lia. reflexivity. }
-    replace (S (k + n)) with (k + S n) by lia.
-    apply IH. rewrite <- (subst_ty_any_at_free n Sb).
-    apply subst_nl_bind_ty. exact H.
-Qed.
-
-Lemma forallb_no_local_ty_G_subst_ty : forall Ss Sb n Γ G',
-  SubstTy Sb n Γ G' -> subst_nl Sb n Γ G' ->
-  forallb (no_local_ty_G Γ) Ss = true ->
-  forallb (no_local_ty_G G') (List.map (subst_ty n Sb) Ss) = true.
-Proof.
-  induction Ss as [|S Ss IH]; intros Sb n Γ G' HSub Hnl H; simpl in *; [reflexivity|].
-  apply Bool.andb_true_iff in H. destruct H as [HS HSs].
-  rewrite (no_local_ty_G_subst_ty S Γ Sb n G' HSub Hnl HS).
-  rewrite (IH Sb n Γ G' HSub Hnl HSs). reflexivity.
-Qed.
+Proof. intros; exact I. Qed.
 
 (* ================================================================ *)
 (* (The T_Ctor case of typing_SubstTy is now PROVEN below via the     *)
@@ -1970,7 +1986,7 @@ Proof.
         (SubstTy_ty Sb n Γ G' bound HSub) (subst_nl_bind_ty Sb n Γ G' bound Hnl)
         (ctor_fields_closed_bind_ty bound Γ Hcfc)).
   - (* T_TyApp *)
-    intros Γ t B U S Ht IH HwfS Hsub HnlArg Sb n G' HSub Hnl Hcfc.
+    intros Γ t B U S Ht IH HwfS Hsub Sb n G' HSub Hnl Hcfc.
     simpl. rewrite <- subst_ty_subst_ty_comm0.
     eapply T_TyApp.
     + eapply T_Sub.
@@ -1983,7 +1999,6 @@ Proof.
            apply SubstTy_ty. exact HSub.
     + eapply ty_wf_SubstTy; eauto.
     + apply SA_Refl. eapply ty_wf_SubstTy; eauto.
-    + apply ty_app_arg_no_local_self.
   - (* T_LtLam *)
     intros Γ body T HwfT HisAbs Hbody IHbody Sb n G' HSub Hnl Hcfc.
     simpl. apply T_LtLam.
@@ -2117,7 +2132,7 @@ Proof.
     + eapply types_wf_SubstTy; eauto.
     + eapply ty_wf_SubstTy; eauto.
     + eapply ty_wf_SubstTy; eauto.
-    + eapply no_local_ty_G_subst_ty; [eauto| exact Hnl |eauto].
+    + eapply sub_free_SubstTy; eauto.
     + eapply sub_SubstTy; eauto.
     + subst sig_β. symmetry. apply inst_op_alpha_subst_ty. exact Hlen.
     + subst ret_β. symmetry. apply inst_op_alpha_subst_ty. exact Hlen.
@@ -2148,9 +2163,9 @@ Proof.
     + change (List.length (List.map (subst_ty n Sb) Ss) = n_β).
       rewrite List.length_map. exact Hlen_Ss.
     + eapply types_wf_SubstTy; eauto.
-    + eapply forallb_no_local_ty_G_subst_ty; [exact HSub | exact Hnl | exact HnoSs].
+    + eapply sub_free_list_SubstTy; eauto.
     + subst sig_inst. symmetry. apply inst_op_arg_subst_ty; assumption.
-    + eapply no_local_ty_G_subst_ty; [eauto| exact Hnl |eauto].
+    + eapply sub_free_SubstTy; [exact HSub | eapply typing_implies_wf; exact Harg | exact HnoSig].
     + subst ret_inst. symmetry. apply inst_op_arg_subst_ty; assumption.
     + eapply ty_wf_SubstTy; eauto.
     + apply (IHarg Sb n G' HSub Hnl Hcfc).
@@ -2159,7 +2174,7 @@ Proof.
     simpl. apply T_HandlerM.
     + eapply ty_wf_SubstTy; eauto.
     + eapply ty_wf_SubstTy; eauto.
-    + eapply no_local_ty_G_subst_ty; [eauto| exact Hnl |eauto].
+    + eapply sub_free_SubstTy; eauto.
     + eapply sub_SubstTy; eauto.
     + apply (IH Sb n G' HSub Hnl Hcfc).
   - (* T_Resume *)
@@ -2168,7 +2183,7 @@ Proof.
     + eapply ty_wf_SubstTy; eauto.
     + eapply ty_wf_SubstTy; eauto.
     + eapply ty_wf_SubstTy; eauto.
-    + eapply no_local_ty_G_subst_ty; [eauto| exact Hnl |eauto].
+    + eapply sub_free_SubstTy; eauto.
     + eapply sub_SubstTy; eauto.
     + apply (IHb Sb n (bind_tm (subst_ty n Sb A) :: G')
         (SubstTy_tm Sb n Γ G' A HSub) (subst_nl_bind_tm Sb n Γ G' A Hnl)

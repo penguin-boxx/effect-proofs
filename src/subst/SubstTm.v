@@ -306,6 +306,23 @@ Proof.
     + eapply lt_wf_SubstTm; eauto.
 Qed.
 
+(* Escape side-condition transport under term substitution (type unchanged). *)
+Lemma sub_free_SubstTm : forall v n G G' T,
+  SubstTm v n G G' -> G ⊢ₗ lt_of_ty_G G T <: lt_free ->
+  G' ⊢ₗ lt_of_ty_G G' T <: lt_free.
+Proof.
+  intros v n G G' T HS H. rewrite (lt_of_ty_G_SubstTm v n G G' HS T).
+  eapply lt_sub_SubstTm; eauto.
+Qed.
+
+Lemma sub_free_list_SubstTm : forall v n G G' Ss,
+  SubstTm v n G G' -> Forall (fun S => G ⊢ₗ lt_of_ty_G G S <: lt_free) Ss ->
+  Forall (fun S => G' ⊢ₗ lt_of_ty_G G' S <: lt_free) Ss.
+Proof.
+  intros v n G G' Ss HS H. induction H; constructor;
+    [eapply sub_free_SubstTm; eauto | auto].
+Qed.
+
 Lemma capture_lt_SubstTm_le_closed : forall v n G G',
   SubstTm v n G G' ->
   free_tm_vars 0 v = [] ->
