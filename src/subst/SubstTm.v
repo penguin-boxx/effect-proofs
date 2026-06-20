@@ -947,6 +947,36 @@ Proof.
     + apply IH; assumption.
 Qed.
 
+(* MATCH-variant lt-closedness: [inst_ctor_type_open] (no inst_lt_vars).    *)
+Lemma inst_ctor_type_open_lt_closed : forall n_lt n_ty Ts T c,
+  List.length Ts = n_ty ->
+  tys_lt_closed c Ts ->
+  ty_lt_closed (n_lt + c) T ->
+  ty_lt_closed (n_lt + c) (inst_ctor_type_open n_lt n_ty Ts T).
+Proof.
+  intros n_lt n_ty Ts T c Hlen HTs HT.
+  unfold inst_ctor_type_open.
+  apply inst_ty_vars_lt_closed.
+  - rewrite List.length_map. exact Hlen.
+  - change (List.map (shift_lt_in_ty n_lt 0) Ts) with (shift_lt_in_ty_list n_lt 0 Ts).
+    eapply tys_lt_closed_shift_lt_below; [lia|exact HTs].
+  - exact HT.
+Qed.
+
+Lemma inst_ctor_type_open_list_lt_closed : forall n_lt n_ty Ts fields c,
+  List.length Ts = n_ty ->
+  tys_lt_closed c Ts ->
+  tys_lt_closed (n_lt + c) fields ->
+  tys_lt_closed (n_lt + c)
+    (List.map (inst_ctor_type_open n_lt n_ty Ts) fields).
+Proof.
+  induction fields as [|field fields IH]; intros c Hlen HTs Hfields; simpl in *.
+  - exact I.
+  - destruct Hfields as [Hfield Hrest]. split.
+    + eapply inst_ctor_type_open_lt_closed; eauto.
+    + apply IH; assumption.
+Qed.
+
 Lemma inst_op_alpha_lt_closed : forall n_α Ts n_β T c,
   List.length Ts = n_α ->
   tys_lt_closed c Ts ->

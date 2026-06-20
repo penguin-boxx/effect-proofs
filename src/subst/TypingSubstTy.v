@@ -591,6 +591,31 @@ Proof.
   reflexivity.
 Qed.
 
+(* MATCH-variant type-subst commutation.  Because [inst_ctor_type_open]    *)
+(* output lives UNDER the n_lt pushed lt-binders, the substitution that    *)
+(* commutes is at the SHIFTED [Sb] ([shift_lt_in_ty n_lt 0 Sb]) — exactly  *)
+(* the form the yes-branch IH produces.  This is what makes the T_Match    *)
+(* case of [typing_SubstTy] go through (no aliasing). *)
+Lemma inst_ctor_type_open_subst_ty : forall n_lt n_ty Ts T n Sb,
+  List.length Ts = n_ty ->
+  inst_ctor_type_open n_lt n_ty (List.map (subst_ty n Sb) Ts)
+    (subst_ty (n_ty + n) (shift_lt_in_ty n_lt 0 (shift_ty n_ty 0 Sb)) T) =
+  subst_ty n (shift_lt_in_ty n_lt 0 Sb) (inst_ctor_type_open n_lt n_ty Ts T).
+Proof.
+  intros n_lt n_ty Ts T n Sb HlenT.
+  unfold inst_ctor_type_open.
+  replace (List.map (shift_lt_in_ty n_lt 0) (List.map (subst_ty n Sb) Ts))
+    with (List.map (subst_ty n (shift_lt_in_ty n_lt 0 Sb))
+      (List.map (shift_lt_in_ty n_lt 0) Ts)).
+  2:{ rewrite !List.map_map. apply List.map_ext. intro U.
+      rewrite shift_lt_in_ty_subst_ty_comm_many. reflexivity. }
+  replace (shift_lt_in_ty n_lt 0 (shift_ty n_ty 0 Sb))
+    with (shift_ty n_ty 0 (shift_lt_in_ty n_lt 0 Sb)).
+  2:{ rewrite shift_ty_shift_lt_in_ty_commute. reflexivity. }
+  rewrite inst_ty_vars_subst_ty by (rewrite List.length_map; exact HlenT).
+  reflexivity.
+Qed.
+
 (* Well-formedness of shifted type-argument escape lifetimes in the     *)
 (* pushed-binder context (used by the per-field alignment).             *)
 Lemma lt_wf_push_shift_lt_of_ty_list : forall X k G,
@@ -950,6 +975,20 @@ Lemma SubstTy_fold_bind_tm : forall rhos Sb n G G',
   SubstTy Sb n
     (List.fold_right (fun rho G0 => bind_tm rho :: G0) G rhos)
     (List.fold_right (fun rho G0 => bind_tm (subst_ty n Sb rho) :: G0) G' rhos).
+Proof.
+  induction rhos as [|rho rhos IH]; intros Sb n G G' HS; simpl.
+  - exact HS.
+  - apply SubstTy_tm. apply IH. exact HS.
+Qed.
+
+(* Map form on the target: the bound fields are already substituted into a   *)
+(* list (as the reformulated T_Match yes-branch provides them).              *)
+Lemma SubstTy_fold_bind_tm_map : forall rhos Sb n G G',
+  SubstTy Sb n G G' ->
+  SubstTy Sb n
+    (List.fold_right (fun rho G0 => bind_tm rho :: G0) G rhos)
+    (List.fold_right (fun rho G0 => bind_tm rho :: G0) G'
+       (List.map (subst_ty n Sb) rhos)).
 Proof.
   induction rhos as [|rho rhos IH]; intros Sb n G G' HS; simpl.
   - exact HS.
@@ -1385,8 +1424,8 @@ Proof.
     subst Γyes. simpl.
     assert (HTsClosed : tys_lt_closed n Ts) by (eapply types_wf_lt_closed_from; eauto).
     assert (HrhosClosed : tys_lt_closed (n + n_lt) rho_fields).
-    { subst rho_fields. rewrite Hlts. replace (n + n_lt) with (n_lt + n) by lia.
-      eapply inst_ctor_type_list_lt_var_list_lt_closed; eauto.
+    { subst rho_fields. replace (n + n_lt) with (n_lt + n) by lia.
+      eapply inst_ctor_type_open_list_lt_closed; eauto.
       destruct Hschemas as [HctorClosed _].
       destruct (HctorClosed K n_lt n_ty sigma_fields result_ty_schema Hctor) as [HfieldsClosed _].
       exact HfieldsClosed. }
@@ -1412,7 +1451,6 @@ Proof.
       destruct Hschemas as [HctorClosed _].
       destruct (HctorClosed K n_lt n_ty sigma_fields result_ty_schema Hctor) as [HfieldsClosed _].
       rewrite (subst_lt_in_type_list_closed sigma_fields (n_lt + n) (shift_lt n_lt 0 R) HfieldsClosed).
-      rewrite Hlts.
       reflexivity.
     + change (List.length (List.map (subst_lt_in_ty n R) Ts) = n_ty).
       rewrite List.length_map. exact Hlen_Ts.
@@ -1879,67 +1917,18 @@ Lemma subst_nl_push_ty_vars : forall k Sb n Γ G',
 Proof. intros; exact I. Qed.
 
 (* ================================================================ *)
-(* (The T_Ctor case of typing_SubstTy is now PROVEN below via the     *)
-(* inst_ctor_fields_alignment escape-stability lemma — no longer an   *)
-(* axiom.)  AXIOM: the T_Match case of typing_SubstTy — heavy         *)
-(* inst_ctor / elim_ty_n plumbing under type substitution.           *)
-(*                                                                    *)
-(* ---- Partial-proof map (next-attempt starting point) ------------ *)
-(* The T_Match case is best PROVEN inline in [typing_SubstTy] (using  *)
-(* IHscrut/IHyes/IHno), exactly like the T_Ctor case, and this axiom  *)
-(* then deleted.  An attempt got 17 of 18 premises through            *)
-(* [eapply T_Match with (...)]; the working reconstruction sets:      *)
-(*   sigma_fields  := map (subst_ty (n_ty+n)                          *)
-(*                          (shift_lt_in_ty n_lt 0 (shift_ty n_ty 0 Sb))) ..   *)
-(*   result_ty_schema := likewise                                     *)
-(*   Ts        := map (subst_ty n Sb) Ts        (scrutinee args)      *)
-(*   Delta/result_l/lts := UNCHANGED (subst_ty leaves lifetimes alone)*)
-(*   rho_fields := map (subst_ty n Sb) rho_fields                     *)
-(*   eta       := subst_ty n (shift_lt_in_ty n_lt 0 Sb) eta           *)
-(* Premises discharged:                                               *)
-(*   lookups        : SubstTy_lookup_ctor / SubstTy_lookup_eff        *)
-(*   rho def        : inst_ctor_type_subst_ty (+ lt_var_list_length)  *)
-(*   scrut_result   : inst_ctor_type_subst_ty with (repeat Delta n_lt)*)
-(*   scrut shape    : subst_ty_ctor_eq                                *)
-(*   scrut typing   : IHscrut + subst_ty_ctor_eq                      *)
-(*   lt_wf/lt_sub   : lt_wf_SubstTy / lt_sub_SubstTy (Delta unchanged)*)
-(*   elim_result    : elim_ty_n_subst_ty_shifted                      *)
-(*   no_body        : IHno                                            *)
-(*                                                                    *)
-(* THE ONE BLOCKER — the yes-branch context.  [subst_ty_in_tm] shifts *)
-(* the yes-branch by [shift_lt_in_ty n_lt 0 Sb] (Substitution.v: the  *)
-(* term_match case), so [IHyes] must be applied at [shift_lt_in_ty    *)
-(* n_lt 0 Sb], and [SubstTy_fold_bind_tm (SubstTy_push_lt_vars HSub)] *)
-(* yields a context whose bind_tm types are                           *)
-(*    [subst_ty n (shift_lt_in_ty n_lt 0 Sb) rho_fields].             *)
-(* But premise 5 (the rule's own rho definition, via                  *)
-(* inst_ctor_type_subst_ty) pins them to                              *)
-(*    [subst_ty n Sb rho_fields].                                     *)
-(* Reconciling the two needs                                          *)
-(*    subst_ty n (shift_lt_in_ty n_lt 0 Sb) (inst_ctor_type ...)      *)
-(*       = subst_ty n Sb (inst_ctor_type ...)                         *)
-(* which is FALSE as a bare commutation.  Concrete witness (checked by *)
-(* Compute): with Sb = (type_var 5)'(lt_var 0) -> (type_var 5) and     *)
-(*   rho = inst_ctor_type 1 1 (lt_var_list 1) [type_var 0]             *)
-(*           (type_ctor 9 (lt_var 0) [type_var 0])                     *)
-(*        = type_ctor 9 (lt_var 0) [type_var 0],                       *)
-(*   subst_ty 0 (shift_lt_in_ty 1 0 Sb) rho                            *)
-(*     = ...[ (type_var 5)'(lt_var 1) -> .. ]   (Sb's lt SHIFTED)      *)
-(*   subst_ty 0 Sb rho                                                 *)
-(*     = ...[ (type_var 5)'(lt_var 0) -> .. ]   (Sb's lt UNSHIFTED,    *)
-(*       colliding with the fresh match lt-var 0).                     *)
-(* So premise 5 (unshifted) and the yes-branch (shifted) are NOT       *)
-(* convertible.  The right fix is presumably a context-narrowing /     *)
-(* conversion move relating the two rho forms (cf. the F<: narrowing  *)
-(* used for the T_TyApp side-condition; see ../CounterexampleLtFreeSubst.v,*)
-(* whose verdict shows the analogous lt_free obstruction is resolved  *)
-(* by subsuming the abstraction's bound rather than preserving the    *)
-(* side-condition verbatim) — this is the missing piece.              *)
+(* The T_Match case of [typing_SubstTy] is now PROVEN INLINE (below), *)
+(* no longer an axiom.  The former "rho-shift" blocker — the yes-     *)
+(* branch needs [subst_ty n (shift_lt_in_ty n_lt 0 Sb) rho] but the   *)
+(* rule's rho def pinned it to [subst_ty n Sb rho], non-convertible   *)
+(* because the old [inst_ctor_type]'s [inst_lt_vars (lt_var_list)]    *)
+(* down-shift ALIASED Ts-field lifetimes with the fresh match lt-vars *)
+(* — was removed by reformulating [rho_fields] to the [inst_ctor_     *)
+(* type_open] (inst_ty_vars-only) form.  rho_fields then lives        *)
+(* consistently in the pushed context and the commutation             *)
+(* [inst_ctor_type_open_subst_ty] (at the SHIFTED Sb) closes both     *)
+(* premise 5 and the yes-branch.                                       *)
 (* ================================================================ *)
-Axiom typing_SubstTy_match_case : forall Γ scrut K n_lt arity yes_body no_body T,
-  Γ ⊢ₜ term_match scrut K n_lt arity yes_body no_body : T ->
-  forall Sb n G', SubstTy Sb n Γ G' -> subst_nl Sb n Γ G' ->
-  G' ⊢ₜ subst_ty_in_tm n Sb (term_match scrut K n_lt arity yes_body no_body) : subst_ty n Sb T.
 
 Lemma typing_SubstTy : forall Γ t T,
   Γ ⊢ₜ t : T ->
@@ -2087,9 +2076,47 @@ Proof.
            HKne Hctor Heff Hlts Hrho Hlen_Ts HwfTs Hscrut_result Hscrut_shape
            Hresult_eff Hresult_ne HwfDelta Hresult_l Hscrut IHscrut Harity HΓyes
            Hyes IHyes Helim Hno IHno Sb n G' HSub Hnl Hcfc.
-    assert (Hty : Γ ⊢ₜ term_match scrut K n_lt arity yes_body no_body : elim_result)
-      by (eapply T_Match; eauto).
-    exact (typing_SubstTy_match_case Γ scrut K n_lt arity yes_body no_body elim_result Hty Sb n G' HSub Hnl).
+    subst Γyes. cbn [subst_ty_in_tm].
+    eapply T_Match with
+      (n_lt := n_lt) (n_ty := n_ty)
+      (sigma_fields := List.map (subst_ty (n_ty + n) (shift_lt_in_ty n_lt 0 (shift_ty n_ty 0 Sb))) sigma_fields)
+      (result_ty_schema := subst_ty (n_ty + n) (shift_lt_in_ty n_lt 0 (shift_ty n_ty 0 Sb)) result_ty_schema)
+      (Ts := List.map (subst_ty n Sb) Ts)
+      (Delta := Delta)
+      (lts := lt_var_list n_lt)
+      (rho_fields := List.map (subst_ty n (shift_lt_in_ty n_lt 0 Sb)) rho_fields)
+      (scrut_result_ty := subst_ty n Sb scrut_result_ty)
+      (result_tag := result_tag) (result_l := result_l)
+      (Γ' := push_lt_vars n_lt Delta G')
+      (eta := subst_ty n (shift_lt_in_ty n_lt 0 Sb) eta).
+    + exact HKne.
+    + rewrite (SubstTy_lookup_ctor Sb n Γ G' HSub K). rewrite Hctor. reflexivity.
+    + rewrite (SubstTy_lookup_eff Sb n Γ G' HSub K). rewrite Heff. reflexivity.
+    + reflexivity.
+    + subst rho_fields. rewrite !List.map_map. apply List.map_ext. intro sigma.
+      symmetry. apply inst_ctor_type_open_subst_ty. exact Hlen_Ts.
+    + rewrite List.length_map. exact Hlen_Ts.
+    + eapply types_wf_SubstTy; eauto.
+    + subst scrut_result_ty.
+      exact (eq_sym (inst_ctor_type_subst_ty n_lt n_ty (List.repeat Delta n_lt) Ts
+                       result_ty_schema n Sb (List.repeat_length Delta n_lt) Hlen_Ts)).
+    + subst scrut_result_ty. rewrite Hscrut_shape. reflexivity.
+    + rewrite (SubstTy_lookup_eff Sb n Γ G' HSub result_tag). rewrite Hresult_eff. reflexivity.
+    + exact Hresult_ne.
+    + eapply lt_wf_SubstTy; eauto.
+    + eapply lt_sub_SubstTy; eauto.
+    + apply (IHscrut Sb n G' HSub Hnl Hcfc).
+    + rewrite List.length_map. exact Harity.
+    + reflexivity.
+    + apply (IHyes (shift_lt_in_ty n_lt 0 Sb) n
+        (List.fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
+          (push_lt_vars n_lt Delta G')
+          (List.map (subst_ty n (shift_lt_in_ty n_lt 0 Sb)) rho_fields))).
+      * apply SubstTy_fold_bind_tm_map. apply SubstTy_push_lt_vars. exact HSub.
+      * exact I.
+      * apply ctor_fields_closed_fold_bind_tm. apply ctor_fields_closed_push_lt_vars. exact Hcfc.
+    + apply elim_ty_n_subst_ty_shifted. exact Helim.
+    + apply (IHno Sb n G' HSub Hnl Hcfc).
   - (* T_Cap *)
     intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
            Heff Hlen HwfTs HwfTR Hsig Hret Hop IHop Sb n G' HSub Hnl Hcfc.

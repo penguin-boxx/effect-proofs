@@ -1249,6 +1249,22 @@ Proof.
   intro U. rewrite shift_ty_shift_lt_in_ty_commute. reflexivity.
 Qed.
 
+(* MATCH-variant commutation: [inst_ctor_type_open] (no inst_lt_vars) vs    *)
+(* type-variable shift.  Type-var shift does not interact with the n_lt     *)
+(* pushed lt-binders, so the output shift index stays [c].                  *)
+Lemma inst_ctor_type_open_shift_ty : forall n_lt n_ty Ts T c,
+  List.length Ts = n_ty ->
+  inst_ctor_type_open n_lt n_ty (List.map (shift_ty 1 c) Ts) (shift_ty 1 (n_ty + c) T) =
+  shift_ty 1 c (inst_ctor_type_open n_lt n_ty Ts T).
+Proof.
+  intros n_lt n_ty Ts T c Hlen. unfold inst_ctor_type_open.
+  replace (List.map (shift_lt_in_ty n_lt 0) (List.map (shift_ty 1 c) Ts)) with
+    (List.map (shift_ty 1 c) (List.map (shift_lt_in_ty n_lt 0) Ts)).
+  rewrite inst_ty_vars_shift_ty by (rewrite List.length_map; exact Hlen). reflexivity.
+  rewrite !List.map_map. apply List.map_ext.
+  intro U. rewrite shift_ty_shift_lt_in_ty_commute. reflexivity.
+Qed.
+
 Lemma inst_op_alpha_shift_ty : forall n_α Ts n_β T c,
   List.length Ts = n_α ->
   inst_op_alpha n_α (List.map (shift_ty 1 c) Ts) n_β
@@ -1691,7 +1707,7 @@ Proof.
     + rewrite (InsTy_lookup_eff c Γ G' HIns K). rewrite Heff. reflexivity.
     + exact Hlts.
     + rewrite Hrho. rewrite !List.map_map. apply List.map_ext. intro sigma.
-      exact (eq_sym (inst_ctor_type_shift_ty n_lt n_ty lts Ts sigma c HTs)).
+      exact (eq_sym (inst_ctor_type_open_shift_ty n_lt n_ty Ts sigma c HTs)).
     + rewrite List.length_map. exact HTs.
     + eapply types_wf_InsTy; eauto.
     + rewrite Hscrut_result.

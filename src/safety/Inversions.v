@@ -49,10 +49,10 @@ Lemma match_typing_inv : forall Γ scrut K n_lt0 arity yes_body no_body T,
     lt_wf Γ Delta /\
     Γ ⊢ₗ result_l <: Delta /\
     Γ ⊢ₜ scrut : type_ctor result_tag Delta Ts /\
-    arity = List.length (List.map (inst_ctor_type n_lt n_ty (lt_var_list n_lt) Ts) sigma_fields) /\
+    arity = List.length (List.map (inst_ctor_type_open n_lt n_ty Ts) sigma_fields) /\
     (fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
                 (push_lt_vars n_lt Delta Γ)
-                (List.map (inst_ctor_type n_lt n_ty (lt_var_list n_lt) Ts) sigma_fields))
+                (List.map (inst_ctor_type_open n_lt n_ty Ts) sigma_fields))
        ⊢ₜ yes_body : eta /\
     elim_ty_n n_lt (shift_lt n_lt 0 Delta) var_pos eta = Some elim_result /\
     Γ ⊢ₜ no_body : elim_result /\

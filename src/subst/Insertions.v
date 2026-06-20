@@ -1878,7 +1878,7 @@ Lemma typing_ind_forall2 :
      ctx_lookup_ctor Γ K = Some (n_lt, n_ty, sigma_fields, result_ty_schema) ->
      ctx_lookup_eff Γ K = None ->
      lts = lt_var_list n_lt ->
-     rho_fields = List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields ->
+     rho_fields = List.map (inst_ctor_type_open n_lt n_ty Ts) sigma_fields ->
       List.length Ts = n_ty ->
       types_wf Γ Ts ->
          scrut_result_ty = inst_ctor_type n_lt n_ty (List.repeat Delta n_lt) Ts result_ty_schema ->

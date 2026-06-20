@@ -3604,63 +3604,67 @@ Proof.
   simpl in Hok. eapply marker_ok_strengthen_no_cap; eauto.
 Qed.
 
+(* Principal typing inversion for a runtime delimiter: recover the body  *)
+(* typing and the escape side condition [lt_of_ty_G T_B <: lt_free].      *)
+Lemma handler_m_typing_inv_markers : forall Γ m T_B T_R t T,
+  Γ ⊢ₜ term_handler_m m T_B T_R t : T ->
+  Γ ⊢ₜ t : T_B /\ Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free.
+Proof.
+  intros Γ m T_B T_R t T H.
+  remember (term_handler_m m T_B T_R t) as s eqn:Hs.
+  induction H; try discriminate Hs.
+  - destruct (IHtyping Hs) as [Ht Hnl]. split; assumption.
+  - injection Hs; intros; subst. split; assumption.
+Qed.
+
 (* ================================================================== *)
-(* AXIOM 5: marker_ok preservation for the handler-elimination head   *)
-(* steps (H_Return / H_Perform), whose redex is `term_handler_m m`.   *)
-(* These delete the delimiter m, so re-establishing marker_ok at the  *)
-(* smaller scope requires capability confinement (the returned/       *)
-(* resumed term contains no dangling m), which follows from typing —  *)
-(* NOT from a structural argument.  Stated with the typing +          *)
-(* marker_types_safe premises so it is sound (true, just hard).       *)
-(*                                                                    *)
-(* REDUCTION OF THE PROOF (investigated; sound, not a gap):           *)
-(*  - H_Return is `handler_m m T_B T_R v -->h v` with `value v` and    *)
-(*    `marker_ok ms (handler_m ... v) = marker_ok (m::ms) v`; so the   *)
-(*    goal is exactly `marker_ok (m::ms) v -> marker_ok ms v`.  By     *)
-(*    [marker_ok_strengthen_no_cap] (above, PROVEN) this collapses to  *)
-(*    the CONFINEMENT obligation `has_rt_cap v = false`.               *)
-(*  - H_Perform reduces to the same confinement on the perform-arg `w` *)
-(*    (typed at the no-local operation parameter) plus marker_ok-under- *)
-(*    substitution for the operation body with the re-introduced       *)
-(*    `term_resume m` (which re-binds m for its own body).             *)
-(*                                                                    *)
-(*  CONFINEMENT (the remaining gap): a CLOSED value typed at a         *)
-(*  no_local type carries no runtime capability                        *)
-(*    `eval_ctx Γ -> Γ ⊢ₜ v : T -> value v -> free_tm_vars 0 v = [] -> *)
-(*     no_local_ty_G Γ T = true -> has_rt_cap v = false`.              *)
-(*  It is TRUE (capture-lifetime discipline: a cap is local, T_Lam     *)
-(*  bounds the closure lifetime by the captured-var lifetimes, and the *)
-(*  prenex-Λ restriction forces every value to bottom out at a λ whose *)
-(*  annotation `no_local_ty_G` checks).  But `lt_of_ty_G` is too       *)
-(*  COARSE to express it directly: it joins to `lt_local` at every     *)
-(*  ∀-type and at every cap-carrying ctor field, so the existing       *)
-(*  [typing_value_capture_lt_le_type] (`capture_lt v <: lt_of_ty_G T`) *)
-(*  is VACUOUS on ∀-typed values.  A real proof must peel the prenex   *)
-(*  Λ-chain to reach each innermost λ-annotation — which pushes the    *)
-(*  induction into contexts that are `eval_ctx` EXTENDED by Λ-binders  *)
-(*  (bind_ty bound / bind_lt lt_local), where both                     *)
-(*  [typing_value_capture_lt_le_type] and [lt_sub_no_local_mono]       *)
-(*  currently require plain `eval_ctx`.  Discharging it thus means     *)
-(*  generalizing that capture-lifetime layer from `eval_ctx` to        *)
-(*  `eval_ctx + prenex Λ-binders` (a foundational, match-kernel-sized  *)
-(*  effort), plus a schema lemma propagating `no_local` from a ctor's  *)
-(*  result type to its instantiated field types.                       *)
+(* AXIOM 5 (NARROWED to H_Perform only).  marker_ok preservation for    *)
+(* handler-elimination.                                                  *)
+(*                                                                       *)
+(* H_Return is now PROVEN (see head_step_preserves_marker_ok below): the *)
+(* CONFINEMENT obligation — a closed value at the no-local body type     *)
+(* carries no runtime cap — is discharged by [value_no_local_no_rt_cap]  *)
+(* (subst/EvalCtx.v), which is now an ~8-line consequence of the         *)
+(* capture-lifetime bound, BECAUSE the escape side condition is the      *)
+(* relation [lt_of_ty_G T_B <: lt_free] that                            *)
+(* [typing_value_capture_lt_le_type] already provides (no prenex peeling *)
+(* needed: a ∀-typed handler return is excluded since lt_of_ty_G(∀) =    *)
+(* lt_local ⋪ lt_free).                                                  *)
+(*                                                                       *)
+(* H_Perform remains axiomatized.  Its reduct                            *)
+(*   subst_list_tm [v; resume m T_B T_R (plug (shift P) (var 0))]        *)
+(*                 (subst_list_ty_in_tm Ss op_body)                      *)
+(* needs marker_ok ms of the substituted [op_body], for which           *)
+(* [op_body] must contain no cap with the ELIMINATED (fresh) marker [m]. *)
+(* That is a marker-FRESHNESS invariant (m is allocated fresh by         *)
+(* S_Handle and never appears in the source [op_body]) — TRUE but NOT    *)
+(* derivable from the local typing/marker_ok/marker_types_safe           *)
+(* hypotheses.  Discharging it requires threading a global marker        *)
+(* freshness/disjointness invariant through preservation (a separate     *)
+(* piece of machinery, not yet built).                                   *)
 (* ================================================================== *)
-Axiom marker_ok_step_handler_elim : forall Γ m T_B T_R body r' Tr,
-  Γ ⊢ₜ term_handler_m m T_B T_R body : Tr ->
-  marker_types_safe (term_handler_m m T_B T_R body) ->
-  term_handler_m m T_B T_R body -->h r' ->
-  forall ms, marker_ok ms (term_handler_m m T_B T_R body) -> marker_ok ms r'.
+Axiom marker_ok_step_handler_elim :
+  forall Γ m T_B T_R E_tag n_beta Ts op_body Ss v P r' Tr,
+  Γ ⊢ₜ term_handler_m m T_B T_R
+        (plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss v)) : Tr ->
+  marker_types_safe (term_handler_m m T_B T_R
+        (plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss v))) ->
+  term_handler_m m T_B T_R
+        (plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss v)) -->h r' ->
+  forall ms, marker_ok ms (term_handler_m m T_B T_R
+        (plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss v))) ->
+  marker_ok ms r'.
 
 (* A head step preserves marker_ok uniformly in the scope.  The six   *)
 (* non-handler-elimination cases are structural; the two              *)
 (* handler-elimination cases (whose redex head is term_handler_m)     *)
 (* are discharged by Axiom 5 using the redex typing. *)
 Lemma head_step_preserves_marker_ok : forall Γ r r' Tr,
+  eval_ctx Γ ->
   Γ ⊢ₜ r : Tr -> marker_types_safe r -> r -->h r' ->
   forall ms, marker_ok ms r -> marker_ok ms r'.
 Proof.
-  intros Γ r r' Tr Hr Hsafe Hstep ms Hok. inversion Hstep; subst.
+  intros Γ r r' Tr Hec Hr Hsafe Hstep ms Hok. inversion Hstep; subst.
   - (* H_Beta *)
     destruct Hok as [Hbody Hv].
     apply marker_ok_subst_tm; [exact Hv | exact Hbody].
@@ -3675,9 +3679,18 @@ Proof.
     + apply marker_ok_subst_list_lt_in_tm. exact Hyes.
   - (* H_MatchNo *)
     destruct Hok as [Hctor [Hyes Hno]]. exact Hno.
-  - (* H_Return: handler-elim, via Axiom 5 *)
-    eapply marker_ok_step_handler_elim; [ exact Hr | exact Hsafe | exact Hstep | exact Hok ].
-  - (* H_Perform: handler-elim, via Axiom 5 *)
+  - (* H_Return: PROVEN.  A closed value at the no-local body type [T_B]   *)
+    (* carries no runtime cap ([value_no_local_no_rt_cap]), so dropping the *)
+    (* eliminated delimiter [m] is structural ([marker_ok_strengthen_no_cap *)
+    (* via marker_ok_handler_return_no_cap]).                               *)
+    destruct (handler_m_typing_inv_markers _ _ _ _ _ _ Hr) as [Hbody Hnl].
+    pose proof (typing_closed _ _ _ Hec Hr) as Hcl. simpl in Hcl.
+    eapply marker_ok_handler_return_no_cap; [ | exact Hok ].
+    eapply value_no_local_no_rt_cap;
+      [ exact Hec | exact Hbody | assumption | exact Hcl | exact Hnl ].
+  - (* H_Perform: handler-elim via the remaining axiom.  Needs that        *)
+    (* [op_body] carries no cap with the eliminated (fresh) marker [m] — a  *)
+    (* freshness invariant not available from the local hypotheses.         *)
     eapply marker_ok_step_handler_elim; [ exact Hr | exact Hsafe | exact Hstep | exact Hok ].
   - (* H_Resume *)
     destruct Hok as [Hres Hv].
@@ -3705,7 +3718,7 @@ Proof.
     eapply marker_ok_plug_replace; [ exact Hmok | ].
     intros ms' Hm.
     eapply head_step_preserves_marker_ok;
-      [ exact Hr | exact Hsafe_r | exact Hhead | exact Hm ].
+      [ exact Hec | exact Hr | exact Hsafe_r | exact Hhead | exact Hm ].
   - (* S_HandleCtx *)
     eapply marker_ok_plug_replace; [ exact Hmok | ].
     intros ms' Hm. destruct Hm as [Hop Hbody]. simpl.

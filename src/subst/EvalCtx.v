@@ -1656,7 +1656,7 @@ Proof.
     assert (HTsClosed : tys_lt_closed c Ts) by (eapply types_wf_lt_closed_from; eauto).
     assert (HrhosClosed : tys_lt_closed (c + n_lt) rho_fields).
     { subst lts rho_fields. replace (c + n_lt) with (n_lt + c) by lia.
-      eapply inst_ctor_type_list_lt_var_list_lt_closed; eauto.
+      eapply inst_ctor_type_open_list_lt_closed; eauto.
       destruct Hschemas as [HctorSchemas _].
       destruct (HctorSchemas K n_lt n_ty sigma_fields result_ty_schema Hctor) as [Hfields _].
       exact Hfields. }
@@ -3245,6 +3245,63 @@ Proof.
     inversion Hval; subst.
     rewrite (capture_lt_closed Γ (term_resume m T_B T_R b) Hfree). simpl.
     unfold lt_of_ty_G. rewrite lt_of_ty_ctx_fun. apply LS_Refl. constructor.
+Qed.
+
+(* The boolean [no_local_lt] is downward-closed along lifetime          *)
+(* subtyping in an eval_ctx (no lt-binders to bridge local↦free).       *)
+(* (Also stated in safety/Escape.v; placed here so the marker           *)
+(* confinement lemma below — needed before safety/Markers.v — can use   *)
+(* it.)                                                                 *)
+Lemma lt_sub_no_local_mono : forall Γ l1 l2,
+  eval_ctx Γ ->
+  Γ ⊢ₗ l1 <: l2 ->
+  no_local_lt l2 = true ->
+  no_local_lt l1 = true.
+Proof.
+  intros Γ l1 l2 Hec H. induction H; intros Hsup; simpl in *.
+  - reflexivity.
+  - discriminate Hsup.
+  - rewrite (eval_ctx_no_lt _ x Hec) in H. discriminate.
+  - exact Hsup.
+  - apply IHlt_sub1. exact Hec. apply IHlt_sub2. exact Hec. exact Hsup.
+  - rewrite (IHlt_sub1 Hec Hsup). rewrite (IHlt_sub2 Hec Hsup). reflexivity.
+  - apply IHlt_sub. exact Hec.
+    destruct (no_local_lt l1) eqn:E1; simpl in Hsup; [reflexivity | discriminate].
+  - apply IHlt_sub. exact Hec.
+    destruct (no_local_lt l2) eqn:E2;
+      [reflexivity | destruct (no_local_lt l1); simpl in Hsup; discriminate].
+Qed.
+
+Theorem lt_local_not_escapes : forall Γ,
+  eval_ctx Γ ->
+  ~ (Γ ⊢ₗ lt_local <: lt_free).
+Proof.
+  intros Γ Hec H.
+  pose proof (lt_sub_no_local_mono _ _ _ Hec H (eq_refl : no_local_lt lt_free = true))
+    as Hcontra.
+  simpl in Hcontra. discriminate.
+Qed.
+
+(* CAPABILITY CONFINEMENT FROM TYPING.  A closed value typed at an       *)
+(* escapable type ([lt_of_ty_G T <: lt_free] — the paper's no-local      *)
+(* side condition) carries no runtime capability.  Immediate from the    *)
+(* capture-lifetime bound: a runtime cap forces [capture_lt v = lt_local] *)
+(* (capture_lt_closed), but [capture_lt v <: lt_of_ty_G T <: lt_free]     *)
+(* would make [lt_local <: lt_free], impossible.  This is what makes the  *)
+(* handler-elimination marker invariant (safety/Markers.v) structural.    *)
+Lemma value_no_local_no_rt_cap : forall Γ v T,
+  eval_ctx Γ ->
+  Γ ⊢ₜ v : T ->
+  value v ->
+  free_tm_vars 0 v = [] ->
+  Γ ⊢ₗ lt_of_ty_G Γ T <: lt_free ->
+  has_rt_cap v = false.
+Proof.
+  intros Γ v T Hec Hty Hval Hfree Hsub.
+  destruct (has_rt_cap v) eqn:Hcap; [exfalso | reflexivity].
+  pose proof (typing_value_capture_lt_le_type Γ v T Hty Hec Hval Hfree) as Hle.
+  rewrite (capture_lt_closed Γ v Hfree) in Hle. rewrite Hcap in Hle.
+  apply (lt_local_not_escapes Γ Hec). eapply LS_Trans; [exact Hle | exact Hsub].
 Qed.
 
 (* ================================================================ *)

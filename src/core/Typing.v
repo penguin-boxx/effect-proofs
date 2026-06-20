@@ -727,6 +727,20 @@ Definition inst_ctor_type (n_lt n_ty : nat) (lts : list lifetime) (Ts : list typ
     (T : type) : type :=
   inst_lt_vars n_lt lts (inst_ty_vars n_ty (List.map (shift_lt_in_ty n_lt 0) Ts) T).
 
+(* MATCH variant of [inst_ctor_type].  In the yes-branch the schema's      *)
+(* n_lt lt-binders ARE the freshly pushed match lt-vars (lt_var 0..n_lt-1),*)
+(* so they need no instantiation — only the n_ty type arguments are filled *)
+(* (lifted over the n_lt lt-binders).  Using the full [inst_ctor_type]     *)
+(* here would apply [inst_lt_vars (lt_var_list n_lt)], whose only net      *)
+(* effect is a spurious down-shift (multi_subst_lt's [lt_var (x-|lts|)]    *)
+(* branch) that ALIASES Ts-derived field lifetimes with the fresh match    *)
+(* lt-vars — breaking type-substitution commutation.  Keeping the schema   *)
+(* lt-vars abstract leaves rho_fields living consistently in the pushed    *)
+(* context Γ'.                                                             *)
+Definition inst_ctor_type_open (n_lt n_ty : nat) (Ts : list type)
+    (T : type) : type :=
+  inst_ty_vars n_ty (List.map (shift_lt_in_ty n_lt 0) Ts) T.
+
 (* Push n fresh bind_lt entries (all bounded by `bound`) onto Γ.      *)
 Fixpoint push_lt_vars (n : nat) (bound : lifetime) (Γ : ctx) : ctx :=
   match n with
@@ -898,7 +912,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       ctx_lookup_ctor Γ K = Some (n_lt, n_ty, sigma_fields, result_ty_schema) ->
       ctx_lookup_eff Γ K = None ->   (* effect-tag / data-ctor disjointness *)
       lts = lt_var_list n_lt ->
-      rho_fields = List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields ->
+      rho_fields = List.map (inst_ctor_type_open n_lt n_ty Ts) sigma_fields ->
       List.length Ts = n_ty ->
       types_wf Γ Ts ->
       scrut_result_ty = inst_ctor_type n_lt n_ty (List.repeat Delta n_lt) Ts result_ty_schema ->

@@ -30,48 +30,6 @@ Require Import Inversions.
 (* coerced (by subsumption) to its `free` counterpart.                *)
 (* ================================================================== *)
 
-(* The boolean `no_local_lt` (defined in Typing.v) is a *downward     *)
-(* closed* invariant of the lifetime-subtyping order: if a supertype  *)
-(* has no top-level `local`, then neither does any of its subtypes.   *)
-(* This is the monotonicity engine behind non-escaping.               *)
-Lemma lt_sub_no_local_mono : forall Γ l1 l2,
-  eval_ctx Γ ->
-  Γ ⊢ₗ l1 <: l2 ->
-  no_local_lt l2 = true ->
-  no_local_lt l1 = true.
-Proof.
-  intros Γ l1 l2 Hec H. induction H; intros Hsup; simpl in *.
-  - (* LS_Free  : free <: l   — free has no local *) reflexivity.
-  - (* LS_Local : l <: local  — supertype IS local, premise absurd *)
-    discriminate Hsup.
-  - (* LS_Var   : impossible under eval_ctx, which has no lt binders. *)
-    rewrite (eval_ctx_no_lt _ x Hec) in H. discriminate.
-  - (* LS_Refl  *) exact Hsup.
-  - (* LS_Trans *) apply IHlt_sub1. exact Hec. apply IHlt_sub2. exact Hec. exact Hsup.
-  - (* LS_MinL  : lt_min l1 l2 <: l *)
-    rewrite (IHlt_sub1 Hec Hsup). rewrite (IHlt_sub2 Hec Hsup). reflexivity.
-  - (* LS_MinR1 : l <: lt_min l1 l2 *)
-    apply IHlt_sub. exact Hec.
-    destruct (no_local_lt l1) eqn:E1; simpl in Hsup; [reflexivity | discriminate].
-  - (* LS_MinR2 : l <: lt_min l1 l2 *)
-    apply IHlt_sub. exact Hec.
-    destruct (no_local_lt l2) eqn:E2;
-      [reflexivity | destruct (no_local_lt l1); simpl in Hsup; discriminate].
-Qed.
-
-(* Lattice form: the top lifetime `local` never outlives the bottom   *)
-(* `free`.  Holds in *any* context (no `eval_ctx` needed): even       *)
-(* context-bounded lt-variables cannot bridge `local` to `free`.      *)
-Theorem lt_local_not_escapes : forall Γ,
-  eval_ctx Γ ->
-  ~ (Γ ⊢ₗ lt_local <: lt_free).
-Proof.
-  intros Γ Hec H.
-  pose proof (lt_sub_no_local_mono _ _ _ Hec H (eq_refl : no_local_lt lt_free = true))
-    as Hcontra.
-  simpl in Hcontra. discriminate.
-Qed.
-
 (* Value/type form: a `local`-annotated data value can never be       *)
 (* subsumed to the same data carrying `free`.  This is the            *)
 (* "no escape via subtyping" theorem for local values.                *)
