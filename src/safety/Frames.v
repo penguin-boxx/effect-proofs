@@ -42,8 +42,8 @@ Lemma cap_typing_inv : forall Γ E_tag m n_β Ts T_R op_body T,
     List.length Ts = n_α /\
     types_wf Γ Ts /\
     ty_wf Γ T_R /\
-    sig_β = inst_op_alpha n_α Ts n_β sig /\
-    ret_β = inst_op_alpha n_α Ts n_β ret /\
+    sig_β = inst_op_ty_args n_α Ts n_β sig /\
+    ret_β = inst_op_ty_args n_α Ts n_β ret /\
     (bind_tm sig_β
       :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
       :: push_ty_vars n_β any_at_free Γ)
@@ -75,9 +75,9 @@ Lemma perform_typing_inv : forall Γ recv Ss arg T,
     List.length Ss = n_β /\
     types_wf Γ Ss /\
     Forall (fun S => Γ ⊢ₗ lt_of_ty_G Γ S <: lt_free) Ss /\
-    sig_inst = inst_op_arg n_α Ts n_β Ss sig /\
+    sig_inst = inst_op_all_args n_α Ts n_β Ss sig /\
     Γ ⊢ₗ lt_of_ty_G Γ sig_inst <: lt_free /\
-    ret_inst = inst_op_arg n_α Ts n_β Ss ret /\
+    ret_inst = inst_op_all_args n_α Ts n_β Ss ret /\
     ty_wf Γ ret_inst /\
     Γ ⊢ₜ arg : sig_inst /\
     Γ ⊢ ret_inst <:: T.

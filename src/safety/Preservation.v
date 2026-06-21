@@ -112,7 +112,7 @@ Qed.
 (* feed the main `preservation` theorem: contracting a redex in an    *)
 (* `eval_ctx` preserves typing.  They draw on the eval_ctx            *)
 (* substitution metatheory in subst/ (typing_SubstTm / SubstLt /      *)
-(* SubstTy and the push_corr peels).                                  *)
+(* SubstTy and the push_match_bound peels).                                  *)
 (* ================================================================== *)
 
 (* Term substitution at index 0 preserves typing (typing_SubstTm_eval_ctx). *)
@@ -199,7 +199,7 @@ Proof.
 Qed.
 
 (* Substitute the constructor's lifetimes [lts]                          *)
-(* (peeling the match's push_corr block, typing_peel_push_corr_fold)     *)
+(* (peeling the match's push_match_bound block, typing_peel_push_match_bound_fold)     *)
 (* then its field values [vs] (typing_subst_list_tm_eval_ctx_global).    *)
 (* The peeled field types [subst_list_lt lts (inst_ctor_type_open …)]    *)
 (* equal the constructor's [inst_ctor_type … lts] because lts are        *)
@@ -234,14 +234,14 @@ Proof.
   assert (HboundedD : Forall (fun l0 => Γ ⊢ₗ l0 <: Delta) lts).
   { eapply Forall_impl; [|exact Hbounded]. intros l0 Hl0.
     eapply LS_Trans; [exact Hl0 | exact Hl_Delta]. }
-  (* peel the push_corr block by substituting lts. *)
+  (* peel the push_match_bound block by substituting lts. *)
   assert (Hyes' :
     (List.fold_right (fun rho G => bind_tm rho :: G)
-      (push_corr (List.length lts) Delta Γ)
+      (push_match_bound (List.length lts) Delta Γ)
       (List.map (inst_ctor_type_open n_lt n_ty Ts) sigma_fields))
       ⊢ₜ yes_body : eta).
   { rewrite Hltlen. exact Hyes. }
-  pose proof (typing_peel_push_corr_fold lts Delta
+  pose proof (typing_peel_push_match_bound_fold lts Delta
     (List.map (inst_ctor_type_open n_lt n_ty Ts) sigma_fields)
     yes_body eta Γ HboundedD Hyes') as Hpeel.
   (* the peeled field types are exactly the constructor's field types. *)
@@ -262,7 +262,7 @@ Proof.
     rewrite (typing_closed _ _ _ Hec H), IHHf2. reflexivity. }
   specialize (Hsubst Hfree Hpeel).
   (* reconcile the branch result type with T via elim soundness. *)
-  assert (HwfEta : ty_wf (push_corr n_lt Delta Γ) eta).
+  assert (HwfEta : ty_wf (push_match_bound n_lt Delta Γ) eta).
   { apply (ty_wf_fold_bind_tm_inv (List.map (inst_ctor_type_open n_lt n_ty Ts) sigma_fields)).
     eapply typing_implies_wf. exact Hyes. }
   pose proof (elim_ty_n_sound_pos n_lt Delta lts eta elim_result Γ
@@ -283,7 +283,7 @@ Qed.
 (*      sub_ctor_inv + lookup determinism;                             *)
 (*  (b) the push_ty_vars TYPE peel substitutes Ss into op_body, with   *)
 (*      the operation-signature reconciliation                         *)
-(*      subst_list_ty Ss (inst_op_alpha …) = inst_op_arg … Ss …;       *)
+(*      subst_list_ty Ss (inst_op_ty_args …) = inst_op_all_args … Ss …;       *)
 (*  (c) the reified resumption plug (shift P)(var 0) is typed by       *)
 (*      weakening + shift_tm_plug + plug_typing_replace, the focus     *)
 (*      replacement justified by the perform's principal type ret_inst *)
@@ -335,7 +335,7 @@ Lemma perform_principal_general :
   (forall α, ctx_lookup_ty G α = None) ->
   ctx_lookup_eff G any_tag = None ->
   ctx_lookup_eff G E_tag = Some (n_α, n_β, sig, ret) ->
-  ret_inst = inst_op_arg n_α Ts n_β Ss ret ->
+  ret_inst = inst_op_all_args n_α Ts n_β Ss ret ->
   G ⊢ₜ term_perform (term_cap E_tag m n_β Ts T_R op_body) Ss arg : Tu ->
   G ⊢ ret_inst <:: Tu.
 Proof.
@@ -368,7 +368,7 @@ Lemma perform_resume_body :
   eval_ctx Γ ->
   ty_wf Γ ret_inst ->
   ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
-  ret_inst = inst_op_arg n_α Ts n_β Ss ret ->
+  ret_inst = inst_op_all_args n_α Ts n_β Ss ret ->
   Γ ⊢ₜ plug P (term_perform (term_cap E_tag m n_β Ts T_R op_body) Ss v) : T_B ->
   (bind_tm ret_inst :: Γ) ⊢ₜ plug (shift_ectx_tm 1 0 P) (term_var 0) : T_B.
 Proof.
@@ -447,14 +447,14 @@ Proof.
     (eval_ctx_ctor_fields_closed Γ Hec) Hpremise) as Hpeel.
   (* operation-signature reconciliations *)
   assert (Hsigeq : subst_list_ty Ss sig_β = sig_inst).
-  { rewrite Hsigβ. rewrite (subst_list_ty_inst_op_alpha n_α Ts n_beta Ss sig HlenSs).
+  { rewrite Hsigβ. rewrite (subst_list_ty_inst_op_ty_args n_α Ts n_beta Ss sig HlenSs).
     symmetry; exact Hsi. }
   assert (HTReq : subst_list_ty Ss (shift_ty n_beta 0 T_R) = T_R).
   { rewrite <- HlenSs. apply subst_list_ty_shift_cancel. }
   assert (Hrhokeq : subst_list_ty Ss (type_fun ret_β lt_local (shift_ty n_beta 0 T_R))
                     = type_fun ret_inst lt_local T_R).
   { rewrite subst_list_ty_fun. rewrite HTReq.
-    rewrite Hretβ. rewrite (subst_list_ty_inst_op_alpha n_α Ts n_beta Ss ret HlenSs).
+    rewrite Hretβ. rewrite (subst_list_ty_inst_op_ty_args n_α Ts n_beta Ss ret HlenSs).
     rewrite <- Hri. reflexivity. }
   cbn [List.map List.fold_right] in Hpeel.
   rewrite Hsigeq, Hrhokeq, HTReq in Hpeel.
@@ -665,8 +665,8 @@ Lemma handle_typing_inv : forall Γ E_tag n_beta Ts T_B T_R op_body body T,
     ctx_lookup_eff Γ E_tag = Some (n_α, n_beta, sig, ret) /\
     List.length Ts = n_α /\ types_wf Γ Ts /\
     ty_wf Γ T_B /\ ty_wf Γ T_R /\ Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free /\ Γ ⊢ T_B <:: T_R /\
-    sig_β = inst_op_alpha n_α Ts n_beta sig /\
-    ret_β = inst_op_alpha n_α Ts n_beta ret /\
+    sig_β = inst_op_ty_args n_α Ts n_beta sig /\
+    ret_β = inst_op_ty_args n_α Ts n_beta ret /\
     (bind_tm sig_β
       :: bind_tm (type_fun ret_β lt_local (shift_ty n_beta 0 T_R))
       :: push_ty_vars n_beta any_at_free Γ)

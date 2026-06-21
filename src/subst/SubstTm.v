@@ -52,14 +52,14 @@ Proof.
 Qed.
 
 Lemma SubstTm_lookup_tm : forall v n G G', SubstTm v n G G' ->
-  forall x, x <> n -> ctx_lookup_tm G' (slv n x) = ctx_lookup_tm G x.
+  forall x, x <> n -> ctx_lookup_tm G' (subst_lt_var n x) = ctx_lookup_tm G x.
 Proof.
   intros v n G G' H. induction H; intros x Hne.
   - destruct x as [|x']; [contradiction|]. reflexivity.
   - destruct x as [|x'].
     + reflexivity.
     + assert (x' <> n) by lia.
-      rewrite slv_S. simpl ctx_lookup_tm. apply IHSubstTm. exact H0.
+      rewrite subst_lt_var_S. simpl ctx_lookup_tm. apply IHSubstTm. exact H0.
   - simpl ctx_lookup_tm. rewrite IHSubstTm by exact Hne. reflexivity.
   - simpl ctx_lookup_tm. rewrite IHSubstTm by exact Hne. reflexivity.
   - simpl ctx_lookup_tm. apply IHSubstTm. exact Hne.
@@ -207,7 +207,7 @@ Qed.
 Lemma capture_var_lifetime_SubstTm_eq : forall v n G G',
   SubstTm v n G G' -> forall x,
   x <> n ->
-  capture_var_lifetime G' (slv n x) = capture_var_lifetime G x.
+  capture_var_lifetime G' (subst_lt_var n x) = capture_var_lifetime G x.
 Proof.
   intros v n G G' HSub x Hne. unfold capture_var_lifetime.
   rewrite (SubstTm_lookup_tm v n G G' HSub x Hne).
@@ -247,7 +247,7 @@ Proof.
     + apply Nat.eqb_neq in Heq.
       assert (Heqlife : capture_var_lifetime G' (if Nat.ltb n x then pred x else x) =
         capture_var_lifetime G x).
-      { change (capture_var_lifetime G' (slv n x) = capture_var_lifetime G x).
+      { change (capture_var_lifetime G' (subst_lt_var n x) = capture_var_lifetime G x).
         apply (capture_var_lifetime_SubstTm_eq v n G G' HSub x Heq). }
       apply lt_min_mono.
       * rewrite Heqlife. apply LS_Refl.
@@ -471,12 +471,12 @@ Proof.
     + apply replacement_capture_bound_lt; assumption.
 Qed.
 
-Lemma replacement_capture_bound_push_corr : forall k Delta G G' v n,
+Lemma replacement_capture_bound_push_match_bound : forall k Delta G G' v n,
   free_tm_vars 0 v = [] ->
   G' ⊢ₗ capture_lt G' v <: capture_var_lifetime G n ->
-  push_corr k Delta G' ⊢ₗ
-    capture_lt (push_corr k Delta G') (shift_lt_in_tm k 0 v) <:
-    capture_var_lifetime (push_corr k Delta G) n.
+  push_match_bound k Delta G' ⊢ₗ
+    capture_lt (push_match_bound k Delta G') (shift_lt_in_tm k 0 v) <:
+    capture_var_lifetime (push_match_bound k Delta G) n.
 Proof.
   induction k as [|k IH]; intros Delta G G' v n Hfree Hcap; simpl.
   - rewrite shift_lt_in_tm_zero. exact Hcap.
@@ -638,14 +638,14 @@ Proof.
     apply IH. apply SubstTm_lt. exact HSub.
 Qed.
 
-(* Term substitution crosses [push_corr] exactly as it crosses         *)
+(* Term substitution crosses [push_match_bound] exactly as it crosses         *)
 (* [push_lt_vars] — SubstTm_lt keeps each bind_lt bound (term subst     *)
 (* does not touch lt-bounds), so the per-level shifted bounds are       *)
 (* irrelevant; no closedness on Delta is needed.                        *)
-Lemma SubstTm_push_corr : forall k Delta v n G G',
+Lemma SubstTm_push_match_bound : forall k Delta v n G G',
   SubstTm v n G G' ->
   SubstTm (shift_lt_in_tm k 0 v) n
-    (push_corr k Delta G) (push_corr k Delta G').
+    (push_match_bound k Delta G) (push_match_bound k Delta G').
 Proof.
   induction k as [|k IH]; intros Delta v n G G' HSub; simpl.
   - rewrite shift_lt_in_tm_zero. exact HSub.
@@ -1011,34 +1011,34 @@ Proof.
     + apply IH; assumption.
 Qed.
 
-Lemma inst_op_alpha_lt_closed : forall n_α Ts n_β T c,
+Lemma inst_op_ty_args_lt_closed : forall n_α Ts n_β T c,
   List.length Ts = n_α ->
   tys_lt_closed c Ts ->
   ty_lt_closed c T ->
-  ty_lt_closed c (inst_op_alpha n_α Ts n_β T).
+  ty_lt_closed c (inst_op_ty_args n_α Ts n_β T).
 Proof.
   intros n_α Ts n_β T c Hlen HTs HT.
-  unfold inst_op_alpha.
+  unfold inst_op_ty_args.
   apply inst_ty_vars_lt_closed.
   - rewrite List.length_map. exact Hlen.
   - apply tys_lt_closed_shift_ty. exact HTs.
   - exact HT.
 Qed.
 
-Lemma inst_op_arg_lt_closed : forall n_α Ts n_β Ss T c,
+Lemma inst_op_all_args_lt_closed : forall n_α Ts n_β Ss T c,
   List.length Ts = n_α ->
   List.length Ss = n_β ->
   tys_lt_closed c Ts ->
   tys_lt_closed c Ss ->
   ty_lt_closed c T ->
-  ty_lt_closed c (inst_op_arg n_α Ts n_β Ss T).
+  ty_lt_closed c (inst_op_all_args n_α Ts n_β Ss T).
 Proof.
   intros n_α Ts n_β Ss T c HlenTs HlenSs HTs HSs HT.
-  unfold inst_op_arg.
+  unfold inst_op_all_args.
   apply inst_ty_vars_lt_closed.
   - exact HlenSs.
   - exact HSs.
-  - eapply inst_op_alpha_lt_closed; eauto.
+  - eapply inst_op_ty_args_lt_closed; eauto.
 Qed.
 
 Fixpoint ctor_field_bounded_ty (k : nat) (T : type) : Prop :=
@@ -1102,7 +1102,7 @@ Qed.
 (* [subst_list_lt_in_ty] coincides with the parallel                   *)
 (* [multi_subst_lt_in_ty 0] (= [inst_lt_vars]).  This connects the     *)
 (* match operational substitution (subst_list, peeled by               *)
-(* [typing_peel_push_corr_fold]) to the constructor instantiation      *)
+(* [typing_peel_push_match_bound_fold]) to the constructor instantiation      *)
 (* [inst_ctor_type] (multi_subst).  Witnesses are closed because in an *)
 (* eval_ctx every lifetime is ground.                                  *)
 (* ================================================================== *)

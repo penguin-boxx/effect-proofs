@@ -1890,7 +1890,7 @@ Lemma typing_ind_forall2 :
         Γ ⊢ₜ scrut : type_ctor result_tag Delta Ts ->
         P Γ scrut (type_ctor result_tag Delta Ts) ->
      arity = List.length rho_fields ->
-     Γ' = push_corr n_lt Delta Γ ->
+     Γ' = push_match_bound n_lt Delta Γ ->
      (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) ⊢ₜ yes_body : eta ->
      P (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) yes_body eta ->
      elim_ty_n n_lt (shift_lt n_lt 0 Delta) var_pos eta = Some elim_result ->
@@ -1901,8 +1901,8 @@ Lemma typing_ind_forall2 :
      List.length Ts = n_α ->
     types_wf Γ Ts ->
     ty_wf Γ T_R ->
-      sig_β = inst_op_alpha n_α Ts n_β sig ->
-      ret_β = inst_op_alpha n_α Ts n_β ret ->
+      sig_β = inst_op_ty_args n_α Ts n_β sig ->
+      ret_β = inst_op_ty_args n_α Ts n_β ret ->
      (bind_tm sig_β
         :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
         :: push_ty_vars n_β any_at_free Γ) ⊢ₜ op_body : shift_ty n_β 0 T_R ->
@@ -1918,8 +1918,8 @@ Lemma typing_ind_forall2 :
     ty_wf Γ T_R ->
     Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
     Γ ⊢ T_B <:: T_R ->
-      sig_β = inst_op_alpha n_α Ts n_β sig ->
-      ret_β = inst_op_alpha n_α Ts n_β ret ->
+      sig_β = inst_op_ty_args n_α Ts n_β sig ->
+      ret_β = inst_op_ty_args n_α Ts n_β ret ->
      (bind_tm sig_β
         :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
         :: push_ty_vars n_β any_at_free Γ) ⊢ₜ op_body : shift_ty n_β 0 T_R ->
@@ -1936,9 +1936,9 @@ Lemma typing_ind_forall2 :
      List.length Ss = n_β ->
     types_wf Γ Ss ->
     Forall (fun S => Γ ⊢ₗ lt_of_ty_G Γ S <: lt_free) Ss ->
-     sig_inst = inst_op_arg n_α Ts n_β Ss sig ->
+     sig_inst = inst_op_all_args n_α Ts n_β Ss sig ->
       Γ ⊢ₗ lt_of_ty_G Γ sig_inst <: lt_free ->
-     ret_inst = inst_op_arg n_α Ts n_β Ss ret ->
+     ret_inst = inst_op_all_args n_α Ts n_β Ss ret ->
     ty_wf Γ ret_inst ->
      Γ ⊢ₜ arg : sig_inst -> P Γ arg sig_inst ->
      P Γ (term_perform recv Ss arg) ret_inst) ->
@@ -1994,8 +1994,8 @@ Proof.
   - apply IH. apply InsTmAt_lt. exact H.
 Qed.
 
-Lemma InsTmAt_push_corr : forall n Delta c G G',
-  InsTmAt c G G' -> InsTmAt c (push_corr n Delta G) (push_corr n Delta G').
+Lemma InsTmAt_push_match_bound : forall n Delta c G G',
+  InsTmAt c G G' -> InsTmAt c (push_match_bound n Delta G) (push_match_bound n Delta G').
 Proof.
   induction n as [|n IH]; intros Delta c G G' H; simpl.
   - exact H.
@@ -2018,8 +2018,8 @@ Proof.
   - apply IH. apply InsTy_lt. exact H.
 Qed.
 
-Lemma InsTy_push_corr : forall n Delta c G G',
-  InsTy c G G' -> InsTy c (push_corr n Delta G) (push_corr n Delta G').
+Lemma InsTy_push_match_bound : forall n Delta c G G',
+  InsTy c G G' -> InsTy c (push_match_bound n Delta G) (push_match_bound n Delta G').
 Proof.
   induction n as [|n IH]; intros Delta c G G' H; simpl.
   - exact H.
@@ -2550,7 +2550,7 @@ Proof.
       (result_ty_schema := result_ty_schema) (lts := lts) (rho_fields := rho_fields)
       (scrut_result_ty := scrut_result_ty)
       (result_tag := result_tag) (result_l := result_l)
-      (Γ' := push_corr n_lt Delta G') (eta := eta).
+      (Γ' := push_match_bound n_lt Delta G') (eta := eta).
     + exact Hneq.
     + rewrite (InsTm_lookup_ctor Γ G' (InsTmAt_to_InsTm c Γ G' HIns) K). exact Hctor.
     + rewrite (InsTm_lookup_eff Γ G' (InsTmAt_to_InsTm c Γ G' HIns) K). exact Heff.
@@ -2571,7 +2571,7 @@ Proof.
     + apply IHyes.
       rewrite Harity.
       apply InsTmAt_fold_bind_tm.
-      apply InsTmAt_push_corr. exact HIns.
+      apply InsTmAt_push_match_bound. exact HIns.
     + exact Helim.
     + apply IHno. exact HIns.
   - intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
@@ -3520,15 +3520,15 @@ Proof.
     reflexivity.
 Qed.
 
-(* [push_corr] is STABLE under lt-insertion (UNLIKE [push_lt_vars],    *)
+(* [push_match_bound] is STABLE under lt-insertion (UNLIKE [push_lt_vars],    *)
 (* whose closed sibling needs lt_lt_closed Delta): the per-level bound  *)
 (* [shift_lt j 0 Delta] shifts uniformly because [InsLt_lt]'s bound     *)
 (* shift commutes with the level shift ([shift_lt_lift_many_swap]).     *)
 (* Inserting at cutoff c turns the bound Delta into [shift_lt 1 c Delta]*)
 (* — no closedness assumption.                                          *)
-Lemma InsLt_push_corr : forall k Delta c G G',
+Lemma InsLt_push_match_bound : forall k Delta c G G',
   InsLt c G G' ->
-  InsLt (k + c) (push_corr k Delta G) (push_corr k (shift_lt 1 c Delta) G').
+  InsLt (k + c) (push_match_bound k Delta G) (push_match_bound k (shift_lt 1 c Delta) G').
 Proof.
   induction k as [|k IH]; intros Delta c G G' H; simpl.
   - exact H.

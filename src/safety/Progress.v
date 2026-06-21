@@ -242,7 +242,7 @@ Lemma typing_ind2 :
       Γ ⊢ₜ scrut : type_ctor result_tag Delta Ts ->
       P Γ scrut (type_ctor result_tag Delta Ts) ->
      arity = List.length rho_fields ->
-     Γ' = push_corr n_lt Delta Γ ->
+     Γ' = push_match_bound n_lt Delta Γ ->
      (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) ⊢ₜ yes_body : eta ->
      P (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) yes_body eta ->
      elim_ty_n n_lt (shift_lt n_lt 0 Delta) var_pos eta = Some elim_result ->
@@ -253,8 +253,8 @@ Lemma typing_ind2 :
      List.length Ts = n_α ->
     types_wf Γ Ts ->
     ty_wf Γ T_R ->
-      sig_β = inst_op_alpha n_α Ts n_β sig ->
-      ret_β = inst_op_alpha n_α Ts n_β ret ->
+      sig_β = inst_op_ty_args n_α Ts n_β sig ->
+      ret_β = inst_op_ty_args n_α Ts n_β ret ->
      (bind_tm sig_β
         :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
         :: push_ty_vars n_β any_at_free Γ) ⊢ₜ op_body : shift_ty n_β 0 T_R ->
@@ -270,8 +270,8 @@ Lemma typing_ind2 :
     ty_wf Γ T_R ->
     Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
     Γ ⊢ T_B <:: T_R ->
-      sig_β = inst_op_alpha n_α Ts n_β sig ->
-      ret_β = inst_op_alpha n_α Ts n_β ret ->
+      sig_β = inst_op_ty_args n_α Ts n_β sig ->
+      ret_β = inst_op_ty_args n_α Ts n_β ret ->
      (bind_tm sig_β
         :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
         :: push_ty_vars n_β any_at_free Γ) ⊢ₜ op_body : shift_ty n_β 0 T_R ->
@@ -288,9 +288,9 @@ Lemma typing_ind2 :
      List.length Ss = n_β ->
     types_wf Γ Ss ->
     Forall (fun S => Γ ⊢ₗ lt_of_ty_G Γ S <: lt_free) Ss ->
-     sig_inst = inst_op_arg n_α Ts n_β Ss sig ->
+     sig_inst = inst_op_all_args n_α Ts n_β Ss sig ->
       Γ ⊢ₗ lt_of_ty_G Γ sig_inst <: lt_free ->
-     ret_inst = inst_op_arg n_α Ts n_β Ss ret ->
+     ret_inst = inst_op_all_args n_α Ts n_β Ss ret ->
     ty_wf Γ ret_inst ->
      Γ ⊢ₜ arg : sig_inst -> P Γ arg sig_inst ->
      P Γ (term_perform recv Ss arg) ret_inst) ->

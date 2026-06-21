@@ -466,7 +466,7 @@ Inductive variance : Type :=
   | var_inv : variance   (* invariant *)
   .
 
-Definition flip_var (p : variance) : variance :=
+Definition flip_variance (p : variance) : variance :=
   match p with
   | var_pos => var_neg
   | var_neg => var_pos
@@ -521,7 +521,7 @@ Fixpoint elim_ty (lvar : nat) (bound : lifetime) (p : variance) (T : type)
   match T with
   | type_var n => Some (type_var n)
   | type_fun A l B =>
-      match elim_ty lvar bound (flip_var p) A,
+      match elim_ty lvar bound (flip_variance p) A,
             elim_lt lvar bound p l,
             elim_ty lvar bound p B with
       | Some A', Some l', Some B' => Some (type_fun A' l' B')
@@ -538,7 +538,7 @@ Fixpoint elim_ty (lvar : nat) (bound : lifetime) (p : variance) (T : type)
       | None    => None
       end
   | type_ty_all B A =>
-      match elim_ty lvar bound (flip_var p) B, elim_ty lvar bound p A with
+      match elim_ty lvar bound (flip_variance p) B, elim_ty lvar bound p A with
       | Some B', Some A' => Some (type_ty_all B' A')
       | _, _ => None
       end
@@ -768,10 +768,10 @@ Fixpoint push_ty_vars (n : nat) (bound : type) (Γ : ctx) : ctx :=
 (* lt-insertion of an outer binder (the per-level shifts commute with   *)
 (* subst/shift — see [shift_lt_subst_lt_comm_many0]), which             *)
 (* [push_lt_vars] is not.  For lt-closed Delta the two coincide.        *)
-Fixpoint push_corr (n : nat) (Delta : lifetime) (Γ : ctx) : ctx :=
+Fixpoint push_match_bound (n : nat) (Delta : lifetime) (Γ : ctx) : ctx :=
   match n with
   | O    => Γ
-  | S n' => bind_lt (shift_lt n' 0 Delta) :: push_corr n' Delta Γ
+  | S n' => bind_lt (shift_lt n' 0 Delta) :: push_match_bound n' Delta Γ
   end.
 
 (* The β-bound used for polymorphic operations: `Any@free`.            *)
@@ -782,17 +782,17 @@ Definition any_at_free : type := type_ctor any_tag lt_free [].
 (* Instantiate the α part of an op schema while β-vars remain bound.  *)
 (* α arguments must be lifted over the remaining β binders so ambient *)
 (* type variables in Ts cannot be captured by β instantiation later.  *)
-Definition inst_op_alpha (n_α : nat) (Ts : list type)
+Definition inst_op_ty_args (n_α : nat) (Ts : list type)
                          (n_β : nat) (T : type) : type :=
   inst_ty_vars n_α (List.map (shift_ty n_β 0) Ts) T.
 
 (* Instantiate an op schema: substitute α-vars first, then β-vars.    *)
 (* Convention: in the schema, α-vars are innermost (indices 0..n_α-1) *)
 (* and β-vars are outermost (indices n_α..n_α+n_β-1).                 *)
-Definition inst_op_arg (n_α : nat) (Ts : list type)
+Definition inst_op_all_args (n_α : nat) (Ts : list type)
                        (n_β : nat) (Ss : list type)
                        (T : type) : type :=
-  inst_ty_vars n_β Ss (inst_op_alpha n_α Ts n_β T).
+  inst_ty_vars n_β Ss (inst_op_ty_args n_α Ts n_β T).
 
 (* [lt_var 0; lt_var 1; ...; lt_var (n-1)] — de Bruijn indices of the *)
 (* n freshly pushed lt-vars in the order matching `inst_lt_vars`:     *)
@@ -942,7 +942,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       Γ ⊢ₗ result_l <: Delta ->
       Γ ⊢ₜ scrut : type_ctor result_tag Delta Ts ->
       arity = List.length rho_fields ->
-      Γ' = push_corr n_lt Delta Γ ->
+      Γ' = push_match_bound n_lt Delta Γ ->
       (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) ⊢ₜ yes_body : eta ->
       (* Delta lives in outer Γ; eta lives under n_lt fresh lt-binders, *)
       (* so Delta must be shifted up by n_lt before being used as the   *)
@@ -967,8 +967,8 @@ Inductive typing : ctx -> term -> type -> Prop :=
       List.length Ts = n_α ->
       types_wf Γ Ts ->
       ty_wf Γ T_R ->
-      sig_β = inst_op_alpha n_α Ts n_β sig ->
-      ret_β = inst_op_alpha n_α Ts n_β ret ->
+      sig_β = inst_op_ty_args n_α Ts n_β sig ->
+      ret_β = inst_op_ty_args n_α Ts n_β ret ->
       (bind_tm sig_β
         :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
         :: push_ty_vars n_β any_at_free Γ)
@@ -997,8 +997,8 @@ Inductive typing : ctx -> term -> type -> Prop :=
       ty_wf Γ T_R ->
       Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
       Γ ⊢ T_B <:: T_R ->
-      sig_β = inst_op_alpha n_α Ts n_β sig ->
-      ret_β = inst_op_alpha n_α Ts n_β ret ->
+      sig_β = inst_op_ty_args n_α Ts n_β sig ->
+      ret_β = inst_op_ty_args n_α Ts n_β ret ->
       (bind_tm sig_β
         :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
         :: push_ty_vars n_β any_at_free Γ)
@@ -1020,9 +1020,9 @@ Inductive typing : ctx -> term -> type -> Prop :=
       List.length Ss = n_β ->
       types_wf Γ Ss ->
       Forall (fun S => Γ ⊢ₗ lt_of_ty_G Γ S <: lt_free) Ss ->
-      sig_inst = inst_op_arg n_α Ts n_β Ss sig ->
+      sig_inst = inst_op_all_args n_α Ts n_β Ss sig ->
       Γ ⊢ₗ lt_of_ty_G Γ sig_inst <: lt_free ->
-      ret_inst = inst_op_arg n_α Ts n_β Ss ret ->
+      ret_inst = inst_op_all_args n_α Ts n_β Ss ret ->
       ty_wf Γ ret_inst ->
       Γ ⊢ₜ arg : sig_inst ->
       Γ ⊢ₜ term_perform recv Ss arg : ret_inst

@@ -31,10 +31,10 @@ Proof.
 Qed.
 
 Lemma subst_ty_var_neq : forall n Sb x,
-  x <> n -> subst_ty n Sb (type_var x) = type_var (slv n x).
+  x <> n -> subst_ty n Sb (type_var x) = type_var (subst_lt_var n x).
 Proof.
   intros n Sb x H. rewrite subst_ty_var_eq.
-  destruct (Nat.eqb_spec x n); [contradiction|]. unfold slv.
+  destruct (Nat.eqb_spec x n); [contradiction|]. unfold subst_lt_var.
   destruct (Nat.ltb n x); reflexivity.
 Qed.
 
@@ -75,18 +75,18 @@ Qed.
 
 Lemma SubstTy_lookup_ty : forall Sb n G G', SubstTy Sb n G G' ->
   forall a, a <> n ->
-  ctx_lookup_ty G' (slv n a) = option_map (subst_ty n Sb) (ctx_lookup_ty G a).
+  ctx_lookup_ty G' (subst_lt_var n a) = option_map (subst_ty n Sb) (ctx_lookup_ty G a).
 Proof.
   intros Sb n G G' H. induction H; intros a Hne.
   - destruct a as [|a']; [contradiction|].
-    unfold slv. simpl Nat.ltb. simpl pred. simpl ctx_lookup_ty.
+    unfold subst_lt_var. simpl Nat.ltb. simpl pred. simpl ctx_lookup_ty.
     destruct (ctx_lookup_ty Gamma a') as [X|]; simpl;
       [rewrite subst_ty_shift_cancel; reflexivity | reflexivity].
   - destruct a as [|a'].
-    + unfold slv. simpl Nat.ltb. simpl ctx_lookup_ty.
+    + unfold subst_lt_var. simpl Nat.ltb. simpl ctx_lookup_ty.
       rewrite shift_ty_subst_ty_comm0. reflexivity.
     + assert (a' <> n) by lia.
-      rewrite slv_S. simpl ctx_lookup_ty. rewrite (IHSubstTy a' H0).
+      rewrite subst_lt_var_S. simpl ctx_lookup_ty. rewrite (IHSubstTy a' H0).
       destruct (ctx_lookup_ty G a') as [X|]; simpl;
         [rewrite shift_ty_subst_ty_comm0; reflexivity | reflexivity].
   - specialize (IHSubstTy a Hne). simpl ctx_lookup_ty. rewrite IHSubstTy.
@@ -843,7 +843,7 @@ Proof.
            apply (lt_of_ty_ctx_fuel_irrel (length G) f' Btgt G (S n)
                     (ctx_inv_all G n Btgt Htgt) ltac:(lia) ltac:(lia)).
       * rewrite (subst_ty_var_neq n Sb n0 Hane).
-        rewrite (lt_of_ty_ctx_var (S f') G' (slv n n0)).
+        rewrite (lt_of_ty_ctx_var (S f') G' (subst_lt_var n n0)).
         rewrite (lt_of_ty_ctx_var (S f') G n0).
         rewrite (SubstTy_lookup_ty Sb n G G' HS n0 Hane).
         destruct (ctx_lookup_ty G n0) as [B0|] eqn:E; simpl.

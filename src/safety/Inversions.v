@@ -16,7 +16,7 @@ Lemma elim_ty_n_sound_pos : forall n Delta lts eta elim_result Γ,
   elim_ty_n n (shift_lt n 0 Delta) var_pos eta = Some elim_result ->
   List.length lts = n ->
   lt_wf Γ Delta ->
-  ty_wf (push_corr n Delta Γ) eta ->
+  ty_wf (push_match_bound n Delta Γ) eta ->
   Forall (fun l => Γ ⊢ₗ l <: Delta) lts ->
   Γ ⊢ subst_list_lt_in_ty lts eta <:: elim_result.
 Proof.
@@ -24,47 +24,47 @@ Proof.
   subst n.
   pose proof (elim_in_ctx_sound (List.length lts) Delta eta elim_result Γ Helim
                 HwfDelta HwfEta) as Hctx.
-  pose proof (sub_peel_push_corr lts Delta eta
+  pose proof (sub_peel_push_match_bound lts Delta eta
                 (shift_lt_in_ty (List.length lts) 0 elim_result) Γ Hfor Hctx) as Hpeel.
   rewrite subst_list_lt_in_ty_shift_cancel in Hpeel.
   exact Hpeel.
 Qed.
 
-(* TYPING-level peel of the match's [push_corr] binders (mirrors the   *)
-(* subtyping [sub_peel_push_corr]): substituting the constructor's      *)
+(* TYPING-level peel of the match's [push_match_bound] binders (mirrors the   *)
+(* subtyping [sub_peel_push_match_bound]): substituting the constructor's      *)
 (* actual lifetimes [lts] (each <: Delta) for the n_lt match lt-vars    *)
-(* removes the push_corr block, leaving the field (bind_tm) binders     *)
+(* removes the push_match_bound block, leaving the field (bind_tm) binders     *)
 (* with their types lt-substituted.  Each step peels one lt-binder via  *)
 (* [typing_SubstLt] (now general) + [SubstLt_fold_bind_tm_map] over     *)
-(* [SubstLt_here], using [lt_sub_push_corr_weaken] for the bound.       *)
-Lemma typing_peel_push_corr_fold : forall lts Delta rhos t U Γ,
+(* [SubstLt_here], using [lt_sub_push_match_bound_weaken] for the bound.       *)
+Lemma typing_peel_push_match_bound_fold : forall lts Delta rhos t U Γ,
   Forall (fun l => Γ ⊢ₗ l <: Delta) lts ->
   (List.fold_right (fun rho G => bind_tm rho :: G)
-     (push_corr (List.length lts) Delta Γ) rhos) ⊢ₜ t : U ->
+     (push_match_bound (List.length lts) Delta Γ) rhos) ⊢ₜ t : U ->
   (List.fold_right (fun rho G => bind_tm rho :: G) Γ
      (List.map (subst_list_lt_in_ty lts) rhos))
     ⊢ₜ subst_list_lt_in_tm lts t : subst_list_lt_in_ty lts U.
 Proof.
   induction lts as [|l0 rest IH]; intros Delta rhos t U Γ Hfor Hty.
-  - cbn [List.length push_corr] in Hty.
+  - cbn [List.length push_match_bound] in Hty.
     cbn [subst_list_lt_in_tm subst_list_lt_in_ty].
     erewrite List.map_ext by (intro a; apply subst_list_lt_in_ty_nil).
     rewrite List.map_id. exact Hty.
   - pose proof (Forall_inv Hfor) as Hhead.
     pose proof (Forall_inv_tail Hfor) as Htail.
-    cbn [List.length push_corr] in Hty.
+    cbn [List.length push_match_bound] in Hty.
     cbn [subst_list_lt_in_tm subst_list_lt_in_ty].
     pose proof (typing_SubstLt _ _ _ Hty
       (shift_lt (List.length rest) 0 l0) 0
       (List.fold_right (fun rho G => bind_tm rho :: G)
-        (push_corr (List.length rest) Delta Γ)
+        (push_match_bound (List.length rest) Delta Γ)
         (List.map (subst_lt_in_ty 0 (shift_lt (List.length rest) 0 l0)) rhos))
       (SubstLt_fold_bind_tm_map rhos (shift_lt (List.length rest) 0 l0) 0
-        (bind_lt (shift_lt (List.length rest) 0 Delta) :: push_corr (List.length rest) Delta Γ)
-        (push_corr (List.length rest) Delta Γ)
-        (SubstLt_here (push_corr (List.length rest) Delta Γ)
+        (bind_lt (shift_lt (List.length rest) 0 Delta) :: push_match_bound (List.length rest) Delta Γ)
+        (push_match_bound (List.length rest) Delta Γ)
+        (SubstLt_here (push_match_bound (List.length rest) Delta Γ)
           (shift_lt (List.length rest) 0 Delta) (shift_lt (List.length rest) 0 l0)
-          (lt_sub_push_corr_weaken (List.length rest) Delta Γ l0 Delta Hhead)))) as Hstep.
+          (lt_sub_push_match_bound_weaken (List.length rest) Delta Γ l0 Delta Hhead)))) as Hstep.
     pose proof (IH Delta (List.map (subst_lt_in_ty 0 (shift_lt (List.length rest) 0 l0)) rhos)
       (subst_lt_in_tm 0 (shift_lt (List.length rest) 0 l0) t)
       (subst_lt_in_ty 0 (shift_lt (List.length rest) 0 l0) U) Γ Htail Hstep) as Hrec.
@@ -93,7 +93,7 @@ Lemma match_typing_inv : forall Γ scrut K n_lt0 arity yes_body no_body T,
     Γ ⊢ₜ scrut : type_ctor result_tag Delta Ts /\
     arity = List.length (List.map (inst_ctor_type_open n_lt n_ty Ts) sigma_fields) /\
     (fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
-                (push_corr n_lt Delta Γ)
+                (push_match_bound n_lt Delta Γ)
                 (List.map (inst_ctor_type_open n_lt n_ty Ts) sigma_fields))
        ⊢ₜ yes_body : eta /\
     elim_ty_n n_lt (shift_lt n_lt 0 Delta) var_pos eta = Some elim_result /\
@@ -340,7 +340,7 @@ Proof.
       specialize (IHyes (x + arity) Hy). subst Γ'.
       rewrite Harity in IHyes.
       rewrite lookup_tm_skip_bind_tm_many in IHyes.
-      intros Hnone. apply IHyes. apply lookup_tm_push_corr_None. exact Hnone.
+      intros Hnone. apply IHyes. apply lookup_tm_push_match_bound_None. exact Hnone.
     + apply IHno; exact Hn.
   - (* T_Cap *)
     intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
@@ -476,26 +476,26 @@ Proof.
   intros n Delta G. simpl. apply push_lt_vars_cons.
 Qed.
 
-Lemma ctx_lookup_ty_push_lt_vars_push_corr : forall n Delta G a,
-  ctx_lookup_ty (push_lt_vars n Delta G) a = ctx_lookup_ty (push_corr n Delta G) a.
+Lemma ctx_lookup_ty_push_lt_vars_push_match_bound : forall n Delta G a,
+  ctx_lookup_ty (push_lt_vars n Delta G) a = ctx_lookup_ty (push_match_bound n Delta G) a.
 Proof.
   induction n as [|n IH]; intros Delta G a.
   - reflexivity.
   - rewrite push_lt_vars_unfold_front. simpl. rewrite IH. reflexivity.
 Qed.
 
-Lemma ctx_lookup_lt_push_lt_vars_push_corr_dom : forall n Delta G x,
+Lemma ctx_lookup_lt_push_lt_vars_push_match_bound_dom : forall n Delta G x,
   ctx_lookup_lt (push_lt_vars n Delta G) x <> None ->
-  ctx_lookup_lt (push_corr n Delta G) x <> None.
+  ctx_lookup_lt (push_match_bound n Delta G) x <> None.
 Proof.
   induction n as [|n IH]; intros Delta G x Hsome.
   - exact Hsome.
   - rewrite push_lt_vars_unfold_front in Hsome. simpl in *.
     destruct x as [|x']; [discriminate|].
     destruct (ctx_lookup_lt (push_lt_vars n Delta G) x') as [D|] eqn:Hlk; [|contradiction].
-    assert (ctx_lookup_lt (push_corr n Delta G) x' <> None) as Hsome'.
+    assert (ctx_lookup_lt (push_match_bound n Delta G) x' <> None) as Hsome'.
     { apply IH. rewrite Hlk. discriminate. }
-    destruct (ctx_lookup_lt (push_corr n Delta G) x'); [discriminate|contradiction].
+    destruct (ctx_lookup_lt (push_match_bound n Delta G) x'); [discriminate|contradiction].
 Qed.
 
 Lemma ctx_lookup_ty_fold_bind_tm : forall rhos G a,

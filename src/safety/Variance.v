@@ -101,30 +101,30 @@ Qed.
 (*   1. `elim_in_ctx_sound`: over-approximate eta entirely in a       *)
 (*      context with n fresh lt-binders (no witnesses), giving        *)
 (*      eta <:: shift_lt_in_ty n 0 elim_result.                       *)
-(*   2. `sub_peel_push_corr`: peel all n binders at once via SubstLt, *)
+(*   2. `sub_peel_push_match_bound`: peel all n binders at once via SubstLt, *)
 (*      sound because the context shrinks together with the shift.    *)
 (* ================================================================== *)
 
-(* Over-approximation context [push_corr] is now defined in Typing.v   *)
+(* Over-approximation context [push_match_bound] is now defined in Typing.v   *)
 (* (it is the context the T_Match rule pushes for the yes-branch).     *)
 
-Lemma push_corr_lookup0 : forall n' Delta G,
-  ctx_lookup_lt (push_corr (S n') Delta G) 0 = Some (shift_lt (S n') 0 Delta).
+Lemma push_match_bound_lookup0 : forall n' Delta G,
+  ctx_lookup_lt (push_match_bound (S n') Delta G) 0 = Some (shift_lt (S n') 0 Delta).
 Proof.
   intros n' Delta G. simpl. f_equal.
   rewrite shift_lt_fuse. reflexivity.
 Qed.
 
-Lemma lt_wf_push_corr_bound : forall n Delta G,
-  lt_wf G Delta -> lt_wf (push_corr n Delta G) (shift_lt n 0 Delta).
+Lemma lt_wf_push_match_bound_bound : forall n Delta G,
+  lt_wf G Delta -> lt_wf (push_match_bound n Delta G) (shift_lt n 0 Delta).
 Proof.
   induction n as [|n' IH]; intros Delta G HwfDelta.
-  - cbn [push_corr]. rewrite shift_lt_zero. exact HwfDelta.
-  - cbn [push_corr].
+  - cbn [push_match_bound]. rewrite shift_lt_zero. exact HwfDelta.
+  - cbn [push_match_bound].
     pose proof (IH Delta G HwfDelta) as HwfPrev.
-    pose proof (lt_wf_InsLt (push_corr n' Delta G) (shift_lt n' 0 Delta) HwfPrev
-                 0 (bind_lt (shift_lt n' 0 Delta) :: push_corr n' Delta G)
-                 (InsLt_here (shift_lt n' 0 Delta) (push_corr n' Delta G))) as HwfIns.
+    pose proof (lt_wf_InsLt (push_match_bound n' Delta G) (shift_lt n' 0 Delta) HwfPrev
+                 0 (bind_lt (shift_lt n' 0 Delta) :: push_match_bound n' Delta G)
+                 (InsLt_here (shift_lt n' 0 Delta) (push_match_bound n' Delta G))) as HwfIns.
     rewrite shift_lt_fuse in HwfIns. exact HwfIns.
 Qed.
 
@@ -206,11 +206,11 @@ Proof.
     match goal with H : ty_wf G A |- _ => rename H into HwfA end.
     match goal with H : lt_wf G l |- _ => rename H into Hwfl end.
     match goal with H : ty_wf G B |- _ => rename H into HwfB end.
-    destruct (elim_ty lvar bound (flip_var p) A) as [A'|] eqn:HA; try discriminate.
+    destruct (elim_ty lvar bound (flip_variance p) A) as [A'|] eqn:HA; try discriminate.
     destruct (elim_lt lvar bound p l) as [l'|] eqn:Hl; try discriminate.
     destruct (elim_ty lvar bound p B) as [B'|] eqn:HB; try discriminate.
     injection Helim; intros; subst T'.
-    destruct (IHA lvar bound (flip_var p) A' G HA Hlk HwfBound HwfA) as [HwfA' HrelA].
+    destruct (IHA lvar bound (flip_variance p) A' G HA Hlk HwfBound HwfA) as [HwfA' HrelA].
     destruct (elim_lt_step_ctx l lvar bound p l' G Hl Hlk HwfBound Hwfl) as [Hwfl' Hrell].
     destruct (IHB lvar bound p B' G HB Hlk HwfBound HwfB) as [HwfB' HrelB].
     split; [constructor; assumption|]. destruct p; simpl in *.
@@ -264,7 +264,7 @@ Proof.
     inversion HwfT; subst; clear HwfT.
     match goal with H : ty_wf G B |- _ => rename H into HwfB end.
     match goal with H : ty_wf (bind_ty B :: G) A |- _ => rename H into HwfA end.
-    destruct (elim_ty lvar bound (flip_var p) B) as [B'|] eqn:HB; try discriminate.
+    destruct (elim_ty lvar bound (flip_variance p) B) as [B'|] eqn:HB; try discriminate.
     destruct (elim_ty lvar bound p A) as [A'|] eqn:HA; try discriminate.
     injection Helim; intros; subst T'.
     assert (HlkB : forall Bb, ctx_lookup_lt (bind_ty Bb :: G) lvar = Some bound).
@@ -340,12 +340,12 @@ Proof.
     injection Helim; intros; subst T'. reflexivity.
   - (* type_fun *)
     intros A l B IHA IHB lvar bound p T' Helim Hb. simpl in Helim.
-    destruct (elim_ty lvar bound (flip_var p) A) as [A'|] eqn:HA; try discriminate.
+    destruct (elim_ty lvar bound (flip_variance p) A) as [A'|] eqn:HA; try discriminate.
     destruct (elim_lt lvar bound p l) as [l'|] eqn:Hl; try discriminate.
     destruct (elim_ty lvar bound p B) as [B'|] eqn:HB; try discriminate.
     injection Helim; intros; subst T'.
     rewrite subst_lt_in_ty_fun_eq, shift_lt_in_ty_fun_eq. f_equal.
-    + exact (IHA lvar bound (flip_var p) A' HA Hb).
+    + exact (IHA lvar bound (flip_variance p) A' HA Hb).
     + exact (elim_lt_closes l lvar bound p l' Hl Hb).
     + exact (IHB lvar bound p B' HB Hb).
   - (* type_ctor *)
@@ -373,11 +373,11 @@ Proof.
     rewrite <- shift_subst_lt_comm. rewrite <- shift_lt_swap_0. rewrite Hb. reflexivity.
   - (* type_ty_all *)
     intros B A IHB IHA lvar bound p T' Helim Hb. simpl in Helim.
-    destruct (elim_ty lvar bound (flip_var p) B) as [B'|] eqn:HB; try discriminate.
+    destruct (elim_ty lvar bound (flip_variance p) B) as [B'|] eqn:HB; try discriminate.
     destruct (elim_ty lvar bound p A) as [A'|] eqn:HA; try discriminate.
     injection Helim; intros; subst T'.
     rewrite subst_lt_in_ty_tyall_eq, shift_lt_in_ty_tyall_eq. f_equal.
-    + exact (IHB lvar bound (flip_var p) B' HB Hb).
+    + exact (IHB lvar bound (flip_variance p) B' HB Hb).
     + exact (IHA lvar bound p A' HA Hb).
 Qed.
 
@@ -387,14 +387,14 @@ Qed.
 (* Over-approximate-in-context soundness.                             *)
 (* Eliminating n positive binders, then over-approximating the        *)
 (* eliminated variables by a context of n fresh lt-binders, yields    *)
-(*   push_corr n Delta G ⊢ eta <:: shift_lt_in_ty n 0 elim_result.    *)
+(*   push_match_bound n Delta G ⊢ eta <:: shift_lt_in_ty n 0 elim_result.    *)
 (* No witnesses (and hence no monotonicity) are required.             *)
 (* ================================================================== *)
 Lemma elim_in_ctx_sound : forall n Delta eta elim_result G,
   elim_ty_n n (shift_lt n 0 Delta) var_pos eta = Some elim_result ->
   lt_wf G Delta ->
-  ty_wf (push_corr n Delta G) eta ->
-  push_corr n Delta G ⊢ eta <:: shift_lt_in_ty n 0 elim_result.
+  ty_wf (push_match_bound n Delta G) eta ->
+  push_match_bound n Delta G ⊢ eta <:: shift_lt_in_ty n 0 elim_result.
 Proof.
   induction n as [|n' IH]; intros Delta eta elim_result G Helim HwfDelta HwfEta.
   - (* n = 0 *)
@@ -409,19 +409,19 @@ Proof.
         by (rewrite shift_lt_fuse; reflexivity).
       rewrite subst_lt_shift_cancel. reflexivity. }
     rewrite Hb in Helim.
-    assert (HwfBoundS : lt_wf (push_corr (S n') Delta G) (shift_lt (S n') 0 Delta)).
-    { apply lt_wf_push_corr_bound. exact HwfDelta. }
+    assert (HwfBoundS : lt_wf (push_match_bound (S n') Delta G) (shift_lt (S n') 0 Delta)).
+    { apply lt_wf_push_match_bound_bound. exact HwfDelta. }
     destruct (elim_ty_step_ctx eta 0 (shift_lt (S n') 0 Delta) var_pos T1
-                (push_corr (S n') Delta G) ET1 (push_corr_lookup0 n' Delta G)
+                (push_match_bound (S n') Delta G) ET1 (push_match_bound_lookup0 n' Delta G)
                 HwfBoundS HwfEta) as [HwfT1 Hstep].
     simpl in Hstep.
-    assert (HwfBoundN : lt_wf (push_corr n' Delta G) (shift_lt n' 0 Delta)).
-    { apply lt_wf_push_corr_bound. exact HwfDelta. }
-    assert (HwfT1Sub : ty_wf (push_corr n' Delta G) (subst_lt_in_ty 0 lt_free T1)).
+    assert (HwfBoundN : lt_wf (push_match_bound n' Delta G) (shift_lt n' 0 Delta)).
+    { apply lt_wf_push_match_bound_bound. exact HwfDelta. }
+    assert (HwfT1Sub : ty_wf (push_match_bound n' Delta G) (subst_lt_in_ty 0 lt_free T1)).
     { eapply ty_wf_SubstLt; [exact HwfT1|].
       apply SubstLt_here. apply LS_Free. exact HwfBoundN. }
     specialize (IH Delta (subst_lt_in_ty 0 lt_free T1) elim_result G Helim HwfDelta HwfT1Sub).
-    pose proof (sub_weaken_lt_shift (push_corr n' Delta G) (shift_lt n' 0 Delta)
+    pose proof (sub_weaken_lt_shift (push_match_bound n' Delta G) (shift_lt n' 0 Delta)
                   (subst_lt_in_ty 0 lt_free T1) (shift_lt_in_ty n' 0 elim_result) IH) as Hweak.
     assert (Hfresh : shift_lt_in_ty 1 0 (subst_lt_in_ty 0 lt_free T1) = T1).
     { apply (elim_ty_closes eta 0 (shift_lt (S n') 0 Delta) var_pos T1 ET1).
@@ -435,40 +435,40 @@ Qed.
 (* Piece 6: peel all n over-approximation binders at once.            *)
 (* ================================================================== *)
 
-(* 6a: weakening lifetime subtyping through the push_corr context.    *)
-Lemma lt_sub_push_corr_weaken : forall n Delta Γ l1 l2,
+(* 6a: weakening lifetime subtyping through the push_match_bound context.    *)
+Lemma lt_sub_push_match_bound_weaken : forall n Delta Γ l1 l2,
   Γ ⊢ₗ l1 <: l2 ->
-  push_corr n Delta Γ ⊢ₗ shift_lt n 0 l1 <: shift_lt n 0 l2.
+  push_match_bound n Delta Γ ⊢ₗ shift_lt n 0 l1 <: shift_lt n 0 l2.
 Proof.
   induction n as [|n' IH]; intros Delta Γ l1 l2 Hsub.
-  - cbn [push_corr]. rewrite !shift_lt_zero. exact Hsub.
-  - cbn [push_corr].
+  - cbn [push_match_bound]. rewrite !shift_lt_zero. exact Hsub.
+  - cbn [push_match_bound].
     specialize (IH Delta Γ l1 l2 Hsub).
-    pose proof (lt_sub_InsLt (push_corr n' Delta Γ) (shift_lt n' 0 l1) (shift_lt n' 0 l2) IH
-                  0 (bind_lt (shift_lt n' 0 Delta) :: push_corr n' Delta Γ)
-                  (InsLt_here (shift_lt n' 0 Delta) (push_corr n' Delta Γ))) as Hins.
+    pose proof (lt_sub_InsLt (push_match_bound n' Delta Γ) (shift_lt n' 0 l1) (shift_lt n' 0 l2) IH
+                  0 (bind_lt (shift_lt n' 0 Delta) :: push_match_bound n' Delta Γ)
+                  (InsLt_here (shift_lt n' 0 Delta) (push_match_bound n' Delta Γ))) as Hins.
     rewrite !shift_lt_fuse in Hins.
     exact Hins.
 Qed.
 
 (* 6b: peel all binders via SubstLt, sound because the context        *)
 (*     shrinks together with each substitution.                       *)
-Lemma sub_peel_push_corr : forall lts Delta A B Γ,
+Lemma sub_peel_push_match_bound : forall lts Delta A B Γ,
   Forall (fun l => Γ ⊢ₗ l <: Delta) lts ->
-  push_corr (List.length lts) Delta Γ ⊢ A <:: B ->
+  push_match_bound (List.length lts) Delta Γ ⊢ A <:: B ->
   Γ ⊢ subst_list_lt_in_ty lts A <:: subst_list_lt_in_ty lts B.
 Proof.
   induction lts as [|l0 rest IH]; intros Delta A B Γ Hfor Hsub.
-  - cbn [subst_list_lt_in_ty]. cbn [List.length push_corr] in Hsub. exact Hsub.
+  - cbn [subst_list_lt_in_ty]. cbn [List.length push_match_bound] in Hsub. exact Hsub.
   - pose proof (Forall_inv Hfor) as Hhead.
     pose proof (Forall_inv_tail Hfor) as Htail.
-    cbn [List.length push_corr] in Hsub.
+    cbn [List.length push_match_bound] in Hsub.
     cbn [subst_list_lt_in_ty].
     apply (IH Delta (subst_lt_in_ty 0 (shift_lt (List.length rest) 0 l0) A)
                     (subst_lt_in_ty 0 (shift_lt (List.length rest) 0 l0) B) Γ Htail).
     eapply sub_SubstLt.
     2: { apply SubstLt_here.
-         exact (lt_sub_push_corr_weaken (List.length rest) Delta Γ l0 Delta Hhead). }
+         exact (lt_sub_push_match_bound_weaken (List.length rest) Delta Γ l0 Delta Hhead). }
     exact Hsub.
 Qed.
 
