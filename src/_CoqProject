@@ -14,10 +14,10 @@ subst/SubstTm.v
 subst/EvalCtx.v
 subst/TypingSubstTy.v
 subst/Subst.v
+subst/Narrowing.v
+subst/Variance.v
 safety/Markers.v
 safety/Progress.v
-safety/Narrowing.v
-safety/Variance.v
 safety/Inversions.v
 safety/Frames.v
 safety/Preservation.v

@@ -20,9 +20,9 @@ Require Import Narrowing.
 (*   subtype of `elim_ty 0 Δ var_pos eta`.                             *)
 (*                                                                     *)
 (* The proof goes by mutual structural induction on the eliminated     *)
-(* type/lifetime, simultaneously varying the variance position.        *)
-(* Auxiliary mechanical de Bruijn lemmas are axiomatized: subtyping    *)
-(* monotonicity under shift / single-var lt-substitution.              *)
+(* type/lifetime, simultaneously varying the variance position.  It    *)
+(* rests on auxiliary mechanical de Bruijn facts (subtyping            *)
+(* monotonicity under shift / single-var lt-substitution).             *)
 (* =================================================================== *)
 
 (* --- Custom type induction principle providing per-element IH      *)
@@ -91,21 +91,19 @@ Proof.
 Qed.
 
 (* ================================================================== *)
-(* Sound iterated-elim soundness (binder-removal reformulation).      *)
+(* Iterated-elim soundness (binder-removal construction).             *)
 (*                                                                    *)
-(* The old `elim_ty_n_sound` relied on `iter_subst_lt_in_ty_mono`,    *)
-(* which is FALSE (lifetime-variable substitution is not monotone in  *)
-(* the subtyping order under LS_Var).  We replace it with an          *)
-(* over-approximate-in-context + peel construction that never needs   *)
-(* monotonicity:                                                      *)
+(* Lifetime-variable substitution is not monotone in the subtyping    *)
+(* order (LS_Var), so this uses an over-approximate-in-context + peel *)
+(* construction that never needs monotonicity:                        *)
 (*   1. `elim_in_ctx_sound`: over-approximate eta entirely in a       *)
 (*      context with n fresh lt-binders (no witnesses), giving        *)
 (*      eta <:: shift_lt_in_ty n 0 elim_result.                       *)
-(*   2. `sub_peel_push_match_bound`: peel all n binders at once via SubstLt, *)
-(*      sound because the context shrinks together with the shift.    *)
+(*   2. `sub_peel_push_match_bound`: peel all n binders at once via   *)
+(*      SubstLt, sound because the context shrinks with the shift.    *)
 (* ================================================================== *)
 
-(* Over-approximation context [push_match_bound] is now defined in Typing.v   *)
+(* Over-approximation context [push_match_bound] is defined in Typing.v   *)
 (* (it is the context the T_Match rule pushes for the yes-branch).     *)
 
 Lemma push_match_bound_lookup0 : forall n' Delta G,

@@ -1057,3 +1057,197 @@ with args_typed : ctx -> list term -> list type -> Prop :=
 where "G '⊢ₜ' t ':' T" := (typing G t T).
 
 Hint Constructors typing : core.
+
+(* ------------------------------------------------------------------- *)
+(* Forall2 plumbing + a Forall2-aware induction principle for `typing` *)
+(*                                                                     *)
+(* Coq's auto-generated `typing_ind` does NOT thread per-element       *)
+(* induction hypotheses through the `Forall2` premise of T_Ctor.       *)
+(* `typing_ind2` below augments the T_Ctor case with exactly that      *)
+(* `Forall2 (fun v rho => P Γ v rho)` hypothesis, which is what lets   *)
+(* `progress` and `preservation` discharge the constructor case        *)
+(* without any axioms.                                                 *)
+(* ------------------------------------------------------------------- *)
+
+Lemma f2_uncons_l : forall {A B} (R : A -> B -> Prop) x l ys,
+  Forall2 R (x :: l) ys ->
+  exists y l', ys = y :: l' /\ R x y /\ Forall2 R l l'.
+Proof. intros A B R x l ys H. inversion H; subst. eauto. Qed.
+
+Lemma Forall2_Forall_left : forall {A B} (R : A -> Prop) (S : A -> B -> Prop) xs ys,
+  Forall2 S xs ys ->
+  (forall x y, S x y -> R x) ->
+  Forall R xs.
+Proof.
+  intros A B R S xs ys H Himp; induction H; constructor.
+  - eapply Himp; eauto.
+  - apply IHForall2; auto.
+Qed.
+
+Lemma typing_ind2 :
+  forall (P : ctx -> term -> type -> Prop),
+  (forall Γ x T, ctx_lookup_tm Γ x = Some T -> ty_wf Γ T -> P Γ (term_var x) T) ->
+  (forall Γ t T U, Γ ⊢ₜ t : T -> P Γ t T -> Γ ⊢ T <:: U -> P Γ t U) ->
+  (forall Γ body A l B,
+    ty_wf Γ A ->
+    ty_wf Γ B ->
+     (bind_tm A :: Γ) ⊢ₜ body : B -> P (bind_tm A :: Γ) body B ->
+    Γ ⊢ₗ capture_lt Γ body <: l ->
+     P Γ (term_lam body A) (type_fun A l B)) ->
+  (forall Γ t1 t2 A l B,
+     Γ ⊢ₜ t1 : type_fun A l B -> P Γ t1 (type_fun A l B) ->
+     Γ ⊢ₜ t2 : A -> P Γ t2 A ->
+     P Γ (term_app t1 t2) B) ->
+  (forall Γ bound body T,
+    ty_wf Γ bound ->
+    ty_wf (bind_ty bound :: Γ) T ->
+     (bind_ty bound :: Γ) ⊢ₜ body : T -> P (bind_ty bound :: Γ) body T ->
+     P Γ (term_ty_lam bound body) (type_ty_all bound T)) ->
+  (forall Γ t B U S,
+     Γ ⊢ₜ t : type_ty_all B U -> P Γ t (type_ty_all B U) ->
+    ty_wf Γ S ->
+     Γ ⊢ S <:: B ->
+     P Γ (term_ty_app t S) (subst_ty 0 S U)) ->
+  (forall Γ body T,
+    ty_wf (bind_lt lt_local :: Γ) T ->
+     (bind_lt lt_local :: Γ) ⊢ₜ body : T -> P (bind_lt lt_local :: Γ) body T ->
+     P Γ (term_lt_lam body) (type_lt_all T)) ->
+  (forall Γ t T l,
+     Γ ⊢ₜ t : type_lt_all T -> P Γ t (type_lt_all T) ->
+    lt_wf Γ l ->
+     P Γ (term_lt_app t l) (subst_lt_in_ty 0 l T)) ->
+        (forall Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields
+          result_ty result_tag l vs,
+     ctx_lookup_ctor Γ K = Some (n_lt, n_ty, sigma_fields, result_ty_schema) ->
+     ctx_lookup_eff Γ K = None ->
+     List.length lts = n_lt ->
+    lifetimes_wf Γ lts ->
+     rho_fields = List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields ->
+     List.length Ts = n_ty ->
+    types_wf Γ Ts ->
+      result_ty = inst_ctor_type n_lt n_ty lts Ts result_ty_schema ->
+      result_ty = type_ctor result_tag l Ts ->
+      ctx_lookup_eff Γ result_tag = None ->
+     lt_wf Γ l ->
+      Γ ⊢ₗ lt_of_ty_list rho_fields <: lt_of_ty result_ty ->
+      Forall (fun l0 => Γ ⊢ₗ l0 <: l) lts ->
+     List.length vs = List.length rho_fields ->
+     Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rho_fields ->
+     Forall2 (fun v rho => P Γ v rho) vs rho_fields ->
+      P Γ (term_ctor K l lts Ts vs) result_ty) ->
+        (forall Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
+          rho_fields scrut_result_ty result_tag result_l
+         Γ' yes_body eta elim_result no_body,
+     K <> any_tag ->
+     ctx_lookup_ctor Γ K = Some (n_lt, n_ty, sigma_fields, result_ty_schema) ->
+     ctx_lookup_eff Γ K = None ->
+     lts = lt_var_list n_lt ->
+     rho_fields = List.map (inst_ctor_type_open n_lt n_ty Ts) sigma_fields ->
+      List.length Ts = n_ty ->
+      types_wf Γ Ts ->
+      scrut_result_ty = inst_ctor_type n_lt n_ty (List.repeat Delta n_lt) Ts result_ty_schema ->
+      scrut_result_ty = type_ctor result_tag result_l Ts ->
+      ctx_lookup_eff Γ result_tag = None ->
+      result_tag <> any_tag ->
+      lt_wf Γ Delta ->
+      Γ ⊢ₗ result_l <: Delta ->
+      Γ ⊢ₜ scrut : type_ctor result_tag Delta Ts ->
+      P Γ scrut (type_ctor result_tag Delta Ts) ->
+     arity = List.length rho_fields ->
+     Γ' = push_match_bound n_lt Delta Γ ->
+     (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) ⊢ₜ yes_body : eta ->
+     P (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) yes_body eta ->
+     elim_ty_n n_lt (shift_lt n_lt 0 Delta) var_pos eta = Some elim_result ->
+     Γ ⊢ₜ no_body : elim_result -> P Γ no_body elim_result ->
+    P Γ (term_match scrut K n_lt arity yes_body no_body) elim_result) ->
+  (forall Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β,
+     ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
+     List.length Ts = n_α ->
+    types_wf Γ Ts ->
+    ty_wf Γ T_R ->
+      sig_β = inst_op_ty_args n_α Ts n_β sig ->
+      ret_β = inst_op_ty_args n_α Ts n_β ret ->
+     (bind_tm sig_β
+        :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
+        :: push_ty_vars n_β any_at_free Γ) ⊢ₜ op_body : shift_ty n_β 0 T_R ->
+     P (bind_tm sig_β
+        :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
+        :: push_ty_vars n_β any_at_free Γ) op_body (shift_ty n_β 0 T_R) ->
+    P Γ (term_cap E_tag m n_β Ts T_R op_body) (type_ctor E_tag lt_local Ts)) ->
+  (forall Γ E_tag Ts op_body body n_α n_β sig ret T_B T_R sig_β ret_β,
+     ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
+     List.length Ts = n_α ->
+    types_wf Γ Ts ->
+    ty_wf Γ T_B ->
+    ty_wf Γ T_R ->
+    Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
+    Γ ⊢ T_B <:: T_R ->
+      sig_β = inst_op_ty_args n_α Ts n_β sig ->
+      ret_β = inst_op_ty_args n_α Ts n_β ret ->
+     (bind_tm sig_β
+        :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
+        :: push_ty_vars n_β any_at_free Γ) ⊢ₜ op_body : shift_ty n_β 0 T_R ->
+     P (bind_tm sig_β
+        :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
+        :: push_ty_vars n_β any_at_free Γ) op_body (shift_ty n_β 0 T_R) ->
+      (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) ⊢ₜ body : T_B ->
+      P (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) body T_B ->
+     P Γ (term_handle E_tag n_β Ts T_B T_R op_body body) T_R) ->
+  (forall Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst,
+     Γ ⊢ₜ recv : type_ctor E_tag Δ Ts -> P Γ recv (type_ctor E_tag Δ Ts) ->
+     ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
+     List.length Ts = n_α ->
+     List.length Ss = n_β ->
+    types_wf Γ Ss ->
+    Forall (fun S => Γ ⊢ₗ lt_of_ty_G Γ S <: lt_free) Ss ->
+     sig_inst = inst_op_all_args n_α Ts n_β Ss sig ->
+      Γ ⊢ₗ lt_of_ty_G Γ sig_inst <: lt_free ->
+     ret_inst = inst_op_all_args n_α Ts n_β Ss ret ->
+    ty_wf Γ ret_inst ->
+     Γ ⊢ₜ arg : sig_inst -> P Γ arg sig_inst ->
+     P Γ (term_perform recv Ss arg) ret_inst) ->
+  (forall Γ m T_B T_R t,
+    ty_wf Γ T_B ->
+    ty_wf Γ T_R ->
+    Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
+    Γ ⊢ T_B <:: T_R ->
+    Γ ⊢ₜ t : T_B -> P Γ t T_B ->
+    P Γ (term_handler_m m T_B T_R t) T_R) ->
+  (forall Γ m b A T_B T_R,
+    ty_wf Γ A ->
+    ty_wf Γ T_B ->
+    ty_wf Γ T_R ->
+    Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
+    Γ ⊢ T_B <:: T_R ->
+     (bind_tm A :: Γ) ⊢ₜ b : T_B -> P (bind_tm A :: Γ) b T_B ->
+    P Γ (term_resume m T_B T_R b) (type_fun A lt_local T_R)) ->
+  forall Γ t T, Γ ⊢ₜ t : T -> P Γ t T.
+Proof.
+  intros P HVar HSub HLam HApp HTyLam HTyApp HLtLam HLtApp HCtor HMatch
+         HCap HHandle HPerform HHandlerM HResume.
+  fix IH 4.
+  intros Γ t T H. destruct H.
+  - eapply HVar; (eassumption || (apply IH; eassumption)).
+  - eapply HSub; (eassumption || (apply IH; eassumption)).
+  - eapply HLam; (eassumption || (apply IH; eassumption)).
+  - eapply HApp; (eassumption || (apply IH; eassumption)).
+  - eapply HTyLam; (eassumption || (apply IH; eassumption)).
+  - eapply HTyApp; (eassumption || (apply IH; eassumption)).
+  - eapply HLtLam; (eassumption || (apply IH; eassumption)).
+  - eapply HLtApp; (eassumption || (apply IH; eassumption)).
+  - (* T_Ctor: build the Forall2 of IHs inline so the recursive calls    *)
+    (* stay on structural subterms of the derivation (guardedness).      *)
+    eapply HCtor; try (eassumption || (apply IH; eassumption)).
+    match goal with
+    | HF : Forall2 (fun v rho => _ ⊢ₜ v : rho) ?vs ?rf |- Forall2 _ ?vs ?rf =>
+        clear -IH HF; induction HF
+    end.
+    + constructor.
+    + constructor; [ apply IH; assumption | assumption ].
+  - eapply HMatch; (eassumption || (apply IH; eassumption)).
+  - eapply HCap; (eassumption || (apply IH; eassumption)).
+  - eapply HHandle; (eassumption || (apply IH; eassumption)).
+  - eapply HPerform; (eassumption || (apply IH; eassumption)).
+  - eapply HHandlerM; (eassumption || (apply IH; eassumption)).
+  - eapply HResume; (eassumption || (apply IH; eassumption)).
+Qed.
