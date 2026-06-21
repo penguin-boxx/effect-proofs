@@ -168,16 +168,21 @@ Qed.
 (*    [subst_list_lt_in_ty_inst_ctor_type_open], SubstTm.v).  The branch  *)
 (*    result type is reconciled with [T] by [elim_ty_n_sound_pos].        *)
 (*                                                                     *)
-(*  - perform_preserves   remains an Axiom, but is UNBLOCKED (every tool  *)
-(*    is proven).  Remaining assembly: (a) a push_ty_vars TYPE peel       *)
-(*    (iterated [typing_SubstTy], subst_nl is vacuous now) substituting   *)
-(*    the operation's type-args [Ss] into [op_body]; (b) reconcile        *)
-(*    [inst_op_alpha … [Ss]] with [inst_op_arg] (= sig_inst/ret_inst);    *)
-(*    (c) type the reified resumption [plug (shift P) (var 0)] via        *)
-(*    weakening + [shift_tm_plug] + [plug_typing_replace] (with the       *)
-(*    perform's principal type [ret_inst] unchanged under term-shift,     *)
-(*    by eff-lookup determinism); (d) the term-list subst                 *)
-(*    [typing_subst_list_tm_eval_ctx_global].  No structural blocker.     *)
+(*  - perform_preserves   NOW PROVEN (was Axiom).  See below.  The        *)
+(*    assembly: (a) a push_ty_vars TYPE peel ([typing_peel_push_ty_vars_  *)
+(*    fold], iterated [typing_SubstTy]; each [Ss] is [<:: any_at_free]    *)
+(*    via SA_Any) substitutes the operation's type-args [Ss] into         *)
+(*    [op_body]; (b) the operation-signature reconciliation               *)
+(*    [subst_list_ty Ss (inst_op_alpha …) = inst_op_arg … Ss …]           *)
+(*    ([subst_list_ty_inst_op_alpha]) identifies the peeled binder types  *)
+(*    with [sig_inst] / [type_fun ret_inst lt_local T_R]; (c) the reified *)
+(*    resumption [plug (shift P) (var 0)] is typed by weakening +         *)
+(*    [shift_tm_plug] + [plug_typing_replace], the focus replacement      *)
+(*    justified by the perform's principal type [ret_inst] being          *)
+(*    unchanged under term-shift ([perform_principal_general], using      *)
+(*    [sub_ctor_inv_noty] + effect-lookup determinism in the             *)
+(*    bind_tm-extended context); (d) the term-list subst                  *)
+(*    [typing_subst_list_tm_eval_ctx_global].                             *)
 (* ================================================================== *)
 
 (* Term substitution at index 0 preserves typing — now from the PROVEN *)
@@ -234,12 +239,6 @@ Proof.
   apply subst_nl_here_from_ty_app_arg. exact Harg.
 Qed.
 
-(* PROVEN (was Axiom): with the paper's escape side condition               *)
-(* [lt_of_ty_G Γ T_B <: lt_free] — which is monotone under type substitution *)
-(* (see [sub_free_SubstTy]) — type-beta preservation follows directly from    *)
-(* [typing_SubstTy].  The old structural [no_local_ty_G] side condition was   *)
-(* NOT substitution-monotone, which is exactly what the counterexample in     *)
-(* CounterexampleTyBetaHandle.v exploited.                                     *)
 Lemma tybeta_preserves : forall Γ bound body S T,
   eval_ctx Γ ->
   Γ ⊢ₜ term_ty_app (term_ty_lam bound body) S : T ->
@@ -249,9 +248,6 @@ Proof.
   eapply tybeta_preserves_with_subst_nl; [exact Hec | exact I | exact Hty].
 Qed.
 
-(* PROVEN (was Axiom): the general binder-removing [typing_SubstLt]    *)
-(* (now provable because T_Match pushes the SubstLt-stable [push_corr]) *)
-(* discharges lifetime-beta directly, via [SubstLt_here] at index 0.    *)
 Lemma ltbeta_preserves : forall Γ body l T,
   eval_ctx Γ ->
   Γ ⊢ₜ term_lt_app (term_lt_lam body) l : T ->
@@ -347,7 +343,127 @@ Proof.
   eapply SA_Trans; [exact HetaSub | exact Hsub].
 Qed.
 
-Axiom perform_preserves :
+(* ================================================================== *)
+(*  perform_preserves — now PROVEN (was Axiom).                        *)
+(*                                                                    *)
+(*  Reducing  handler_m m T_B T_R (P[perform (cap …) Ss v]) to         *)
+(*  op_body[Ss][v, resume]  preserves typing.  The proof:             *)
+(*  (a) handler/plug/perform/cap inversions recover the cap's op_body  *)
+(*      typing (under push_ty_vars n_β any_at_free, two bind_tm) and   *)
+(*      reconcile the two effect lookups (perform vs cap) via          *)
+(*      sub_ctor_inv + lookup determinism;                             *)
+(*  (b) the push_ty_vars TYPE peel substitutes Ss into op_body, with   *)
+(*      the operation-signature reconciliation                         *)
+(*      subst_list_ty Ss (inst_op_alpha …) = inst_op_arg … Ss …;       *)
+(*  (c) the reified resumption plug (shift P)(var 0) is typed by       *)
+(*      weakening + shift_tm_plug + plug_typing_replace, the focus     *)
+(*      replacement justified by the perform's principal type ret_inst *)
+(*      being unchanged under term-shift (perform_principal_general);  *)
+(*  (d) the two term arguments [v; resume] are substituted by          *)
+(*      typing_subst_list_tm_eval_ctx_global.                          *)
+(* ================================================================== *)
+
+(* ctx_lookup_ty / ctx_lookup_eff ignore a bind_tm prefix. *)
+Lemma ctx_lookup_ty_bind_tm : forall A Γ α,
+  ctx_lookup_ty (bind_tm A :: Γ) α = ctx_lookup_ty Γ α.
+Proof. intros; reflexivity. Qed.
+
+Lemma ctx_lookup_eff_bind_tm : forall A Γ E,
+  ctx_lookup_eff (bind_tm A :: Γ) E = ctx_lookup_eff Γ E.
+Proof. intros; reflexivity. Qed.
+
+(* Constructor-subtyping inversion needs only that the context has no
+   type variables (sub_ctor_inv specialises this to eval_ctx). *)
+Lemma sub_ctor_inv_noty : forall Γ S K l Ts,
+  (forall α, ctx_lookup_ty Γ α = None) ->
+  Γ ⊢ S <:: type_ctor K l Ts ->
+  K <> any_tag ->
+  exists l', S = type_ctor K l' Ts /\ Γ ⊢ₗ l' <: l.
+Proof.
+  intros Γ S K l Ts Hnoty Hsub HK.
+  remember (type_ctor K l Ts) as T eqn:HT.
+  revert K l Ts HT HK.
+  induction Hsub; intros K0 l0 Ts0 HT HK.
+  - inversion HT; subst. inversion H; subst.
+    exists l0; split; [reflexivity|apply LS_Refl; assumption].
+  - subst T.
+    destruct (IHHsub2 Hnoty _ _ _ eq_refl HK) as [l'' [HeqU Hl2]]; subst.
+    destruct (IHHsub1 Hnoty _ _ _ eq_refl HK) as [l''' [HeqS Hl1]]; subst.
+    exists l'''; split; eauto.
+  - subst. rewrite Hnoty in H; discriminate.
+  - injection HT; intros; subst. exists l; split; auto.
+  - injection HT; intros; subst. contradiction.
+  - discriminate HT.
+  - discriminate HT.
+  - discriminate HT.
+Qed.
+
+(* The perform's principal type is ret_inst; any type it can be given is
+   a supertype.  Works in any no-type-var context whose effect lookup at
+   any_tag is None (covers Γ and bind_tm _ :: Γ). *)
+Lemma perform_principal_general :
+  forall G E_tag m n_β Ts T_R op_body Ss arg n_α sig ret ret_inst Tu,
+  (forall α, ctx_lookup_ty G α = None) ->
+  ctx_lookup_eff G any_tag = None ->
+  ctx_lookup_eff G E_tag = Some (n_α, n_β, sig, ret) ->
+  ret_inst = inst_op_arg n_α Ts n_β Ss ret ->
+  G ⊢ₜ term_perform (term_cap E_tag m n_β Ts T_R op_body) Ss arg : Tu ->
+  G ⊢ ret_inst <:: Tu.
+Proof.
+  intros G E_tag m n_β Ts T_R op_body Ss arg n_α sig ret ret_inst Tu
+         Hnoty Hany Heff Hri Hperf.
+  apply perform_typing_inv in Hperf.
+  destruct Hperf as
+    [E_t1 [Δ1 [Ts1 [n_α1 [n_β1 [sig1 [ret1 [sig_inst1 [ret_inst1
+      [Hrecv1 [Heff1 [HlenTs1 [HlenSs1 [HwfSs1 [HnlSs1 [Hsi1 [Hnlsi1
+        [Hri1 [HwfRi1 [Harg1 Hsub1]]]]]]]]]]]]]]]]]]]].
+  apply cap_typing_inv in Hrecv1.
+  destruct Hrecv1 as
+    [n_α2 [sig2 [ret2 [sig_β2 [ret_β2 [Heff2 [HlenTs2 [HwfTs2 [HwfTR2
+      [Hsigβ2 [Hretβ2 [Hop2 HsubRecv2]]]]]]]]]]]].
+  assert (HEt1 : E_t1 <> any_tag).
+  { intros Heq; subst E_t1. rewrite Hany in Heff1; discriminate. }
+  destruct (sub_ctor_inv_noty G (type_ctor E_tag lt_local Ts) E_t1 Δ1 Ts1
+              Hnoty HsubRecv2 HEt1) as [l' [Heqctor Hl']].
+  injection Heqctor as HEtag Hl'' HTs. subst E_t1. subst Ts1.
+  assert (Hee : n_α1 = n_α /\ n_β1 = n_β /\ sig1 = sig /\ ret1 = ret).
+  { rewrite Heff in Heff1. injection Heff1; intros; subst; repeat split; reflexivity. }
+  destruct Hee as (Hna & Hnb & Hsg & Hrt).
+  rewrite Hna, Hnb, Hrt in Hri1.
+  rewrite Hri, <- Hri1. exact Hsub1.
+Qed.
+
+(* Type the reified resumption body [plug (shift P)(var 0)]. *)
+Lemma perform_resume_body :
+  forall Γ ret_inst E_tag m n_β Ts T_R op_body Ss v P T_B n_α sig ret,
+  eval_ctx Γ ->
+  ty_wf Γ ret_inst ->
+  ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
+  ret_inst = inst_op_arg n_α Ts n_β Ss ret ->
+  Γ ⊢ₜ plug P (term_perform (term_cap E_tag m n_β Ts T_R op_body) Ss v) : T_B ->
+  (bind_tm ret_inst :: Γ) ⊢ₜ plug (shift_ectx_tm 1 0 P) (term_var 0) : T_B.
+Proof.
+  intros Γ ret_inst E_tag m n_β Ts T_R op_body Ss v P T_B n_α sig ret
+         Hec HwfRi Heff Hri Hplug.
+  pose proof (typing_weaken_tm_shift Γ ret_inst _ _ Hplug) as Hw.
+  rewrite shift_tm_plug in Hw.
+  eapply plug_typing_replace; [exact Hw|].
+  intros Tu Hu.
+  eapply T_Sub.
+  - apply T_Var.
+    + reflexivity.
+    + apply (ty_wf_InsTm Γ ret_inst HwfRi). apply InsTm_here.
+  - eapply (perform_principal_general (bind_tm ret_inst :: Γ)
+              E_tag m n_β Ts T_R (shift_tm 1 2 op_body) Ss (shift_tm 1 0 v)
+              n_α sig ret ret_inst Tu).
+    + intros α. rewrite ctx_lookup_ty_bind_tm. apply (eval_ctx_no_ty Γ α Hec).
+    + rewrite ctx_lookup_eff_bind_tm. apply (eval_ctx_no_eff_any Γ Hec).
+    + rewrite ctx_lookup_eff_bind_tm. exact Heff.
+    + exact Hri.
+    + exact Hu.
+Qed.
+
+Lemma perform_preserves :
   forall Γ E_tag m n_beta Ts T_B T_R op_body Ss v P T,
   eval_ctx Γ -> value v -> pure_ectx_m m P ->
   Γ ⊢ₜ term_handler_m m T_B T_R
@@ -355,6 +471,89 @@ Axiom perform_preserves :
   Γ ⊢ₜ subst_list_tm
          [v; term_resume m T_B T_R (plug (shift_ectx_tm 1 0 P) (term_var 0))]
          (subst_list_ty_in_tm Ss op_body) : T.
+Proof.
+  intros Γ E_tag m n_beta Ts T_B T_R op_body Ss v P T Hec Hval HpureP Hty.
+  (* (a) inversions *)
+  apply handler_m_typing_inv in Hty.
+  destruct Hty as [Hplug [HTBR [HnlTB HTRT]]].
+  destruct (plug_typing_inv P Γ _ _ Hplug) as [Tu Hperf].
+  apply perform_typing_inv in Hperf.
+  destruct Hperf as
+    [E_t0 [Δ0 [Ts0 [n_α [n_β [sig [ret [sig_inst [ret_inst
+      [Hrecv [Heff0 [HlenTs0 [HlenSs [HwfSs [HnlSs [Hsi [Hnlsi
+        [Hri [HwfRi [Harg HsubTu]]]]]]]]]]]]]]]]]]]].
+  apply cap_typing_inv in Hrecv.
+  destruct Hrecv as
+    [n_α' [sig' [ret' [sig_β [ret_β [Heff' [HlenTs [HwfTs [HwfTR
+      [Hsigβ [Hretβ [Hop HsubRecv]]]]]]]]]]]].
+  (* reconcile tags & effect lookups (in eval_ctx Γ) *)
+  assert (HEt0 : E_t0 <> any_tag).
+  { intros Heq; subst E_t0. rewrite (eval_ctx_no_eff_any _ Hec) in Heff0; discriminate. }
+  destruct (sub_ctor_inv Γ (type_ctor E_tag lt_local Ts) E_t0 Δ0 Ts0 Hec HsubRecv HEt0)
+    as [l' [Heqctor Hl']].
+  injection Heqctor as HEtag Hl'' HTs. subst E_t0. subst Ts0.
+  assert (Hee : n_α' = n_α /\ n_beta = n_β /\ sig' = sig /\ ret' = ret).
+  { rewrite Heff' in Heff0. injection Heff0; intros; subst; repeat split; reflexivity. }
+  destruct Hee as (Hna & Hnb & Hsg & Hrt). subst sig' ret'.
+  rewrite Hna in Hsigβ, Hretβ.
+  rewrite <- Hnb in Hsi, Hri, HlenSs, Heff0.
+  (* (b) type-peel: substitute Ss into op_body *)
+  assert (HallSub : Forall (fun S => Γ ⊢ S <:: any_at_free) Ss).
+  { clear -HwfSs HnlSs. revert HwfSs HnlSs. induction Ss as [|S0 rest IH];
+      intros HwfSs HnlSs; [constructor|].
+    inversion HwfSs as [|? ? ? HwfS0 HwfRest]; subst.
+    inversion HnlSs as [|? ? HnlS0 HnlRest]; subst.
+    constructor.
+    + unfold any_at_free. apply SA_Any; [exact HwfS0 | apply LWF_Free | exact HnlS0].
+    + apply IH; assumption. }
+  assert (Hpremise :
+    (List.fold_right (fun rho G => bind_tm rho :: G)
+       (push_ty_vars (List.length Ss) any_at_free Γ)
+       [sig_β; type_fun ret_β lt_local (shift_ty n_beta 0 T_R)])
+       ⊢ₜ op_body : shift_ty n_beta 0 T_R).
+  { cbn [List.fold_right]. rewrite HlenSs. exact Hop. }
+  pose proof (typing_peel_push_ty_vars_fold Ss
+    [sig_β; type_fun ret_β lt_local (shift_ty n_beta 0 T_R)]
+    op_body (shift_ty n_beta 0 T_R) Γ HallSub
+    (eval_ctx_ctor_fields_closed Γ Hec) Hpremise) as Hpeel.
+  (* operation-signature reconciliations *)
+  assert (Hsigeq : subst_list_ty Ss sig_β = sig_inst).
+  { rewrite Hsigβ. rewrite (subst_list_ty_inst_op_alpha n_α Ts n_beta Ss sig HlenSs).
+    symmetry; exact Hsi. }
+  assert (HTReq : subst_list_ty Ss (shift_ty n_beta 0 T_R) = T_R).
+  { rewrite <- HlenSs. apply subst_list_ty_shift_cancel. }
+  assert (Hrhokeq : subst_list_ty Ss (type_fun ret_β lt_local (shift_ty n_beta 0 T_R))
+                    = type_fun ret_inst lt_local T_R).
+  { rewrite subst_list_ty_fun. rewrite HTReq.
+    rewrite Hretβ. rewrite (subst_list_ty_inst_op_alpha n_α Ts n_beta Ss ret HlenSs).
+    rewrite <- Hri. reflexivity. }
+  cbn [List.map List.fold_right] in Hpeel.
+  rewrite Hsigeq, Hrhokeq, HTReq in Hpeel.
+  (* (c) type the resumption *)
+  assert (Hresume : Γ ⊢ₜ term_resume m T_B T_R
+                        (plug (shift_ectx_tm 1 0 P) (term_var 0))
+                        : type_fun ret_inst lt_local T_R).
+  { apply T_Resume.
+    - exact HwfRi.
+    - eapply typing_implies_wf; exact Hplug.
+    - exact HwfTR.
+    - exact HnlTB.
+    - exact HTBR.
+    - eapply perform_resume_body;
+        [exact Hec | exact HwfRi | exact Heff0 | exact Hri | exact Hplug]. }
+  (* (d) substitute the two term arguments *)
+  eapply T_Sub; [|exact HTRT].
+  eapply (typing_subst_list_tm_eval_ctx_global Γ
+    [v; term_resume m T_B T_R (plug (shift_ectx_tm 1 0 P) (term_var 0))]
+    [sig_inst; type_fun ret_inst lt_local T_R]
+    (subst_list_ty_in_tm Ss op_body) T_R Hec).
+  - constructor; [exact Harg | constructor; [exact Hresume | constructor]].
+  - constructor; [exact Hval | constructor; [apply value_resume | constructor]].
+  - cbn [List.map List.concat].
+    rewrite (typing_closed _ _ _ Hec Harg).
+    rewrite (typing_closed _ _ _ Hec Hresume). reflexivity.
+  - cbn [List.fold_right]. exact Hpeel.
+Qed.
 
 (* Head reductions preserve typing (at any type, under eval_ctx). *)
 Lemma head_step_preserves_typing : forall Γ r r' T,

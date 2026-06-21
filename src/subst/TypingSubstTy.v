@@ -2195,3 +2195,148 @@ Proof.
         (SubstTy_tm Sb n Γ G' A HSub) (subst_nl_bind_tm Sb n Γ G' A Hnl)
         (ctor_fields_closed_bind_tm A Γ Hcfc)).
 Qed.
+
+(* ===================================================================== *)
+(*  push_ty_vars TYPE peel — needed for perform_preserves.               *)
+(*                                                                       *)
+(*  An operation body is typed under [push_ty_vars n_β any_at_free Γ]    *)
+(*  (the n_β operation type parameters, each bounded by [any_at_free]),  *)
+(*  with two [bind_tm] binders on top (the argument and the resume).     *)
+(*  A [perform] instantiates the type parameters with concrete [Ss]      *)
+(*  (each no-local, hence [<:: any_at_free] via SA_Any).  This peel      *)
+(*  removes the n_β type binders by iterated [typing_SubstTy].           *)
+(* ===================================================================== *)
+
+(* Front-unfold for the (tail-recursive) [push_ty_vars]. *)
+Lemma push_ty_vars_S_front : forall n b Γ,
+  push_ty_vars (S n) b Γ = bind_ty b :: push_ty_vars n b Γ.
+Proof.
+  induction n; intros b Γ.
+  - reflexivity.
+  - change (push_ty_vars (S (S n)) b Γ)
+      with (push_ty_vars (S n) b (bind_ty b :: Γ)).
+    change (push_ty_vars (S n) b Γ)
+      with (push_ty_vars n b (bind_ty b :: Γ)).
+    apply IHn.
+Qed.
+
+(* A no-local type stays [<:: any_at_free] after pushing type binders
+   (bounded by [any_at_free]) and shifting by the same amount. *)
+Lemma sub_any_at_free_push_ty_vars : forall k Γ S,
+  Γ ⊢ S <:: any_at_free ->
+  push_ty_vars k any_at_free Γ ⊢ shift_ty k 0 S <:: any_at_free.
+Proof.
+  induction k; intros Γ S Hsub.
+  - cbn [push_ty_vars]. rewrite shift_ty_zero. exact Hsub.
+  - rewrite push_ty_vars_S_front.
+    pose proof (sub_weaken_ty_shift (push_ty_vars k any_at_free Γ) any_at_free
+                  (shift_ty k 0 S) any_at_free (IHk Γ S Hsub)) as Hw.
+    rewrite shift_ty_fuse in Hw.
+    replace (shift_ty 1 0 any_at_free) with any_at_free in Hw
+      by (unfold any_at_free; rewrite shift_ty_ctor_eq; reflexivity).
+    exact Hw.
+Qed.
+
+(* Fuse a per-binder type map into the [bind_tm] fold. *)
+Lemma fold_right_bind_tm_map : forall (f : type -> type) base rhos,
+  List.fold_right (fun rho G0 => bind_tm (f rho) :: G0) base rhos
+  = List.fold_right (fun rho G0 => bind_tm rho :: G0) base (List.map f rhos).
+Proof. intros f base rhos. induction rhos; cbn; [reflexivity| rewrite IHrhos; reflexivity]. Qed.
+
+(* The peel: substitute the list [Ss] (each [<:: any_at_free]) for the
+   [push_ty_vars (length Ss) any_at_free Γ] type binders, crossing any
+   number of [bind_tm] binders [rhos] (whose types are substituted too). *)
+Lemma typing_peel_push_ty_vars_fold : forall Ss rhos t U Γ,
+  Forall (fun S => Γ ⊢ S <:: any_at_free) Ss ->
+  ctor_fields_closed Γ ->
+  List.fold_right (fun rho G => bind_tm rho :: G)
+                  (push_ty_vars (List.length Ss) any_at_free Γ) rhos ⊢ₜ t : U ->
+  List.fold_right (fun rho G => bind_tm rho :: G) Γ (List.map (subst_list_ty Ss) rhos)
+    ⊢ₜ subst_list_ty_in_tm Ss t : subst_list_ty Ss U.
+Proof.
+  induction Ss as [|S0 rest IH]; intros rhos t U Γ Hall Hcfc Hty.
+  - (* Ss = [] *)
+    cbn [List.length push_ty_vars] in Hty.
+    assert (Hnil : List.map (subst_list_ty []) rhos = rhos).
+    { clear. induction rhos as [|r rs IHr];
+        cbn [List.map subst_list_ty]; [reflexivity| f_equal; exact IHr]. }
+    rewrite Hnil.
+    cbn [subst_list_ty_in_tm subst_list_ty].
+    exact Hty.
+  - (* Ss = S0 :: rest *)
+    cbn [List.length] in Hty.
+    rewrite push_ty_vars_S_front in Hty.
+    set (PG := push_ty_vars (List.length rest) any_at_free Γ) in *.
+    pose proof (SubstTy_here PG any_at_free (shift_ty (List.length rest) 0 S0)
+                  (sub_any_at_free_push_ty_vars (List.length rest) Γ S0 (Forall_inv Hall)))
+      as Hsub0.
+    pose proof (SubstTy_fold_bind_tm rhos (shift_ty (List.length rest) 0 S0) 0
+                  (bind_ty any_at_free :: PG) PG Hsub0) as HsubF.
+    assert (Hcfc' : ctor_fields_closed
+              (List.fold_right (fun rho G0 => bind_tm rho :: G0)
+                               (bind_ty any_at_free :: PG) rhos)).
+    { apply ctor_fields_closed_fold_bind_tm. apply ctor_fields_closed_bind_ty.
+      apply ctor_fields_closed_push_ty_vars. exact Hcfc. }
+    pose proof (typing_SubstTy _ t U Hty _ _ _ HsubF I Hcfc') as Hstep.
+    rewrite fold_right_bind_tm_map in Hstep.
+    specialize (IH (List.map (subst_ty 0 (shift_ty (List.length rest) 0 S0)) rhos)
+                   (subst_ty_in_tm 0 (shift_ty (List.length rest) 0 S0) t)
+                   (subst_ty 0 (shift_ty (List.length rest) 0 S0) U) Γ
+                   (Forall_inv_tail Hall) Hcfc Hstep).
+    rewrite List.map_map in IH.
+    (* goal and IH agree by eta/iota: subst_list_ty (S0::rest) x reduces to
+       subst_list_ty rest (subst_ty 0 (shift_ty (length rest) 0 S0) x). *)
+    exact IH.
+Qed.
+
+(* ===================================================================== *)
+(*  Type-level reconciliations for perform_preserves.                    *)
+(* ===================================================================== *)
+
+(* [subst_list_ty] of a closed-length list IS [inst_ty_vars]. *)
+Lemma subst_list_ty_eq_inst_ty_vars : forall Ss T,
+  subst_list_ty Ss T = inst_ty_vars (List.length Ss) Ss T.
+Proof.
+  induction Ss as [|U rest IH]; intros T; [reflexivity|].
+  cbn [List.length subst_list_ty inst_ty_vars]. apply IH.
+Qed.
+
+(* Instantiating [length Ss] freshly-shifted type variables cancels. *)
+Lemma inst_ty_vars_shift_cancel : forall Ss T,
+  inst_ty_vars (List.length Ss) Ss (shift_ty (List.length Ss) 0 T) = T.
+Proof.
+  induction Ss as [|U rest IH]; intros T.
+  - cbn [List.length inst_ty_vars]. apply shift_ty_zero.
+  - cbn [List.length inst_ty_vars].
+    replace (shift_ty (S (List.length rest)) 0 T)
+      with (shift_ty 1 0 (shift_ty (List.length rest) 0 T))
+      by (rewrite shift_ty_fuse; reflexivity).
+    rewrite subst_ty_shift_cancel. apply IH.
+Qed.
+
+Lemma subst_list_ty_shift_cancel : forall Ss T,
+  subst_list_ty Ss (shift_ty (List.length Ss) 0 T) = T.
+Proof.
+  intros Ss T. rewrite subst_list_ty_eq_inst_ty_vars. apply inst_ty_vars_shift_cancel.
+Qed.
+
+(* [subst_list_ty] distributes through [type_fun] (lifetime preserved). *)
+Lemma subst_list_ty_fun : forall Ss A l B,
+  subst_list_ty Ss (type_fun A l B)
+  = type_fun (subst_list_ty Ss A) l (subst_list_ty Ss B).
+Proof.
+  induction Ss as [|U rest IH]; intros A l B; [reflexivity|].
+  cbn [subst_list_ty]. cbn [subst_ty]. apply IH.
+Qed.
+
+(* The operation-signature reconciliation: substituting the perform's [Ss]
+   into the capability's [inst_op_alpha …] yields the perform's
+   [inst_op_arg … Ss …]. *)
+Lemma subst_list_ty_inst_op_alpha : forall n_α Ts n_β Ss X,
+  List.length Ss = n_β ->
+  subst_list_ty Ss (inst_op_alpha n_α Ts n_β X)
+  = inst_op_arg n_α Ts n_β Ss X.
+Proof.
+  intros n_α Ts n_β Ss X Hlen. unfold inst_op_arg.
+  rewrite subst_list_ty_eq_inst_ty_vars, Hlen. reflexivity.
+Qed.
