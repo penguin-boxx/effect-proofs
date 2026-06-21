@@ -555,6 +555,130 @@ Proof.
   - cbn [List.fold_right]. exact Hpeel.
 Qed.
 
+(* ================================================================== *)
+(* marker_ok preservation for handler-elimination (H_Perform), relocated *)
+(* here from Markers.v so the [v]-confinement can use the typing-side    *)
+(* escape lemma [value_no_local_no_rt_cap] + [perform_typing_inv] (only  *)
+(* importable below Frames).  The previously-FALSE axiom                 *)
+(* [perform_redex_markers_confined] is replaced by the runtime           *)
+(* well-scopedness invariant [well_scoped] (Markers.v): the reduct's     *)
+(* op_body confinement comes from [well_scoped_step_handler_confinement], *)
+(* the perform argument [v] carries no markers (no-local closed value ⇒   *)
+(* has_rt_cap = false ⇒ markers_in = []), and the resume re-introduces m. *)
+(* ================================================================== *)
+Lemma marker_ok_step_handler_elim :
+  forall Γ m T_B T_R E_tag n_beta Ts op_body Ss v P Tr ms,
+  eval_ctx Γ ->
+  value v ->
+  pure_ectx_m m P ->
+  Γ ⊢ₜ term_handler_m m T_B T_R
+        (plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss v)) : Tr ->
+  marker_ok ms (term_handler_m m T_B T_R
+        (plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss v))) ->
+  well_scoped ms (term_handler_m m T_B T_R
+        (plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss v))) ->
+  marker_ok ms
+    (subst_list_tm
+       [v; term_resume m T_B T_R (plug (shift_ectx_tm 1 0 P) (term_var 0))]
+       (subst_list_ty_in_tm Ss op_body)).
+Proof.
+  intros Γ m T_B T_R E_tag n_beta Ts op_body Ss v P Tr ms Hec Hval Hpure Hty Hok Hws.
+  pose proof (well_scoped_step_handler_confinement _ _ _ _ _ _ _ _ _ _ _ _ Hws Hpure)
+    as Hopconf.
+  assert (Hvmok : forall ms0, marker_ok ms0 v).
+  { apply handler_m_typing_inv in Hty.
+    destruct Hty as [Hplug [HTBR [HnlTB HTRT]]].
+    destruct (plug_typing_inv P Γ _ _ Hplug) as [Tu Hperf].
+    apply perform_typing_inv in Hperf.
+    destruct Hperf as
+      [E_t0 [Δ0 [Ts0 [n_α [n_β [sig [ret [sig_inst [ret_inst
+        [Hrecv [Heff0 [HlenTs0 [HlenSs [HwfSs [HnlSs [Hsi [Hnlsi
+          [Hri [HwfRi [Harg HsubTu]]]]]]]]]]]]]]]]]]]].
+    assert (Hcap : has_rt_cap v = false).
+    { eapply value_no_local_no_rt_cap;
+        [ exact Hec | exact Harg | exact Hval
+        | eapply typing_closed; [exact Hec | exact Harg] | exact Hnlsi ]. }
+    intros ms0. apply marker_ok_no_rt_cap. exact Hcap. }
+  simpl in Hok.
+  apply marker_ok_subst_list_tm.
+  - apply Forall_cons.
+    + apply Hvmok.
+    + apply Forall_cons; [| apply Forall_nil].
+      simpl.
+      assert (Hvar0 : marker_ok (m :: ms) (plug P (term_var 0))).
+      { eapply marker_ok_plug_replace; [exact Hok | intros ms' _; exact I]. }
+      pose proof (marker_ok_shift_tm (plug P (term_var 0)) (m :: ms) 1 0 Hvar0) as Hsh.
+      rewrite shift_tm_plug_markers in Hsh.
+      eapply marker_ok_plug_replace; [exact Hsh | intros ms' _; exact I].
+  - apply marker_ok_subst_list_ty_in_tm. exact Hopconf.
+Qed.
+
+(* A head step preserves marker_ok uniformly in the scope. *)
+Lemma head_step_preserves_marker_ok : forall Γ r r' Tr,
+  eval_ctx Γ ->
+  Γ ⊢ₜ r : Tr -> marker_types_safe r -> r -->h r' ->
+  forall ms, marker_ok ms r -> well_scoped ms r -> marker_ok ms r'.
+Proof.
+  intros Γ r r' Tr Hec Hr Hsafe Hstep ms Hok Hws. inversion Hstep; subst.
+  - (* H_Beta *)
+    destruct Hok as [Hbody Hv]. apply marker_ok_subst_tm; [exact Hv | exact Hbody].
+  - (* H_TyBeta *)
+    apply marker_ok_subst_ty_in_tm. exact Hok.
+  - (* H_LtBeta *)
+    apply marker_ok_subst_lt_in_tm. exact Hok.
+  - (* H_MatchYes *)
+    destruct Hok as [Hctor [Hyes Hno]].
+    apply marker_ok_subst_list_tm.
+    + apply (marker_ok_ctor_args_forall ms K l lts Ts vs Hctor).
+    + apply marker_ok_subst_list_lt_in_tm. exact Hyes.
+  - (* H_MatchNo *)
+    destruct Hok as [Hctor [Hyes Hno]]. exact Hno.
+  - (* H_Return *)
+    destruct (handler_m_typing_inv_markers _ _ _ _ _ _ Hr) as [Hbody Hnl].
+    pose proof (typing_closed _ _ _ Hec Hr) as Hcl. simpl in Hcl.
+    eapply marker_ok_handler_return_no_cap; [ | exact Hok ].
+    eapply value_no_local_no_rt_cap;
+      [ exact Hec | exact Hbody | assumption | exact Hcl | exact Hnl ].
+  - (* H_Perform *)
+    eapply marker_ok_step_handler_elim;
+      [ exact Hec | eassumption | eassumption | exact Hr | exact Hok | exact Hws ].
+  - (* H_Resume *)
+    destruct Hok as [Hres Hv].
+    apply marker_ok_subst_tm.
+    + eapply marker_ok_mono; [apply incl_tl; apply incl_refl | exact Hv].
+    + exact Hres.
+Qed.
+
+(* One reduction step preserves marker_ok [] (given the well-scopedness  *)
+(* invariant for the current state).                                     *)
+Lemma step_preserves_marker_ok : forall Γ t t' T,
+  eval_ctx Γ -> marker_ok [] t -> marker_types_safe t -> Γ ⊢ₜ t : T ->
+  well_scoped [] t ->
+  t ==> t' -> marker_ok [] t'.
+Proof.
+  intros Γ t t' T Hec Hmok Hsafe Hty Hws Hstep.
+  inversion Hstep as
+    [E r r' Hwf Hhead Heq1 Heq2
+    | E E_tag n_beta Ts T_B T_R op_body body m Hwf Hfresh Heq1 Heq2]; subst.
+  - (* S_step *)
+    destruct (plug_typing_inv E Γ r T Hty) as [Tr Hr].
+    assert (Hsafe_r : marker_types_safe r).
+    { eapply marker_types_safe_incl;
+        [ intros p Hp; apply (marker_annots_plug_in E r p Hp) | exact Hsafe ]. }
+    eapply marker_ok_well_scoped_plug_replace; [ exact Hmok | exact Hws | ].
+    intros ms' Hm Hwm.
+    eapply head_step_preserves_marker_ok;
+      [ exact Hec | exact Hr | exact Hsafe_r | exact Hhead | exact Hm | exact Hwm ].
+  - (* S_HandleCtx *)
+    eapply marker_ok_plug_replace; [ exact Hmok | ].
+    intros ms' Hm. destruct Hm as [Hop Hbody]. simpl.
+    apply marker_ok_subst_tm.
+    + simpl. split.
+      * left. reflexivity.
+      * eapply marker_ok_mono; [ apply incl_tl; apply incl_tl; apply incl_refl | exact Hop ].
+    + eapply marker_ok_mono; [ apply incl_tl; apply incl_refl | exact Hbody ].
+Qed.
+
 (* Head reductions preserve typing (at any type, under eval_ctx). *)
 Lemma head_step_preserves_typing : forall Γ r r' T,
   eval_ctx Γ -> Γ ⊢ₜ r : T -> r -->h r' -> Γ ⊢ₜ r' : T.

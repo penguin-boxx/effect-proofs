@@ -76,25 +76,35 @@ Qed.
 (* Type soundness for states carrying the explicit closed-annotation     *)
 (* marker invariant.  Subject reduction (preservation) and the marker    *)
 (* step-preservation facts are supplied internally from proved lemmas.   *)
+(* Soundness is CONDITIONAL on the runtime marker well-scopedness invariant
+   [well_scoped] holding at every reachable state.  This replaces the former
+   (false-as-stated) [perform_redex_markers_confined] axiom: the invariant is
+   true on every state reachable from a source program (Phase 2 will discharge
+   the hypothesis by proving [well_scoped] preserved), and it is vacuously
+   established at the initial source state by [well_scoped_no_rt_cap]. *)
 Theorem type_soundness :
   forall Γ t t' T,
     eval_ctx Γ ->
     safety_invariants Γ T t ->
+    (forall u, multi_step t u -> well_scoped [] u) ->
     multi_step t t' ->
     ~ stuck t'.
 Proof.
-  intros Γ t t' T Hec Hinv Hms.
+  intros Γ t t' T Hec Hinv Hwsr Hms.
   assert (Hreach : safety_invariants Γ T t').
-  { revert Hinv. induction Hms as [u | u1 u2 u3 Hstep Hms IH]; intros Hinv.
+  { revert Hinv Hwsr. induction Hms as [u | u1 u2 u3 Hstep Hms IH]; intros Hinv Hwsr.
     - exact Hinv.
-    - apply IH. destruct Hinv as [Hmok [Hclosed [Hmsafe Hty]]].
-      split; [eapply step_preserves_marker_ok;
-                [exact Hec | exact Hmok | exact Hmsafe | exact Hty | exact Hstep] |].
-      split; [eapply step_preserves_marker_annots_closed_typed;
-                [exact Hec | exact Hclosed | exact Hty | exact Hstep] |].
-      split; [eapply step_preserves_marker_types_safe_closed_typed;
-                [exact Hec | exact Hclosed | exact Hmsafe | exact Hty | exact Hstep] |].
-      eapply preservation; eauto. }
+    - apply IH.
+      + destruct Hinv as [Hmok [Hclosed [Hmsafe Hty]]].
+        split; [eapply step_preserves_marker_ok;
+                  [exact Hec | exact Hmok | exact Hmsafe | exact Hty
+                  | apply Hwsr; apply MS_Refl | exact Hstep] |].
+        split; [eapply step_preserves_marker_annots_closed_typed;
+                  [exact Hec | exact Hclosed | exact Hty | exact Hstep] |].
+        split; [eapply step_preserves_marker_types_safe_closed_typed;
+                  [exact Hec | exact Hclosed | exact Hmsafe | exact Hty | exact Hstep] |].
+        eapply preservation; eauto.
+      + intros u Hu. apply Hwsr. eapply MS_Step; [exact Hstep | exact Hu]. }
   destruct Hreach as [Hmok [_ [Hmsafe Hty]]].
   eapply safe_state_not_stuck; eauto.
 Qed.
@@ -105,11 +115,12 @@ Corollary source_type_soundness : forall Γ t t' T,
   eval_ctx Γ ->
   has_rt_cap t = false ->
   Γ ⊢ₜ t : T ->
+  (forall u, multi_step t u -> well_scoped [] u) ->
   multi_step t t' ->
   ~ stuck t'.
 Proof.
-  intros Γ t t' T Hec Hsrc Hty Hms.
-  eapply type_soundness; eauto.
+  intros Γ t t' T Hec Hsrc Hty Hwsr Hms.
+  eapply type_soundness; [exact Hec | | exact Hwsr | exact Hms].
   split.
   - apply marker_ok_no_rt_cap. exact Hsrc.
   - split.
@@ -123,6 +134,7 @@ Qed.
 Corollary type_safety_from_invariants : forall Γ t t' T,
   eval_ctx Γ ->
   safety_invariants Γ T t ->
+  (forall u, multi_step t u -> well_scoped [] u) ->
   multi_step t t' ->
   ~ stuck t'.
 Proof. exact type_soundness. Qed.
