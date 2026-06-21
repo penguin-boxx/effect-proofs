@@ -4080,3 +4080,105 @@ Proof.
   - intros i w ms Hcap _. exact I.
   - intros u ts IHu IHts i w ms Hcap [Hu Hts]. split; [apply IHu|apply IHts]; assumption.
 Qed.
+
+(* Type substitution preserves well_scoped (it never touches markers). *)
+Lemma well_scoped_subst_ty_in_tm : forall t var R ms,
+  well_scoped ms t -> well_scoped ms (subst_ty_in_tm var R t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall var R ms, well_scoped ms t -> well_scoped ms (subst_ty_in_tm var R t))
+    (fun ts => forall var R ms, well_scoped_list ms ts ->
+       well_scoped_list ms (List.map (subst_ty_in_tm var R) ts))).
+  - intros n var R ms Hws. exact I.
+  - intros t1 t2 IH1 IH2 var R ms [H1 H2]. cbn [subst_ty_in_tm].
+    split; [apply IH1|apply IH2]; assumption.
+  - intros body T IH var R ms Hws. cbn [subst_ty_in_tm]. apply IH; exact Hws.
+  - intros t T IH var R ms Hws. cbn [subst_ty_in_tm]. apply IH; exact Hws.
+  - intros bound body IH var R ms Hws. cbn [subst_ty_in_tm]. apply IH; exact Hws.
+  - intros t l IH var R ms Hws. cbn [subst_ty_in_tm]. apply IH; exact Hws.
+  - intros body IH var R ms Hws. cbn [subst_ty_in_tm]. apply IH; exact Hws.
+  - intros K l lts Ts ts IH var R ms Hws.
+    replace (subst_ty_in_tm var R (term_ctor K l lts Ts ts))
+      with (term_ctor K l lts (subst_ty_list var R Ts) (List.map (subst_ty_in_tm var R) ts))
+      by (cbn [subst_ty_in_tm]; rewrite subst_ty_in_tm_go_eq_map; reflexivity).
+    rewrite well_scoped_ctor_eq. apply IH. rewrite well_scoped_ctor_eq in Hws. exact Hws.
+  - intros scrut tag nlt ar y n IHs IHy IHn var R ms [Hs [Hy Hn]]. cbn [subst_ty_in_tm].
+    split; [apply IHs; exact Hs | split; [apply IHy; exact Hy | apply IHn; exact Hn]].
+  - intros E nb Ts T_B T_R op body IHop IHb var R ms [Hop Hb]. cbn [subst_ty_in_tm].
+    split; [apply IHop; exact Hop | apply IHb; exact Hb].
+  - intros t Ss arg IHt IHa var R ms [Ht Ha]. cbn [subst_ty_in_tm].
+    split; [apply IHt; exact Ht | apply IHa; exact Ha].
+  - intros E_tag m nb Ts T_R op IHop var R ms [Hin [Hmok Hws]]. cbn [subst_ty_in_tm].
+    split; [exact Hin|]. split.
+    + apply marker_ok_subst_ty_in_tm. exact Hmok.
+    + apply IHop. exact Hws.
+  - intros m T_B T_R body IH var R ms [Hnin Hws]. cbn [subst_ty_in_tm].
+    split; [exact Hnin | apply IH; exact Hws].
+  - intros m T_B T_R body IH var R ms [Hnin Hws]. cbn [subst_ty_in_tm].
+    split; [exact Hnin | apply IH; exact Hws].
+  - intros var R ms _. exact I.
+  - intros u ts IHu IHts var R ms [Hu Hts]. split; [apply IHu|apply IHts]; assumption.
+Qed.
+
+(* Lifetime substitution preserves well_scoped (it never touches markers). *)
+Lemma well_scoped_subst_lt_in_tm : forall t var R ms,
+  well_scoped ms t -> well_scoped ms (subst_lt_in_tm var R t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall var R ms, well_scoped ms t -> well_scoped ms (subst_lt_in_tm var R t))
+    (fun ts => forall var R ms, well_scoped_list ms ts ->
+       well_scoped_list ms (List.map (subst_lt_in_tm var R) ts))).
+  - intros n var R ms Hws. exact I.
+  - intros t1 t2 IH1 IH2 var R ms [H1 H2]. cbn [subst_lt_in_tm].
+    split; [apply IH1|apply IH2]; assumption.
+  - intros body T IH var R ms Hws. cbn [subst_lt_in_tm]. apply IH; exact Hws.
+  - intros t T IH var R ms Hws. cbn [subst_lt_in_tm]. apply IH; exact Hws.
+  - intros bound body IH var R ms Hws. cbn [subst_lt_in_tm]. apply IH; exact Hws.
+  - intros t l IH var R ms Hws. cbn [subst_lt_in_tm]. apply IH; exact Hws.
+  - intros body IH var R ms Hws. cbn [subst_lt_in_tm]. apply IH; exact Hws.
+  - intros K l lts Ts ts IH var R ms Hws.
+    cbn [subst_lt_in_tm]. rewrite subst_lt_in_tm_go_eq_map.
+    rewrite well_scoped_ctor_eq. apply IH. rewrite well_scoped_ctor_eq in Hws. exact Hws.
+  - intros scrut tag nlt ar y n IHs IHy IHn var R ms [Hs [Hy Hn]]. cbn [subst_lt_in_tm].
+    split; [apply IHs; exact Hs | split; [apply IHy; exact Hy | apply IHn; exact Hn]].
+  - intros E nb Ts T_B T_R op body IHop IHb var R ms [Hop Hb]. cbn [subst_lt_in_tm].
+    split; [apply IHop; exact Hop | apply IHb; exact Hb].
+  - intros t Ss arg IHt IHa var R ms [Ht Ha]. cbn [subst_lt_in_tm].
+    split; [apply IHt; exact Ht | apply IHa; exact Ha].
+  - intros E_tag m nb Ts T_R op IHop var R ms [Hin [Hmok Hws]]. cbn [subst_lt_in_tm].
+    split; [exact Hin|]. split.
+    + apply marker_ok_subst_lt_in_tm. exact Hmok.
+    + apply IHop. exact Hws.
+  - intros m T_B T_R body IH var R ms [Hnin Hws]. cbn [subst_lt_in_tm].
+    split; [exact Hnin | apply IH; exact Hws].
+  - intros m T_B T_R body IH var R ms [Hnin Hws]. cbn [subst_lt_in_tm].
+    split; [exact Hnin | apply IH; exact Hws].
+  - intros var R ms _. exact I.
+  - intros u ts IHu IHts var R ms [Hu Hts]. split; [apply IHu|apply IHts]; assumption.
+Qed.
+
+(* Structural plug-replace for well_scoped (the ectx has no cap frames). *)
+Lemma well_scoped_plug_replace : forall E r r' ms,
+  well_scoped ms (plug E r) ->
+  (forall ms', well_scoped ms' r -> well_scoped ms' r') ->
+  well_scoped ms (plug E r').
+Proof.
+  induction E as
+    [ | E1 IHE ta | ta E1 IHE | E1 IHE Ty | E1 IHE lt
+    | tag dl lts Tys vs E1 IHE ts | E1 IHE K nlt ar yes no
+    | mk TB TR E1 IHE | E1 IHE Ss ar2 | rcv Ss E1 IHE ];
+    intros r r' ms Hws Hrep; cbn [plug] in Hws |- *.
+  - apply Hrep; exact Hws.
+  - destruct Hws as [H1 H2]. split; [eapply IHE; eauto | exact H2].
+  - destruct Hws as [H1 H2]. split; [exact H1 | eapply IHE; eauto].
+  - eapply IHE; eauto.
+  - eapply IHE; eauto.
+  - rewrite well_scoped_ctor_eq in Hws |- *.
+    revert Hws. induction vs as [|a vs' IHvs]; intros Hws; cbn [List.app] in Hws |- *.
+    + destruct Hws as [Hfoc Hrest]. split; [eapply IHE; eauto | exact Hrest].
+    + destruct Hws as [Ha Hrest]. split; [exact Ha | apply IHvs; exact Hrest].
+  - destruct Hws as [Hs [Hy Hn]]. repeat split; [eapply IHE; eauto | exact Hy | exact Hn].
+  - destruct Hws as [Hnin Hbody]. split; [exact Hnin | eapply IHE; eauto].
+  - destruct Hws as [H1 H2]. split; [eapply IHE; eauto | exact H2].
+  - destruct Hws as [H1 H2]. split; [exact H1 | eapply IHE; eauto].
+Qed.
