@@ -30,6 +30,48 @@ Proof.
   exact Hpeel.
 Qed.
 
+(* TYPING-level peel of the match's [push_corr] binders (mirrors the   *)
+(* subtyping [sub_peel_push_corr]): substituting the constructor's      *)
+(* actual lifetimes [lts] (each <: Delta) for the n_lt match lt-vars    *)
+(* removes the push_corr block, leaving the field (bind_tm) binders     *)
+(* with their types lt-substituted.  Each step peels one lt-binder via  *)
+(* [typing_SubstLt] (now general) + [SubstLt_fold_bind_tm_map] over     *)
+(* [SubstLt_here], using [lt_sub_push_corr_weaken] for the bound.       *)
+Lemma typing_peel_push_corr_fold : forall lts Delta rhos t U Γ,
+  Forall (fun l => Γ ⊢ₗ l <: Delta) lts ->
+  (List.fold_right (fun rho G => bind_tm rho :: G)
+     (push_corr (List.length lts) Delta Γ) rhos) ⊢ₜ t : U ->
+  (List.fold_right (fun rho G => bind_tm rho :: G) Γ
+     (List.map (subst_list_lt_in_ty lts) rhos))
+    ⊢ₜ subst_list_lt_in_tm lts t : subst_list_lt_in_ty lts U.
+Proof.
+  induction lts as [|l0 rest IH]; intros Delta rhos t U Γ Hfor Hty.
+  - cbn [List.length push_corr] in Hty.
+    cbn [subst_list_lt_in_tm subst_list_lt_in_ty].
+    erewrite List.map_ext by (intro a; apply subst_list_lt_in_ty_nil).
+    rewrite List.map_id. exact Hty.
+  - pose proof (Forall_inv Hfor) as Hhead.
+    pose proof (Forall_inv_tail Hfor) as Htail.
+    cbn [List.length push_corr] in Hty.
+    cbn [subst_list_lt_in_tm subst_list_lt_in_ty].
+    pose proof (typing_SubstLt _ _ _ Hty
+      (shift_lt (List.length rest) 0 l0) 0
+      (List.fold_right (fun rho G => bind_tm rho :: G)
+        (push_corr (List.length rest) Delta Γ)
+        (List.map (subst_lt_in_ty 0 (shift_lt (List.length rest) 0 l0)) rhos))
+      (SubstLt_fold_bind_tm_map rhos (shift_lt (List.length rest) 0 l0) 0
+        (bind_lt (shift_lt (List.length rest) 0 Delta) :: push_corr (List.length rest) Delta Γ)
+        (push_corr (List.length rest) Delta Γ)
+        (SubstLt_here (push_corr (List.length rest) Delta Γ)
+          (shift_lt (List.length rest) 0 Delta) (shift_lt (List.length rest) 0 l0)
+          (lt_sub_push_corr_weaken (List.length rest) Delta Γ l0 Delta Hhead)))) as Hstep.
+    pose proof (IH Delta (List.map (subst_lt_in_ty 0 (shift_lt (List.length rest) 0 l0)) rhos)
+      (subst_lt_in_tm 0 (shift_lt (List.length rest) 0 l0) t)
+      (subst_lt_in_ty 0 (shift_lt (List.length rest) 0 l0) U) Γ Htail Hstep) as Hrec.
+    rewrite List.map_map in Hrec.
+    exact Hrec.
+Qed.
+
 (* ------------------------------------------------------------------ *)
 (* Inversion lemmas for T_Match and T_Ctor                            *)
 (* ------------------------------------------------------------------ *)

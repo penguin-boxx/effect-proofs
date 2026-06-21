@@ -2234,6 +2234,54 @@ Proof.
   apply typing_weaken_tm_shift_many. apply Hrep. exact Hlk.
 Qed.
 
+(* ----- single-binder replacement-typed preservation ---------------- *)
+(* Going under one bind_tm / bind_ty / bind_lt preserves the typed-     *)
+(* replacement property, by weakening the replacement through that      *)
+(* binder.  The bind_lt case uses the GENERAL [typing_InsLt] (no        *)
+(* closedness) — this is what lets [typing_SubstTm] thread              *)
+(* replacement-typing as a per-node invariant instead of the UNSOUND    *)
+(* universal HrepAll (which fails at bind_ctor/bind_eff: ctx_lookup_ctor *)
+(* front-shadows).                                                       *)
+Lemma SubstTm_replacement_typed_bind_tm : forall A v n G G',
+  SubstTm_replacement_typed v n G G' ->
+  SubstTm_replacement_typed (shift_tm 1 0 v) (S n) (bind_tm A :: G) (bind_tm A :: G').
+Proof.
+  intros A v n G G' Hrep T Hlk. simpl in Hlk.
+  apply typing_weaken_tm_shift. apply Hrep. exact Hlk.
+Qed.
+
+Lemma SubstTm_replacement_typed_bind_ty : forall B v n G G',
+  SubstTm_replacement_typed v n G G' ->
+  SubstTm_replacement_typed (shift_ty_in_tm 1 0 v) n (bind_ty B :: G) (bind_ty B :: G').
+Proof.
+  intros B v n G G' Hrep T Hlk. simpl in Hlk.
+  destruct (ctx_lookup_tm G n) as [T0|] eqn:Hbase; simpl in Hlk; [|discriminate].
+  inversion Hlk; subst T; clear Hlk.
+  apply typing_weaken_ty_shift. apply Hrep. exact Hbase.
+Qed.
+
+Lemma SubstTm_replacement_typed_bind_lt : forall D v n G G',
+  SubstTm_replacement_typed v n G G' ->
+  SubstTm_replacement_typed (shift_lt_in_tm 1 0 v) n (bind_lt D :: G) (bind_lt D :: G').
+Proof.
+  intros D v n G G' Hrep T Hlk. simpl in Hlk.
+  destruct (ctx_lookup_tm G n) as [T0|] eqn:Hbase; simpl in Hlk; [|discriminate].
+  inversion Hlk; subst T; clear Hlk.
+  exact (typing_InsLt G' v T0 (Hrep T0 Hbase) 0 (bind_lt D :: G') (InsLt_here D G')).
+Qed.
+
+Lemma SubstTm_replacement_typed_push_corr : forall k Delta v n G G',
+  SubstTm_replacement_typed v n G G' ->
+  SubstTm_replacement_typed (shift_lt_in_tm k 0 v) n
+    (push_corr k Delta G) (push_corr k Delta G').
+Proof.
+  induction k as [|k IH]; intros Delta v n G G' Hrep; simpl.
+  - rewrite shift_lt_in_tm_zero. exact Hrep.
+  - replace (shift_lt_in_tm (S k) 0 v) with (shift_lt_in_tm 1 0 (shift_lt_in_tm k 0 v)).
+    2:{ rewrite shift_lt_in_tm_fuse. replace (1 + k) with (S k) by lia. reflexivity. }
+    apply SubstTm_replacement_typed_bind_lt. apply IH. exact Hrep.
+Qed.
+
 Lemma SubstTm_replacement_typed_push_ty_vars : forall k B v n G G',
   SubstTm_replacement_typed v n G G' ->
   SubstTm_replacement_typed (shift_ty_in_tm k 0 v) n
@@ -2808,9 +2856,7 @@ Lemma Forall2_typing_SubstTm_global : forall Γ vs rhos,
     tm_lt_closed 0 repl ->
     SubstTm_target_ty_closed0 n Γ ->
     SubstTm_target_lt_closed0 n Γ ->
-    (forall repl0 n0 G0 G0',
-      SubstTm repl0 n0 G0 G0' ->
-      SubstTm_replacement_typed repl0 n0 G0 G0') ->
+    SubstTm_replacement_typed repl n Γ G' ->
     forall c,
     ctx_lt_closed_from c G' ->
     ctx_schemas_lt_closed_from c G' ->
@@ -2823,9 +2869,7 @@ Lemma Forall2_typing_SubstTm_global : forall Γ vs rhos,
     tm_lt_closed 0 repl ->
     SubstTm_target_ty_closed0 n Γ ->
     SubstTm_target_lt_closed0 n Γ ->
-    (forall repl0 n0 G0 G0',
-      SubstTm repl0 n0 G0 G0' ->
-      SubstTm_replacement_typed repl0 n0 G0 G0') ->
+    SubstTm_replacement_typed repl n Γ G' ->
     forall c,
     ctx_lt_closed_from c G' ->
     ctx_schemas_lt_closed_from c G' ->
@@ -2850,9 +2894,7 @@ Lemma typing_SubstTm : forall Γ t T,
     tm_lt_closed 0 repl ->
     SubstTm_target_ty_closed0 n Γ ->
     SubstTm_target_lt_closed0 n Γ ->
-    (forall repl0 n0 G0 G0',
-      SubstTm repl0 n0 G0 G0' ->
-      SubstTm_replacement_typed repl0 n0 G0 G0') ->
+    SubstTm_replacement_typed repl n Γ G' ->
     forall c,
     ctx_lt_closed_from c G' ->
     ctx_schemas_lt_closed_from c G' ->
@@ -2867,9 +2909,7 @@ Proof.
       tm_lt_closed 0 repl ->
       SubstTm_target_ty_closed0 n Γ ->
       SubstTm_target_lt_closed0 n Γ ->
-      (forall repl0 n0 G0 G0',
-        SubstTm repl0 n0 G0 G0' ->
-        SubstTm_replacement_typed repl0 n0 G0 G0') ->
+      SubstTm_replacement_typed repl n Γ G' ->
       forall c,
       ctx_lt_closed_from c G' ->
       ctx_schemas_lt_closed_from c G' ->
@@ -2878,7 +2918,7 @@ Proof.
   - intros Γ x T Hlk HwfT repl n G' HSub Hfree HtmTy HtmLt HtargetTy HtargetLt HrepAll c Hlt Hschemas Hcap.
     simpl. destruct (Nat.eqb x n) eqn:Heq.
     + apply Nat.eqb_eq in Heq. subst x.
-      exact (HrepAll repl n Γ G' HSub T Hlk).
+      exact (HrepAll T Hlk).
     + apply Nat.eqb_neq in Heq.
       destruct (Nat.ltb n x) eqn:Hltx.
       * apply T_Var.
@@ -2907,7 +2947,7 @@ Proof.
       (tm_lt_closed_shift_tm repl 0 1 0 HtmLt)
       (SubstTm_target_ty_closed0_tm n Γ A HtargetTy)
       (SubstTm_target_lt_closed0_tm n Γ A HtargetLt)
-      HrepAll c).
+      (SubstTm_replacement_typed_bind_tm A repl n Γ G' HrepAll) c).
       * apply ctx_lt_closed_from_bind_tm. exact Hlt.
       * apply ctx_schemas_lt_closed_from_bind_tm. exact Hschemas.
       * apply replacement_capture_bound_tm; assumption.
@@ -2933,7 +2973,7 @@ Proof.
       (tm_lt_closed_shift_ty repl 0 1 0 HtmLt)
       (SubstTm_target_ty_closed0_ty n Γ bound HtargetTy)
       (SubstTm_target_lt_closed0_ty n Γ bound HtargetLt)
-      HrepAll c).
+      (SubstTm_replacement_typed_bind_ty bound repl n Γ G' HrepAll) c).
       * apply ctx_lt_closed_from_bind_ty. exact Hlt.
       * apply ctx_schemas_lt_closed_from_bind_ty. exact Hschemas.
       * apply replacement_capture_bound_ty; assumption.
@@ -2955,7 +2995,7 @@ Proof.
       (tm_lt_closed_shift_lt_closed0 repl 1 HtmLt)
       (SubstTm_target_ty_closed0_lt n Γ lt_local HtargetTy)
       (SubstTm_target_lt_closed0_lt n Γ lt_local HtargetLt)
-      HrepAll (S c)).
+      (SubstTm_replacement_typed_bind_lt lt_local repl n Γ G' HrepAll) (S c)).
       * apply ctx_lt_closed_from_bind_lt. exact Hlt.
       * apply ctx_schemas_lt_closed_from_bind_lt. exact Hschemas.
       * apply replacement_capture_bound_lt; assumption.
@@ -3028,7 +3068,11 @@ Proof.
       refine (IHyes (shift_tm (List.length rho_fields) 0 (shift_lt_in_tm n_lt 0 repl))
         (n + List.length rho_fields)
         (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) (push_corr n_lt Delta G') rho_fields)
-        _ _ _ _ _ _ HrepAll (c + n_lt) _ _ _).
+        _ _ _ _ _ _
+        (SubstTm_replacement_typed_fold_bind_tm rho_fields (shift_lt_in_tm n_lt 0 repl) n
+          (push_corr n_lt Delta Γ) (push_corr n_lt Delta G')
+          (SubstTm_replacement_typed_push_corr n_lt Delta repl n Γ G' HrepAll))
+        (c + n_lt) _ _ _).
       * apply SubstTm_fold_bind_tm. apply SubstTm_push_corr. exact HSub.
       * apply free_tm_vars_closed_shift_tm_any. rewrite free_tm_vars_shift_lt_in_tm_any. exact Hfree.
       * apply tm_ty_closed_shift_tm. apply tm_ty_closed_shift_lt. exact HtmTy.
@@ -3065,7 +3109,12 @@ Proof.
           (shift_ty_in_tm n_β 0 repl)) (n + List.length [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)])
           (fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
             (push_ty_vars n_β any_at_free G') [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)])
-          _ _ _ _ _ _ HrepAll c _ _ _).
+          _ _ _ _ _ _
+          (SubstTm_replacement_typed_fold_bind_tm
+            [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)] (shift_ty_in_tm n_β 0 repl) n
+            (push_ty_vars n_β any_at_free Γ) (push_ty_vars n_β any_at_free G')
+            (SubstTm_replacement_typed_push_ty_vars n_β any_at_free repl n Γ G' HrepAll))
+          c _ _ _).
       * exact (SubstTm_fold_bind_tm
         [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)]
         (shift_ty_in_tm n_β 0 repl) n
@@ -3119,7 +3168,12 @@ Proof.
           (shift_ty_in_tm n_β 0 repl)) (n + List.length [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)])
           (fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
             (push_ty_vars n_β any_at_free G') [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)])
-          _ _ _ _ _ _ HrepAll c _ _ _).
+          _ _ _ _ _ _
+          (SubstTm_replacement_typed_fold_bind_tm
+            [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)] (shift_ty_in_tm n_β 0 repl) n
+            (push_ty_vars n_β any_at_free Γ) (push_ty_vars n_β any_at_free G')
+            (SubstTm_replacement_typed_push_ty_vars n_β any_at_free repl n Γ G' HrepAll))
+          c _ _ _).
         * exact (SubstTm_fold_bind_tm
           [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)]
           (shift_ty_in_tm n_β 0 repl) n
@@ -3148,7 +3202,9 @@ Proof.
           (replacement_capture_bound_push_ty_vars_any_at_free
             n_β Γ G' repl n Hfree Hcap)).
     + refine (IHbody (shift_tm 1 0 repl) (S n) (bind_tm (type_ctor E_tag lt_local Ts) :: G')
-      _ _ _ _ _ _ HrepAll c _ _ _).
+      _ _ _ _ _ _
+      (SubstTm_replacement_typed_bind_tm (type_ctor E_tag lt_local Ts) repl n Γ G' HrepAll)
+      c _ _ _).
       * apply SubstTm_tm. exact HSub.
       * apply free_tm_vars_closed_shift_tm_any. exact Hfree.
       * apply tm_ty_closed_shift_tm. exact HtmTy.
@@ -3192,7 +3248,9 @@ Proof.
     + eapply sub_free_SubstTm; eauto.
     + eapply sub_SubstTm; eauto.
     + refine (IHb (shift_tm 1 0 repl) (S n) (bind_tm A :: G')
-      _ _ _ _ _ _ HrepAll c _ _ _).
+      _ _ _ _ _ _
+      (SubstTm_replacement_typed_bind_tm A repl n Γ G' HrepAll)
+      c _ _ _).
       * apply SubstTm_tm. exact HSub.
       * apply free_tm_vars_closed_shift_tm_any. exact Hfree.
       * apply tm_ty_closed_shift_tm. exact HtmTy.
@@ -3409,36 +3467,29 @@ Proof.
 Qed.
 
 (* ================================================================ *)
-(* AXIOM 3: HrepAll-free term-substitution preservation under an     *)
-(* evaluation context.  This is the SubstTm_eval_ctx_prefix          *)
-(* restructure: the SETP constructors use 0-indexed closedness while *)
-(* typing_SubstTm threads a varying binder depth c, so discharging   *)
-(* the HrepAll closure structurally is a ~300-line rebuild (deferred).*)
-(* NOTE (investigated): the gap is exactly the [HrepAll] premise of   *)
-(* typing_SubstTm — its SubstTm_lt case needs an UNCONDITIONAL        *)
-(* lt-weakening (typing_InsLt), which is itself blocked at the        *)
-(* T_Match case (schema-origin closedness the bare statement lacks).  *)
-(* So this routes back through the same match-substitution kernel as  *)
-(* ltbeta / typing_SubstTy_match_case.                                *)
+(* Term-substitution preservation under an evaluation context.        *)
+(* WAS AXIOM 3; NOW PROVEN.  The gap was exactly the [HrepAll] premise *)
+(* of [typing_SubstTm] (its SubstTm_lt case needs an UNCONDITIONAL     *)
+(* lt-weakening = [typing_InsLt], previously blocked at T_Match).      *)
+(* With the [push_corr] reformulation, [typing_InsLt] is proven, so    *)
+(* [typing_SubstTm] now threads [SubstTm_replacement_typed] as a       *)
+(* per-node invariant (re-established at each binder by weakening)     *)
+(* instead of the UNSOUND universal HrepAll (which fails at            *)
+(* bind_ctor/bind_eff — ctx_lookup_ctor front-shadows).  The lemma     *)
+(* [typing_SubstTm_eval_ctx] is defined just below the global form.    *)
 (* ================================================================ *)
-Axiom typing_SubstTm_eval_ctx : forall Γ A t B v,
-  eval_ctx Γ ->
-  (bind_tm A :: Γ) ⊢ₜ t : B ->
-  value v ->
-  Γ ⊢ₜ v : A ->
-  Γ ⊢ₜ subst_tm 0 v t : B.
 
+(* NOW UNCONDITIONAL (the HrepAll premise is gone): [typing_SubstTm]    *)
+(* threads [SubstTm_replacement_typed] as a per-node invariant, and the *)
+(* base instance is exactly [Γ ⊢ v : A].                                *)
 Lemma typing_SubstTm_eval_ctx_global : forall Γ A t B v,
   eval_ctx Γ ->
   (bind_tm A :: Γ) ⊢ₜ t : B ->
   value v ->
   Γ ⊢ₜ v : A ->
-  (forall repl0 n0 G0 G0',
-    SubstTm repl0 n0 G0 G0' ->
-    SubstTm_replacement_typed repl0 n0 G0 G0') ->
   Γ ⊢ₜ subst_tm 0 v t : B.
 Proof.
-  intros Γ A t B v Hec Ht Hval Hv HrepAll.
+  intros Γ A t B v Hec Ht Hval Hv.
   pose proof (typing_closed Γ v A Hec Hv) as Hfree.
   pose proof (typing_eval_ctx_tm_ty_closed Γ v A Hec Hv) as HtmTy.
   pose proof (typing_eval_ctx_tm_lt_closed Γ v A Hec Hv) as HtmLt.
@@ -3452,7 +3503,7 @@ Proof.
   - exact HtmLt.
   - intros T Hlk. simpl in Hlk. inversion Hlk; subst. exact HAty.
   - intros T Hlk. simpl in Hlk. inversion Hlk; subst. exact HAlt.
-  - exact HrepAll.
+  - intros T Hlk. simpl in Hlk. inversion Hlk; subst. exact Hv.
   - apply eval_ctx_lt_closed_from. exact Hec.
   - apply eval_ctx_schemas_lt_closed_from. exact Hec.
   - unfold capture_var_lifetime. simpl.
@@ -3460,20 +3511,27 @@ Proof.
     eapply typing_value_capture_lt_le_type; eauto.
 Qed.
 
+(* The single-step eval_ctx term-substitution lemma (was Axiom 3),     *)
+(* now an immediate corollary of the HrepAll-free global form.         *)
+Lemma typing_SubstTm_eval_ctx : forall Γ A t B v,
+  eval_ctx Γ ->
+  (bind_tm A :: Γ) ⊢ₜ t : B ->
+  value v ->
+  Γ ⊢ₜ v : A ->
+  Γ ⊢ₜ subst_tm 0 v t : B.
+Proof. exact typing_SubstTm_eval_ctx_global. Qed.
+
 Lemma typing_subst_list_tm_eval_ctx_global : forall Γ vs rhos t T,
   eval_ctx Γ ->
   Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rhos ->
   Forall value vs ->
   List.concat (List.map (free_tm_vars 0) vs) = [] ->
   (List.fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ rhos) ⊢ₜ t : T ->
-  (forall repl0 n0 G0 G0',
-    SubstTm repl0 n0 G0 G0' ->
-    SubstTm_replacement_typed repl0 n0 G0 G0') ->
   Γ ⊢ₜ subst_list_tm vs t : T.
 Proof.
   intros Γ vs rhos t T Hec Hargs.
   revert t T.
-  induction Hargs as [|v rho vs rhos Hv Hargs IHHargs]; intros t T Hvals Hfree Ht HrepAll; simpl in *.
+  induction Hargs as [|v rho vs rhos Hv Hargs IHHargs]; intros t T Hvals Hfree Ht; simpl in *.
   - exact Ht.
   - inversion Hvals as [|v0 vs0 HvVal HvalsTail Heq]; subst.
     apply List.app_eq_nil in Hfree as [HfreeV HfreeTail].
@@ -3511,12 +3569,13 @@ Proof.
       - apply tm_lt_closed_shift_tm. exact HvLt.
       - intros U Hlk. simpl in Hlk. inversion Hlk; subst U; clear Hlk. exact HrhoTy.
       - intros U Hlk. simpl in Hlk. inversion Hlk; subst U; clear Hlk. exact HrhoLt.
-      - exact HrepAll.
+      - intros U Hlk. simpl in Hlk. inversion Hlk; subst U; clear Hlk.
+        apply typing_weaken_tm_shift_many. exact Hv.
       - apply ctx_lt_closed_from_fold_bind_tm. apply eval_ctx_lt_closed_from. exact Hec.
       - apply ctx_schemas_lt_closed_from_fold_bind_tm. apply eval_ctx_schemas_lt_closed_from. exact Hec.
       - exact Hcap. }
     rewrite (Forall2_length Hargs).
     apply (IHHargs (subst_tm 0 (shift_tm (List.length rhos) 0 v) t) T
-      HvalsTail HfreeTail Ht' HrepAll).
+      HvalsTail HfreeTail Ht').
 Qed.
 
