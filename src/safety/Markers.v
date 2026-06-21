@@ -8,9 +8,6 @@ Require Import Semantics.
 Require Import Typing.
 Require Import Subst.
 
-Require Import Typing.
-Require Import Subst.
-
 (* ------------------------------------------------------------------ *)
 (* Effect-handler invariant                                           *)
 (*                                                                    *)

@@ -7,8 +7,6 @@ Require Import Substitution.
 Require Import Semantics.
 Require Import Typing.
 Require Import Subst.
-Require Import Markers.
-Require Import Progress.
 Require Import Narrowing.
 
 (* =================================================================== *)
