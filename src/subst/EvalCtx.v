@@ -3445,7 +3445,7 @@ Proof.
 Qed.
 
 (* CAPABILITY CONFINEMENT FROM TYPING.  A closed value typed at an       *)
-(* escapable type ([lt_of_ty_G T <: lt_free] — the paper's no-local      *)
+(* escapable type ([lt_of_ty_G T <: lt_free] — the no-local              *)
 (* side condition) carries no runtime capability.  Immediate from the    *)
 (* capture-lifetime bound: a runtime cap forces [capture_lt v = lt_local] *)
 (* (capture_lt_closed), but [capture_lt v <: lt_of_ty_G T <: lt_free]     *)
@@ -3467,21 +3467,17 @@ Proof.
 Qed.
 
 (* ================================================================ *)
-(* Term-substitution preservation under an evaluation context.        *)
-(* WAS AXIOM 3; NOW PROVEN.  The gap was exactly the [HrepAll] premise *)
-(* of [typing_SubstTm] (its SubstTm_lt case needs an UNCONDITIONAL     *)
-(* lt-weakening = [typing_InsLt], previously blocked at T_Match).      *)
-(* With the [push_corr] reformulation, [typing_InsLt] is proven, so    *)
-(* [typing_SubstTm] now threads [SubstTm_replacement_typed] as a       *)
-(* per-node invariant (re-established at each binder by weakening)     *)
-(* instead of the UNSOUND universal HrepAll (which fails at            *)
-(* bind_ctor/bind_eff — ctx_lookup_ctor front-shadows).  The lemma     *)
-(* [typing_SubstTm_eval_ctx] is defined just below the global form.    *)
+(* Term-substitution preservation under an evaluation context.      *)
+(* [typing_SubstTm] threads [SubstTm_replacement_typed] as a        *)
+(* per-node invariant, re-established at each binder by weakening   *)
+(* (the bind_lt case via [typing_InsLt]); the base instance is      *)
+(* exactly [G |- v : A].  A per-node invariant (not one universal   *)
+(* replacement premise) is needed because the universal form fails  *)
+(* at bind_ctor/bind_eff, where ctx_lookup_ctor front-shadows.      *)
 (* ================================================================ *)
 
-(* NOW UNCONDITIONAL (the HrepAll premise is gone): [typing_SubstTm]    *)
-(* threads [SubstTm_replacement_typed] as a per-node invariant, and the *)
-(* base instance is exactly [Γ ⊢ v : A].                                *)
+(* [typing_SubstTm] specialised to a value substituted at index 0 in    *)
+(* an eval_ctx; the base instance is exactly [G |- v : A].              *)
 Lemma typing_SubstTm_eval_ctx_global : forall Γ A t B v,
   eval_ctx Γ ->
   (bind_tm A :: Γ) ⊢ₜ t : B ->
@@ -3511,8 +3507,8 @@ Proof.
     eapply typing_value_capture_lt_le_type; eauto.
 Qed.
 
-(* The single-step eval_ctx term-substitution lemma (was Axiom 3),     *)
-(* now an immediate corollary of the HrepAll-free global form.         *)
+(* The single-step eval_ctx term-substitution lemma, an immediate       *)
+(* corollary of the global form above.                                  *)
 Lemma typing_SubstTm_eval_ctx : forall Γ A t B v,
   eval_ctx Γ ->
   (bind_tm A :: Γ) ⊢ₜ t : B ->

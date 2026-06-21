@@ -405,7 +405,7 @@ Definition ty_app_arg_no_local (Γ : ctx) (B S : type) : bool :=
 (*   lambda's own binder is "consumed").                              *)
 (*                                                                    *)
 (* capture_lt Γ body : +lt_Γ(τ̄) over captured variables' types —      *)
-(*   the paper's closure-lifetime bound in the Lam rule.              *)
+(* the closure-lifetime bound in the Lam rule.                        *)
 (*   Cap-aware: a literal runtime capability form (term_cap /         *)
 (*   term_handler_m / term_resume) anywhere in the body forces the    *)
 (*   closure lifetime to lt_local, since free_tm_vars cannot see      *)
@@ -606,7 +606,7 @@ Inductive sub : ctx -> type -> type -> Prop :=
       types_wf Γ Ts ->
       Γ ⊢ type_ctor K l Ts <:: type_ctor K l' Ts
 
-  (* SubAny (paper Fig. core-subtyping): τ <: Any@Δ when all lifetime  *)
+  (* SubAny: τ <: Any@Δ when all lifetime                              *)
   (* restrictions in τ outlive Δ.                                      *)
   | SA_Any    : forall Γ T Δ,
       ty_wf Γ T ->
@@ -761,8 +761,8 @@ Fixpoint push_ty_vars (n : nat) (bound : type) (Γ : ctx) : ctx :=
 (* [shift_lt j 0 Delta], i.e. Delta lifted into that level's scope, so  *)
 (* that EVERY pushed variable has the same effective upper bound        *)
 (* [shift_lt n 0 Delta] = the one outer Delta (no per-level meaning     *)
-(* drift).  This is the de-Bruijn-correct realisation of the paper's    *)
-(* match rule premise "l'_i <: Delta" (Fig. 5): the n fresh lifetimes   *)
+(* drift).  This is the de-Bruijn-correct realisation of the            *)
+(* match rule premise "l'_i <: Delta": the n fresh lifetimes            *)
 (* are INDEPENDENTLY bounded by Delta, with no spurious inter-variable  *)
 (* constraints.  Crucially it is STABLE under lt-substitution and       *)
 (* lt-insertion of an outer binder (the per-level shifts commute with   *)

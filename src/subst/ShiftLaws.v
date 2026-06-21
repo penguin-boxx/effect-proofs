@@ -37,7 +37,7 @@ Require Import Typing.
 
 
 (* ================================================================== *)
-(* SECTION 1 — Sanity examples (unit tests)                           *)
+(* Sanity examples (unit tests)                                       *)
 (* ================================================================== *)
 
 Section UnitTests.
@@ -211,7 +211,7 @@ Lemma shift_lt_in_tm_go_eq_map : forall amount cutoff ts,
 Proof. intros; induction ts; simpl; congruence. Qed.
 
 (* ================================================================== *)
-(* SECTION 2 — shift_zero                                             *)
+(* shift_zero                                                         *)
 (*                                                                    *)
 (* Shifting by zero is the identity.                                  *)
 (* ================================================================== *)
@@ -371,7 +371,7 @@ Qed.
 
 
 (* ================================================================== *)
-(* SECTION 3 — shift_fuse                                             *)
+(* shift_fuse                                                         *)
 (*                                                                    *)
 (* Two consecutive shifts at the same cutoff combine into one.        *)
 (* ================================================================== *)
@@ -576,7 +576,7 @@ Qed.
 
 
 (* ================================================================== *)
-(* SECTION 5 — shift_independent (cross-sort: same carrier,           *)
+(* shift_independent (cross-sort: same carrier,                       *)
 (*             unrelated index sorts commute trivially)               *)
 (*                                                                    *)
 (* Shifts on different sorts in the same carrier commute without any  *)
@@ -1976,7 +1976,7 @@ Qed.
 
 
 (* ================================================================== *)
-(* SECTION 10 — list-substitution properties                          *)
+(* list-substitution properties                                       *)
 (*                                                                    *)
 (* Connect the simultaneous list-substitution operations with their   *)
 (* iterated single-substitution counterparts, and prove the obvious   *)
@@ -2020,7 +2020,7 @@ Qed.
 (* judgments, so they live here — after `Require Import Typing` —     *)
 (* rather than in the syntax-only σ-law section above.  Their content *)
 (* is the standard de Bruijn plumbing of a System-F₊-with-lifetimes   *)
-(* metatheory, orthogonal to the paper's contribution.                *)
+(* metatheory.                                                        *)
 (* ================================================================== *)
 
 (* ---- Pure de Bruijn σ-laws (shift / subst commutation) ---------- *)
@@ -2084,12 +2084,10 @@ Definition subst_list_lt_in_ty_each (lts : list lifetime) (rhos : list type) : l
 
 (* Bridge: parallel lt-substitution `subst_list_lt_in_ty` is exactly    *)
 (* the iterated single-var substitution `iter_subst_lt_in_ty` applied   *)
-(* to the *pre-shifted* witness list.  `subst_list_lt_in_ty` shifts      *)
+(* to the *pre-shifted* witness list.  `subst_list_lt_in_ty` shifts     *)
 (* each witness by the number of remaining witnesses before             *)
-(* substituting at position 0; the faithful bridge threads that shift    *)
-(* through.  This is the corrected form of the previously-unsound        *)
-(* `subst_list_lt_in_ty lts T = iter_subst_lt_in_ty lts T` axiom         *)
-(* (which dropped the shift) and is now a theorem.                      *)
+(* substituting at position 0; the faithful bridge threads that         *)
+(* shift through.                                                       *)
 Fixpoint shift_each_lt (lts : list lifetime) : list lifetime :=
   match lts with
   | []        => []

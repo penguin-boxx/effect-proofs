@@ -94,20 +94,10 @@ Proof.
     + match goal with HwfTR : ty_wf Γ T_R |- _ => exact HwfTR end.
 Qed.
 
-(* ------------------------------------------------------------------ *)
-(* PRESERVATION                                                       *)
-(*                                                                    *)
-(* Top-level structure is standard; the β-reduction cases rely on     *)
-(* shape inversion and the substitution axioms above.  The App case   *)
-(* is fully proven; Ty/Lt β-cases need a narrowing-style lemma that   *)
-(* recovers the body-subtyping witness — axiomatized as sub_*_body.   *)
-(* ------------------------------------------------------------------ *)
 
 (* Narrowing/body-subtyping witnesses extracted from sub_*_inv.       *)
-(* Under eval_ctx these follow structurally from the full inversion   *)
-(* (including the body-subtype witness); we axiomatize the            *)
-(* body-witness part since we stated sub_lt_all_inv / sub_ty_all_inv  *)
-(* without it for brevity.                                            *)
+(* Under eval_ctx these follow structurally from the full             *)
+(* inversion, including the body-subtype witness.                     *)
 Lemma sub_lt_all_inv_full : forall Γ S T,
   eval_ctx Γ ->
   Γ ⊢ S <:: type_lt_all T ->
@@ -146,8 +136,8 @@ Qed.
 (*       case when the looked-up variable *is* the narrowed one,      *)
 (*   (c) `lt_of_ty_G` is monotone under narrowing — narrowing a bound *)
 (*       to a subtype can only shrink the computed `lt_∅`.            *)
-(* (b) and (c) are standard de Bruijn / lattice facts kept axiomatic, *)
-(* in the same spirit as `sub_weaken_ty`; everything else is proved.  *)
+(* (b) and (c) are standard de Bruijn / lattice facts (e.g.           *)
+(* `sub_weaken_ty_shift`); everything here is proved.                 *)
 (* ------------------------------------------------------------------ *)
 
 (* (a.0) `ctx_lookup_lt` ignores the narrowed `bind_ty` slot. *)

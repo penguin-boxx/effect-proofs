@@ -1998,10 +1998,9 @@ Proof.
 Qed.
 
 (* Generic (no-closedness) [typing_InsLt]: a bind_lt weakening at any   *)
-(* cutoff.  Previously abandoned because its T_Match case was not stable *)
-(* under [push_lt_vars]; now PROVABLE because T_Match pushes the         *)
-(* InsLt-stable [push_corr] (see [InsLt_push_corr]).  This is the        *)
-(* bind_lt case the general HrepAll / [typing_SubstTm_eval_ctx] needs.   *)
+(* cutoff.  Its T_Match case is stable because T_Match pushes the       *)
+(* InsLt-stable [push_corr] (see [InsLt_push_corr]).  This is the       *)
+(* bind_lt case that [typing_SubstTm_eval_ctx] needs.                   *)
 Lemma typing_InsLt : forall G t T, G ⊢ₜ t : T ->
   forall c G', InsLt c G G' -> G' ⊢ₜ shift_lt_in_tm 1 c t : shift_lt_in_ty 1 c T.
 Proof.

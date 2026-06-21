@@ -1896,17 +1896,11 @@ Lemma subst_nl_push_ty_vars : forall k Sb n Γ G',
 Proof. intros; exact I. Qed.
 
 (* ================================================================ *)
-(* The T_Match case of [typing_SubstTy] is now PROVEN INLINE (below), *)
-(* no longer an axiom.  The former "rho-shift" blocker — the yes-     *)
-(* branch needs [subst_ty n (shift_lt_in_ty n_lt 0 Sb) rho] but the   *)
-(* rule's rho def pinned it to [subst_ty n Sb rho], non-convertible   *)
-(* because the old [inst_ctor_type]'s [inst_lt_vars (lt_var_list)]    *)
-(* down-shift ALIASED Ts-field lifetimes with the fresh match lt-vars *)
-(* — was removed by reformulating [rho_fields] to the [inst_ctor_     *)
-(* type_open] (inst_ty_vars-only) form.  rho_fields then lives        *)
-(* consistently in the pushed context and the commutation             *)
-(* [inst_ctor_type_open_subst_ty] (at the SHIFTED Sb) closes both     *)
-(* premise 5 and the yes-branch.                                       *)
+(* The T_Match case of [typing_SubstTy]: [rho_fields] uses the      *)
+(* inst_ctor_type_open (inst_ty_vars-only) form, so it lives        *)
+(* consistently in the pushed context, and the commutation          *)
+(* [inst_ctor_type_open_subst_ty] (at the SHIFTED Sb) closes both   *)
+(* premise 5 and the yes-branch.                                    *)
 (* ================================================================ *)
 
 Lemma typing_SubstTy : forall Γ t T,
