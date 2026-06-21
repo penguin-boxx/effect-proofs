@@ -51,7 +51,7 @@ Lemma match_typing_inv : forall Γ scrut K n_lt0 arity yes_body no_body T,
     Γ ⊢ₜ scrut : type_ctor result_tag Delta Ts /\
     arity = List.length (List.map (inst_ctor_type_open n_lt n_ty Ts) sigma_fields) /\
     (fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
-                (push_lt_vars n_lt Delta Γ)
+                (push_corr n_lt Delta Γ)
                 (List.map (inst_ctor_type_open n_lt n_ty Ts) sigma_fields))
        ⊢ₜ yes_body : eta /\
     elim_ty_n n_lt (shift_lt n_lt 0 Delta) var_pos eta = Some elim_result /\
@@ -298,7 +298,7 @@ Proof.
       specialize (IHyes (x + arity) Hy). subst Γ'.
       rewrite Harity in IHyes.
       rewrite lookup_tm_skip_bind_tm_many in IHyes.
-      intros Hnone. apply IHyes. apply lookup_tm_push_lt_None. exact Hnone.
+      intros Hnone. apply IHyes. apply lookup_tm_push_corr_None. exact Hnone.
     + apply IHno; exact Hn.
   - (* T_Cap *)
     intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β

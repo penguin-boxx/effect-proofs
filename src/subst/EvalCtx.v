@@ -142,6 +142,31 @@ Proof.
     reflexivity.
 Qed.
 
+(* [ctx_lookup_tm] ignores bind_lt bounds, so [push_corr] behaves      *)
+(* identically to [push_lt_vars] for term-variable lookups.            *)
+Lemma lookup_tm_push_corr_None : forall n Delta Γ x,
+  ctx_lookup_tm Γ x = None ->
+  ctx_lookup_tm (push_corr n Delta Γ) x = None.
+Proof.
+  induction n as [|n IH]; intros Delta Γ x H; simpl.
+  - exact H.
+  - rewrite IH by exact H. reflexivity.
+Qed.
+
+Lemma ctx_lookup_tm_push_corr : forall n Delta Γ x,
+  ctx_lookup_tm (push_corr n Delta Γ) x =
+  option_map (shift_lt_in_ty n 0) (ctx_lookup_tm Γ x).
+Proof.
+  induction n as [|n IH]; intros Delta Γ x; simpl.
+  - destruct (ctx_lookup_tm Γ x) as [T|]; simpl;
+      [rewrite shift_lt_in_ty_zero|]; reflexivity.
+  - rewrite IH.
+    destruct (ctx_lookup_tm Γ x) as [T|]; simpl; [|reflexivity].
+    rewrite shift_lt_in_ty_fuse.
+    replace (1 + n) with (S n) by lia.
+    reflexivity.
+Qed.
+
 Lemma lookup_tm_push_ty_None : forall n bound Γ x,
   ctx_lookup_tm Γ x = None ->
   ctx_lookup_tm (push_ty_vars n bound Γ) x = None.
@@ -227,7 +252,7 @@ Proof.
       specialize (IHyes (x + arity) Hy). subst Γ'.
       rewrite Harity in IHyes.
       rewrite lookup_tm_skip_bind_tm_many in IHyes.
-      intros Hnone. apply IHyes. apply lookup_tm_push_lt_None. exact Hnone.
+      intros Hnone. apply IHyes. apply lookup_tm_push_corr_None. exact Hnone.
     + apply IHno. exact Hn.
   - intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
            Heff Hlen HwfTs HwfTR Hsig Hret Hop IHop x Hin.
@@ -1199,6 +1224,65 @@ Proof.
   - apply ctx_lt_closed_from_bind_tm. apply IH. exact Hctx.
 Qed.
 
+(* ----- push_corr versions of the closedness-preservation lemmas ---- *)
+(* [push_corr] adds the same k bind_lt entries as [push_lt_vars]; the   *)
+(* per-level bound value is irrelevant to every closed-from predicate   *)
+(* (they read lookups, which ignore bind_lt bounds, or non-bind_lt      *)
+(* binding contents), so each proof mirrors its [push_lt_vars] sibling, *)
+(* peeling the prepended bind_lt with the corresponding _bind_lt step.  *)
+Lemma ctx_ty_closed_from_push_corr : forall k Delta c Γ,
+  ctx_ty_closed_from c Γ -> ctx_ty_closed_from c (push_corr k Delta Γ).
+Proof.
+  induction k as [|k IH]; intros Delta c Γ Hctx; simpl.
+  - exact Hctx.
+  - apply ctx_ty_closed_from_bind_lt. apply IH. exact Hctx.
+Qed.
+
+Lemma ctx_lt_closed_from_push_corr : forall k Delta c Γ,
+  ctx_lt_closed_from c Γ -> ctx_lt_closed_from (c + k) (push_corr k Delta Γ).
+Proof.
+  induction k as [|k IH]; intros Delta c Γ Hctx; simpl.
+  - replace (c + 0) with c by lia. exact Hctx.
+  - replace (c + S k) with (S (c + k)) by lia.
+    apply ctx_lt_closed_from_bind_lt. apply IH. exact Hctx.
+Qed.
+
+Lemma ctx_schemas_lt_closed_from_push_corr : forall k Delta c Γ,
+  ctx_schemas_lt_closed_from c Γ ->
+  ctx_schemas_lt_closed_from (c + k) (push_corr k Delta Γ).
+Proof.
+  induction k as [|k IH]; intros Delta c Γ Hctx; simpl.
+  - replace (c + 0) with c by lia. exact Hctx.
+  - replace (c + S k) with (S (c + k)) by lia.
+    apply ctx_schemas_lt_closed_from_bind_lt. apply IH. exact Hctx.
+Qed.
+
+Lemma ctx_tm_lt_closed_from_push_corr : forall k Delta c Γ,
+  ctx_tm_lt_closed_from c Γ ->
+  ctx_tm_lt_closed_from (c + k) (push_corr k Delta Γ).
+Proof.
+  induction k as [|k IH]; intros Delta c Γ Hctx; simpl.
+  - replace (c + 0) with c by lia. exact Hctx.
+  - replace (c + S k) with (S (c + k)) by lia.
+    apply ctx_tm_lt_closed_from_bind_lt. apply IH. exact Hctx.
+Qed.
+
+Lemma ctx_tm_ty_closed_from_push_corr : forall k Delta c Γ,
+  ctx_tm_ty_closed_from c Γ ->
+  ctx_tm_ty_closed_from c (push_corr k Delta Γ).
+Proof.
+  induction k as [|k IH]; intros Delta c Γ Hctx; simpl.
+  - exact Hctx.
+  - apply ctx_tm_ty_closed_from_bind_lt. apply IH. exact Hctx.
+Qed.
+
+Lemma ctor_fields_closed_push_corr : forall k D Γ,
+  ctor_fields_closed Γ -> ctor_fields_closed (push_corr k D Γ).
+Proof.
+  induction k as [|k IH]; intros D Γ H; simpl; [exact H|].
+  apply ctor_fields_closed_bind_lt. apply IH. exact H.
+Qed.
+
 Lemma ctx_tm_lt_closed_from_push_lt_vars : forall k Delta c Γ,
   ctx_tm_lt_closed_from c Γ ->
   ctx_tm_lt_closed_from (c + k) (push_lt_vars k Delta Γ).
@@ -1321,7 +1405,7 @@ Proof.
     subst Γ'. simpl. repeat split.
     + apply IHscrut. exact Hctx.
     + apply IHyes. apply ctx_ty_closed_from_fold_bind_tm.
-      apply ctx_ty_closed_from_push_lt_vars. exact Hctx.
+      apply ctx_ty_closed_from_push_corr. exact Hctx.
     + apply IHno. exact Hctx.
   - intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
            Heff Hlen HwfTs HwfTR Hsig Hret Hop IHop c Hctx.
@@ -1401,7 +1485,7 @@ Proof.
     subst Γ'. simpl. repeat split.
     + apply IHscrut. exact Hctx.
     + apply IHyes. apply ctx_lt_closed_from_fold_bind_tm.
-      apply ctx_lt_closed_from_push_lt_vars. exact Hctx.
+      apply ctx_lt_closed_from_push_corr. exact Hctx.
     + apply IHno. exact Hctx.
   - intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
            Heff Hlen HwfTs HwfTR Hsig Hret Hop IHop c Hctx.
@@ -1666,7 +1750,7 @@ Proof.
       (lts := lts) (rho_fields := rho_fields)
       (scrut_result_ty := scrut_result_ty)
       (result_tag := result_tag) (result_l := result_l)
-      (Γ' := push_lt_vars n_lt Delta Γ') (eta := eta).
+      (Γ' := push_corr n_lt Delta Γ') (eta := eta).
     + exact HKne.
     + eapply InsLt_lookup_ctor_schemas_closed; eauto.
     + rewrite (InsLt_lookup_eff c Γ Γ' HIns K). rewrite Heff. reflexivity.
@@ -1686,15 +1770,17 @@ Proof.
     + exact Harity.
     + reflexivity.
     + apply (IHyes (c + n_lt)
-        (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) (push_lt_vars n_lt Delta Γ') rho_fields)).
-      * exact (InsLt_fold_bind_tm_closed rho_fields (c + n_lt)
-          (push_lt_vars n_lt Delta Γ) (push_lt_vars n_lt Delta Γ')
-          (InsLt_push_lt_vars_closed n_lt Delta c Γ Γ' HIns HDeltaClosed)
-          HrhosClosed).
+        (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) (push_corr n_lt Delta Γ') rho_fields)).
+      * assert (Hins_corr : InsLt (c + n_lt) (push_corr n_lt Delta Γ) (push_corr n_lt Delta Γ')).
+        { replace (c + n_lt) with (n_lt + c) by lia.
+          rewrite <- (shift_lt_closed_lifetime Delta c 1 HDeltaClosed) at 2.
+          apply InsLt_push_corr. exact HIns. }
+        exact (InsLt_fold_bind_tm_closed rho_fields (c + n_lt)
+          (push_corr n_lt Delta Γ) (push_corr n_lt Delta Γ') Hins_corr HrhosClosed).
       * apply ctx_lt_closed_from_fold_bind_tm.
-        apply ctx_lt_closed_from_push_lt_vars. exact Hlt.
+        apply ctx_lt_closed_from_push_corr. exact Hlt.
       * apply ctx_schemas_lt_closed_from_fold_bind_tm.
-        apply ctx_schemas_lt_closed_from_push_lt_vars. exact Hschemas.
+        apply ctx_schemas_lt_closed_from_push_corr. exact Hschemas.
     + exact Helim.
     + apply (IHno c Γ'); assumption.
   - intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
@@ -2474,6 +2560,24 @@ Proof.
   - apply IH. apply SubstTm_target_lt_closed0_lt. exact Htarget.
 Qed.
 
+Lemma SubstTm_target_ty_closed0_push_corr : forall k Delta n G,
+  SubstTm_target_ty_closed0 n G ->
+  SubstTm_target_ty_closed0 n (push_corr k Delta G).
+Proof.
+  induction k as [|k IH]; intros Delta n G Htarget; simpl.
+  - exact Htarget.
+  - apply SubstTm_target_ty_closed0_lt. apply IH. exact Htarget.
+Qed.
+
+Lemma SubstTm_target_lt_closed0_push_corr : forall k Delta n G,
+  SubstTm_target_lt_closed0 n G ->
+  SubstTm_target_lt_closed0 n (push_corr k Delta G).
+Proof.
+  induction k as [|k IH]; intros Delta n G Htarget; simpl.
+  - exact Htarget.
+  - apply SubstTm_target_lt_closed0_lt. apply IH. exact Htarget.
+Qed.
+
 Lemma SubstTm_target_ty_closed0_push_ty_vars : forall k B n G,
   SubstTm_target_ty_closed0 n G ->
   SubstTm_target_ty_closed0 n (push_ty_vars k B G).
@@ -2900,7 +3004,7 @@ Proof.
       (lts := lts) (rho_fields := rho_fields)
       (scrut_result_ty := scrut_result_ty)
       (result_tag := result_tag) (result_l := result_l)
-      (Γ' := push_lt_vars n_lt Delta G') (eta := eta).
+      (Γ' := push_corr n_lt Delta G') (eta := eta).
     + exact HKne.
     + rewrite (SubstTm_lookup_ctor repl n Γ G' HSub K). exact Hctor.
     + rewrite (SubstTm_lookup_eff repl n Γ G' HSub K). exact Heff.
@@ -2923,19 +3027,19 @@ Proof.
         by (rewrite Harity; reflexivity).
       refine (IHyes (shift_tm (List.length rho_fields) 0 (shift_lt_in_tm n_lt 0 repl))
         (n + List.length rho_fields)
-        (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) (push_lt_vars n_lt Delta G') rho_fields)
+        (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) (push_corr n_lt Delta G') rho_fields)
         _ _ _ _ _ _ HrepAll (c + n_lt) _ _ _).
-      * apply SubstTm_fold_bind_tm. apply SubstTm_push_lt_vars. exact HSub.
+      * apply SubstTm_fold_bind_tm. apply SubstTm_push_corr. exact HSub.
       * apply free_tm_vars_closed_shift_tm_any. rewrite free_tm_vars_shift_lt_in_tm_any. exact Hfree.
       * apply tm_ty_closed_shift_tm. apply tm_ty_closed_shift_lt. exact HtmTy.
       * apply tm_lt_closed_shift_tm. apply tm_lt_closed_shift_lt_closed0. exact HtmLt.
-      * apply SubstTm_target_ty_closed0_fold_bind_tm. apply SubstTm_target_ty_closed0_push_lt_vars. exact HtargetTy.
-      * apply SubstTm_target_lt_closed0_fold_bind_tm. apply SubstTm_target_lt_closed0_push_lt_vars. exact HtargetLt.
-      * apply ctx_lt_closed_from_fold_bind_tm. apply ctx_lt_closed_from_push_lt_vars. exact Hlt.
-      * apply ctx_schemas_lt_closed_from_fold_bind_tm. apply ctx_schemas_lt_closed_from_push_lt_vars. exact Hschemas.
+      * apply SubstTm_target_ty_closed0_fold_bind_tm. apply SubstTm_target_ty_closed0_push_corr. exact HtargetTy.
+      * apply SubstTm_target_lt_closed0_fold_bind_tm. apply SubstTm_target_lt_closed0_push_corr. exact HtargetLt.
+      * apply ctx_lt_closed_from_fold_bind_tm. apply ctx_lt_closed_from_push_corr. exact Hlt.
+      * apply ctx_schemas_lt_closed_from_fold_bind_tm. apply ctx_schemas_lt_closed_from_push_corr. exact Hschemas.
       * apply replacement_capture_bound_fold_bind_tm.
         -- rewrite free_tm_vars_shift_lt_in_tm_any. exact Hfree.
-        -- apply replacement_capture_bound_push_lt_vars; assumption.
+        -- apply replacement_capture_bound_push_corr; assumption.
     + exact Helim.
     + apply (IHno repl n G' HSub Hfree HtmTy HtmLt HtargetTy HtargetLt HrepAll c Hlt Hschemas Hcap).
   - intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β

@@ -755,6 +755,25 @@ Fixpoint push_ty_vars (n : nat) (bound : type) (Γ : ctx) : ctx :=
   | S n' => push_ty_vars n' bound (bind_ty bound :: Γ)
   end.
 
+(* Push n fresh bind_lt entries for a match/destructuring, each        *)
+(* bounded by the scrutinee lifetime `Delta` (which lives in the       *)
+(* OUTER Γ).  Unlike [push_lt_vars], the bound stored at level j is     *)
+(* [shift_lt j 0 Delta], i.e. Delta lifted into that level's scope, so  *)
+(* that EVERY pushed variable has the same effective upper bound        *)
+(* [shift_lt n 0 Delta] = the one outer Delta (no per-level meaning     *)
+(* drift).  This is the de-Bruijn-correct realisation of the paper's    *)
+(* match rule premise "l'_i <: Delta" (Fig. 5): the n fresh lifetimes   *)
+(* are INDEPENDENTLY bounded by Delta, with no spurious inter-variable  *)
+(* constraints.  Crucially it is STABLE under lt-substitution and       *)
+(* lt-insertion of an outer binder (the per-level shifts commute with   *)
+(* subst/shift — see [shift_lt_subst_lt_comm_many0]), which             *)
+(* [push_lt_vars] is not.  For lt-closed Delta the two coincide.        *)
+Fixpoint push_corr (n : nat) (Delta : lifetime) (Γ : ctx) : ctx :=
+  match n with
+  | O    => Γ
+  | S n' => bind_lt (shift_lt n' 0 Delta) :: push_corr n' Delta Γ
+  end.
+
 (* The β-bound used for polymorphic operations: `Any@free`.            *)
 (* We pick `lt_free` so that β-types may not contain `local`-tagged    *)
 (* values, ensuring escape-analysis safety.                            *)
@@ -923,7 +942,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       Γ ⊢ₗ result_l <: Delta ->
       Γ ⊢ₜ scrut : type_ctor result_tag Delta Ts ->
       arity = List.length rho_fields ->
-      Γ' = push_lt_vars n_lt Delta Γ ->
+      Γ' = push_corr n_lt Delta Γ ->
       (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) ⊢ₜ yes_body : eta ->
       (* Delta lives in outer Γ; eta lives under n_lt fresh lt-binders, *)
       (* so Delta must be shifted up by n_lt before being used as the   *)

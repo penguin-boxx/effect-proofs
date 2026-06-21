@@ -107,13 +107,8 @@ Qed.
 (*      sound because the context shrinks together with the shift.    *)
 (* ================================================================== *)
 
-(* Over-approximation context: n fresh lt-binders, each storing the   *)
-(* bound shifted to live at its level (uniform lookup = shift_lt n).  *)
-Fixpoint push_corr (n : nat) (Delta : lifetime) (G : ctx) : ctx :=
-  match n with
-  | O    => G
-  | S n' => bind_lt (shift_lt n' 0 Delta) :: push_corr n' Delta G
-  end.
+(* Over-approximation context [push_corr] is now defined in Typing.v   *)
+(* (it is the context the T_Match rule pushes for the yes-branch).     *)
 
 Lemma push_corr_lookup0 : forall n' Delta G,
   ctx_lookup_lt (push_corr (S n') Delta G) 0 = Some (shift_lt (S n') 0 Delta).

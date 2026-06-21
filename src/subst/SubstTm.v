@@ -471,6 +471,23 @@ Proof.
     + apply replacement_capture_bound_lt; assumption.
 Qed.
 
+Lemma replacement_capture_bound_push_corr : forall k Delta G G' v n,
+  free_tm_vars 0 v = [] ->
+  G' ⊢ₗ capture_lt G' v <: capture_var_lifetime G n ->
+  push_corr k Delta G' ⊢ₗ
+    capture_lt (push_corr k Delta G') (shift_lt_in_tm k 0 v) <:
+    capture_var_lifetime (push_corr k Delta G) n.
+Proof.
+  induction k as [|k IH]; intros Delta G G' v n Hfree Hcap; simpl.
+  - rewrite shift_lt_in_tm_zero. exact Hcap.
+  - replace (shift_lt_in_tm (S k) 0 v)
+      with (shift_lt_in_tm 1 0 (shift_lt_in_tm k 0 v)).
+    2:{ rewrite shift_lt_in_tm_fuse. replace (1 + k) with (S k) by lia. reflexivity. }
+    apply replacement_capture_bound_lt.
+    + rewrite free_tm_vars_shift_lt_in_tm_any. exact Hfree.
+    + apply IH; assumption.
+Qed.
+
 Lemma replacement_capture_bound_push_ty_vars_any_at_free : forall k G G' v n,
   free_tm_vars 0 v = [] ->
   G' ⊢ₗ capture_lt G' v <: capture_var_lifetime G n ->
@@ -619,6 +636,23 @@ Proof.
       with (shift_lt_in_tm k 0 (shift_lt_in_tm 1 0 v)).
     2:{ rewrite shift_lt_in_tm_fuse. replace (k + 1) with (S k) by lia. reflexivity. }
     apply IH. apply SubstTm_lt. exact HSub.
+Qed.
+
+(* Term substitution crosses [push_corr] exactly as it crosses         *)
+(* [push_lt_vars] — SubstTm_lt keeps each bind_lt bound (term subst     *)
+(* does not touch lt-bounds), so the per-level shifted bounds are       *)
+(* irrelevant; no closedness on Delta is needed.                        *)
+Lemma SubstTm_push_corr : forall k Delta v n G G',
+  SubstTm v n G G' ->
+  SubstTm (shift_lt_in_tm k 0 v) n
+    (push_corr k Delta G) (push_corr k Delta G').
+Proof.
+  induction k as [|k IH]; intros Delta v n G G' HSub; simpl.
+  - rewrite shift_lt_in_tm_zero. exact HSub.
+  - replace (shift_lt_in_tm (S k) 0 v)
+      with (shift_lt_in_tm 1 0 (shift_lt_in_tm k 0 v)).
+    2:{ rewrite shift_lt_in_tm_fuse. replace (1 + k) with (S k) by lia. reflexivity. }
+    apply SubstTm_lt. apply IH. exact HSub.
 Qed.
 
 Lemma SubstTm_push_ty_vars_any_at_free : forall k v n G G',

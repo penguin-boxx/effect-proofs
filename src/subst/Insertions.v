@@ -1890,7 +1890,7 @@ Lemma typing_ind_forall2 :
         Γ ⊢ₜ scrut : type_ctor result_tag Delta Ts ->
         P Γ scrut (type_ctor result_tag Delta Ts) ->
      arity = List.length rho_fields ->
-     Γ' = push_lt_vars n_lt Delta Γ ->
+     Γ' = push_corr n_lt Delta Γ ->
      (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) ⊢ₜ yes_body : eta ->
      P (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) yes_body eta ->
      elim_ty_n n_lt (shift_lt n_lt 0 Delta) var_pos eta = Some elim_result ->
@@ -1994,6 +1994,14 @@ Proof.
   - apply IH. apply InsTmAt_lt. exact H.
 Qed.
 
+Lemma InsTmAt_push_corr : forall n Delta c G G',
+  InsTmAt c G G' -> InsTmAt c (push_corr n Delta G) (push_corr n Delta G').
+Proof.
+  induction n as [|n IH]; intros Delta c G G' H; simpl.
+  - exact H.
+  - apply InsTmAt_lt. apply IH. exact H.
+Qed.
+
 Lemma InsTmAt_push_ty_vars : forall n B c G G',
   InsTmAt c G G' -> InsTmAt c (push_ty_vars n B G) (push_ty_vars n B G').
 Proof.
@@ -2008,6 +2016,14 @@ Proof.
   induction n as [|n IH]; intros Delta c G G' H; simpl.
   - exact H.
   - apply IH. apply InsTy_lt. exact H.
+Qed.
+
+Lemma InsTy_push_corr : forall n Delta c G G',
+  InsTy c G G' -> InsTy c (push_corr n Delta G) (push_corr n Delta G').
+Proof.
+  induction n as [|n IH]; intros Delta c G G' H; simpl.
+  - exact H.
+  - apply InsTy_lt. apply IH. exact H.
 Qed.
 
 (* ================================================================== *)
@@ -2350,6 +2366,20 @@ Proof.
   - apply InsLt_tm. apply IH. exact H.
 Qed.
 
+(* Map form: target is [fold_right bind_tm G' (map (shift_lt_in_ty 1 c) *)
+(* rhos)], matching the reconstructed yes-branch context of typing_InsLt.*)
+Lemma InsLt_fold_bind_tm_map : forall rhos c G G',
+  InsLt c G G' ->
+  InsLt c
+    (List.fold_right (fun rho G0 => bind_tm rho :: G0) G rhos)
+    (List.fold_right (fun rho G0 => bind_tm rho :: G0) G'
+       (List.map (shift_lt_in_ty 1 c) rhos)).
+Proof.
+  induction rhos as [|rho rhos IH]; intros c G G' H; simpl.
+  - exact H.
+  - apply InsLt_tm. apply IH. exact H.
+Qed.
+
 Lemma InsLt_push_lt_vars_closed : forall k Delta c G G',
   InsLt c G G' ->
   lt_lt_closed c Delta ->
@@ -2520,7 +2550,7 @@ Proof.
       (result_ty_schema := result_ty_schema) (lts := lts) (rho_fields := rho_fields)
       (scrut_result_ty := scrut_result_ty)
       (result_tag := result_tag) (result_l := result_l)
-      (Γ' := push_lt_vars n_lt Delta G') (eta := eta).
+      (Γ' := push_corr n_lt Delta G') (eta := eta).
     + exact Hneq.
     + rewrite (InsTm_lookup_ctor Γ G' (InsTmAt_to_InsTm c Γ G' HIns) K). exact Hctor.
     + rewrite (InsTm_lookup_eff Γ G' (InsTmAt_to_InsTm c Γ G' HIns) K). exact Heff.
@@ -2541,7 +2571,7 @@ Proof.
     + apply IHyes.
       rewrite Harity.
       apply InsTmAt_fold_bind_tm.
-      apply InsTmAt_push_lt_vars. exact HIns.
+      apply InsTmAt_push_corr. exact HIns.
     + exact Helim.
     + apply IHno. exact HIns.
   - intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
@@ -3488,6 +3518,24 @@ Proof.
     rewrite shift_lt_fuse.
     replace (1 + k) with (S k) by lia.
     reflexivity.
+Qed.
+
+(* [push_corr] is STABLE under lt-insertion (UNLIKE [push_lt_vars],    *)
+(* whose closed sibling needs lt_lt_closed Delta): the per-level bound  *)
+(* [shift_lt j 0 Delta] shifts uniformly because [InsLt_lt]'s bound     *)
+(* shift commutes with the level shift ([shift_lt_lift_many_swap]).     *)
+(* Inserting at cutoff c turns the bound Delta into [shift_lt 1 c Delta]*)
+(* — no closedness assumption.                                          *)
+Lemma InsLt_push_corr : forall k Delta c G G',
+  InsLt c G G' ->
+  InsLt (k + c) (push_corr k Delta G) (push_corr k (shift_lt 1 c Delta) G').
+Proof.
+  induction k as [|k IH]; intros Delta c G G' H; simpl.
+  - exact H.
+  - replace (shift_lt k 0 (shift_lt 1 c Delta))
+      with (shift_lt 1 (k + c) (shift_lt k 0 Delta)).
+    2:{ replace (k + c) with (c + k) by lia. apply shift_lt_lift_many_swap. }
+    apply InsLt_lt. apply IH. exact H.
 Qed.
 
 Lemma shift_lt_in_ty_lift_many_swap : forall k c T,

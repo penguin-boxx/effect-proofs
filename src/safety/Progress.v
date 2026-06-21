@@ -242,7 +242,7 @@ Lemma typing_ind2 :
       Γ ⊢ₜ scrut : type_ctor result_tag Delta Ts ->
       P Γ scrut (type_ctor result_tag Delta Ts) ->
      arity = List.length rho_fields ->
-     Γ' = push_lt_vars n_lt Delta Γ ->
+     Γ' = push_corr n_lt Delta Γ ->
      (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) ⊢ₜ yes_body : eta ->
      P (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) yes_body eta ->
      elim_ty_n n_lt (shift_lt n_lt 0 Delta) var_pos eta = Some elim_result ->

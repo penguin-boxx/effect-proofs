@@ -126,21 +126,50 @@ Qed.
 (*    bind_ty bound to a subtype under a typing derivation).  Only     *)
 (*    SUBTYPING narrowing (sub_NT) exists in the codebase; the typing  *)
 (*    analogue is a separate mutual-induction theorem (future work).   *)
-(*  - ltbeta_preserves   needs a binder-removing lt-substitution       *)
-(*    theorem.  The available typing_SubstLt_closed_from is not that   *)
-(*    theorem: its closed-from premise excludes the index removed by   *)
-(*    SubstLt_here.                                                    *)
-(*  - matchyes_preserves needs the n_lt lt-var elimination + value     *)
-(*    list substitution index plumbing through the specialised redex   *)
-(*    theorem below; in particular it needs term typing preservation   *)
-(*    for substituting the match branch's pushed lifetime binders.     *)
-(*  - perform_preserves  needs the Ss type substitution (typing_SubstTy)*)
-(*    + the [arg; resume] term-list substitution, plus a typing theorem*)
-(*    for the captured pure context used as the reified resumption.    *)
+(*  - ltbeta_preserves   NOW PROVEN (was Axiom).  See below: the       *)
+(*    general [typing_SubstLt] (no closed-from premise) is now provable *)
+(*    because T_Match was reformulated to push [push_corr] (the         *)
+(*    SubstLt-/InsLt-STABLE realisation of the paper's "l'_i <: Delta") *)
+(*    instead of the unstable [push_lt_vars]; [SubstLt_here] at index 0 *)
+(*    then discharges lifetime-beta directly.                          *)
 (*                                                                     *)
-(* All four are SOUND (true; they are the standard substitution lemmas *)
-(* specialised to each redex) — they are stated exactly as the         *)
-(* preservation proof consumes them.                                   *)
+(*    ROOT-CAUSE FIX (the reformulation).  T_Match used to push         *)
+(*    [push_lt_vars n_lt Delta Γ] — n_lt binders all storing the SINGLE *)
+(*    literal outer bound Delta, with [ctx_lookup_lt] re-shifting per   *)
+(*    depth.  That is NOT stable under lt-substitution/insertion: those *)
+(*    rewrite the stored bound with a per-level-increasing index, so    *)
+(*    the n_lt bounds stop coinciding unless Delta is lt-closed.  The   *)
+(*    fix pushes [push_corr n_lt Delta Γ] instead, which stores         *)
+(*    [shift_lt j 0 Delta] at level j (uniform effective bound          *)
+(*    [shift_lt n_lt 0 Delta], the de-Bruijn-correct lifting of the one *)
+(*    outer Delta), and IS stable (the per-level shifts commute with    *)
+(*    subst/shift via [shift_lt_subst_lt_comm_many0] /                  *)
+(*    [shift_lt_lift_many_swap]; see [SubstLt_push_corr],               *)
+(*    [InsLt_push_corr]).  push_corr was already the structure the elim *)
+(*    soundness used ([elim_in_ctx_sound]); for lt-closed Delta the two *)
+(*    coincide, so the examples are unaffected.  This unblocked the     *)
+(*    GENERAL [typing_SubstLt] AND [typing_InsLt] (both now proven).    *)
+(*                                                                     *)
+(*  - matchyes_preserves / perform_preserves / typing_SubstTm_eval_ctx  *)
+(*    remain.  These need TERM substitution into a multi-bind_tm        *)
+(*    context (the match field binders / the [arg;resume] binders),     *)
+(*    i.e. a list term-substitution over a NON-eval_ctx tail.  The      *)
+(*    single-step axiom [typing_SubstTm_eval_ctx] needs an eval_ctx     *)
+(*    tail; the general [typing_SubstTm] (EvalCtx.v) handles the multi- *)
+(*    binder case but takes a UNIVERSAL [HrepAll] over ALL [SubstTm].   *)
+(*    That universal is UNSOUND at the bind_ctor/bind_eff cases:        *)
+(*    [ctx_lookup_ctor] front-shadows, so adding a declaration to a     *)
+(*    context does NOT preserve typing in general.  Those cases never   *)
+(*    ARISE for our substitutions (a typing derivation extends the      *)
+(*    context only by bind_tm/bind_ty/bind_lt — captured by the         *)
+(*    [SubstTm_eval_ctx_prefix] relation, whose replacement-typing IS   *)
+(*    proven, incl. its bind_lt case now that [typing_InsLt] exists).   *)
+(*    Discharging these therefore needs [typing_SubstTm] RE-PROVEN with *)
+(*    a prefix-shaped motive (replacing the universal HrepAll), plus a  *)
+(*    push_corr case added to [SubstTm_eval_ctx_prefix] (it currently   *)
+(*    has a closedness-gated push_lt_vars case).  This is a separate,   *)
+(*    sizeable refactor of the term-substitution metatheory — NOT the   *)
+(*    lifetime root cause above.  All three remain SOUND.               *)
 (* ================================================================== *)
 
 (* Term substitution at index 0 preserves typing — from Axiom 3. *)
@@ -211,10 +240,29 @@ Proof.
   eapply tybeta_preserves_with_subst_nl; [exact Hec | exact I | exact Hty].
 Qed.
 
-Axiom ltbeta_preserves : forall Γ body l T,
+(* PROVEN (was Axiom): the general binder-removing [typing_SubstLt]    *)
+(* (now provable because T_Match pushes the SubstLt-stable [push_corr]) *)
+(* discharges lifetime-beta directly, via [SubstLt_here] at index 0.    *)
+Lemma ltbeta_preserves : forall Γ body l T,
   eval_ctx Γ ->
   Γ ⊢ₜ term_lt_app (term_lt_lam body) l : T ->
   Γ ⊢ₜ subst_lt_in_tm 0 l body : T.
+Proof.
+  intros Γ body l T Hec Hty.
+  apply ltapp_typing_inv_p in Hty.
+  destruct Hty as [U [Hlam [Hl Hres]]].
+  apply lt_lam_typing_inv in Hlam.
+  destruct Hlam as [U0 [Hbody Hallsub]].
+  destruct (sub_lt_all_inv_full Γ (type_lt_all U0) U Hec Hallsub) as [U0' [Heq HU0sub]].
+  inversion Heq; subst U0'.
+  eapply T_Sub.
+  - eapply typing_SubstLt.
+    + exact Hbody.
+    + apply SubstLt_here. apply LS_Local. exact Hl.
+  - eapply SA_Trans; [ | exact Hres].
+    exact (sub_SubstLt (bind_lt lt_local :: Γ) U0 U HU0sub l 0 Γ
+             (SubstLt_here Γ lt_local l (LS_Local Γ l Hl))).
+Qed.
 
 Axiom matchyes_preserves : forall Γ K l lts Ts vs n_lt yes_body no_body T,
   eval_ctx Γ -> Forall value vs ->
