@@ -158,21 +158,26 @@ Qed.
 (*    HrepAll (which fails at bind_ctor/bind_eff, where ctx_lookup_ctor  *)
 (*    front-shadows).  The base instance is just [Γ ⊢ v : A].            *)
 (*                                                                     *)
-(*  - matchyes_preserves / perform_preserves remain Axioms, but are now  *)
-(*    UNBLOCKED — every substitution tool they need is proven:           *)
-(*    [typing_SubstLt] (lt), [typing_subst_list_tm_eval_ctx_global]      *)
-(*    (term-list, HrepAll-free), [typing_SubstTy] (type), and the new    *)
-(*    [typing_peel_push_corr_fold] (Inversions.v) which peels the match  *)
-(*    push_corr block at the typing level.  What remains is pure         *)
-(*    ASSEMBLY: (matchyes) reconcile the peeled field types             *)
-(*    [subst_list_lt (inst_ctor_type_open …)] with the scrutinee's       *)
-(*    [inst_ctor_type … lts] — the two use different shift conventions   *)
-(*    (var i ↦ shift(n-1-i) l_i vs var i ↦ l_i), bridged by the          *)
-(*    [bounded_ctor_inst_type_core] family under [ctor_field_bounded_ty] *)
-(*    (derivable from eval_ctx schema closedness) — then [elim] via      *)
-(*    [elim_ty_n_sound_pos] and the term-list subst; (perform) type the  *)
-(*    reified resumption via [resume_typing_inv_full]/[plug_typing_      *)
-(*    replace]/[shift_tm_plug].  No structural blocker remains.          *)
+(*  - matchyes_preserves   NOW PROVEN (was Axiom).  Substitute the       *)
+(*    constructor's lifetimes [lts] (peeling the match push_corr block,   *)
+(*    [typing_peel_push_corr_fold]) then its field values [vs]            *)
+(*    ([typing_subst_list_tm_eval_ctx_global]).  The peeled field types   *)
+(*    [subst_list_lt lts (inst_ctor_type_open …)] equal the              *)
+(*    constructor's [inst_ctor_type … lts] because the lts are lt-closed  *)
+(*    in an eval_ctx (the [subst_list_lt = multi_subst] bridge —          *)
+(*    [subst_list_lt_in_ty_inst_ctor_type_open], SubstTm.v).  The branch  *)
+(*    result type is reconciled with [T] by [elim_ty_n_sound_pos].        *)
+(*                                                                     *)
+(*  - perform_preserves   remains an Axiom, but is UNBLOCKED (every tool  *)
+(*    is proven).  Remaining assembly: (a) a push_ty_vars TYPE peel       *)
+(*    (iterated [typing_SubstTy], subst_nl is vacuous now) substituting   *)
+(*    the operation's type-args [Ss] into [op_body]; (b) reconcile        *)
+(*    [inst_op_alpha … [Ss]] with [inst_op_arg] (= sig_inst/ret_inst);    *)
+(*    (c) type the reified resumption [plug (shift P) (var 0)] via        *)
+(*    weakening + [shift_tm_plug] + [plug_typing_replace] (with the       *)
+(*    perform's principal type [ret_inst] unchanged under term-shift,     *)
+(*    by eff-lookup determinism); (d) the term-list subst                 *)
+(*    [typing_subst_list_tm_eval_ctx_global].  No structural blocker.     *)
 (* ================================================================== *)
 
 (* Term substitution at index 0 preserves typing — now from the PROVEN *)
@@ -268,10 +273,79 @@ Proof.
              (SubstLt_here Γ lt_local l (LS_Local Γ l Hl))).
 Qed.
 
-Axiom matchyes_preserves : forall Γ K l lts Ts vs n_lt yes_body no_body T,
+(* Substitute the constructor's lifetimes [lts]                          *)
+(* (peeling the match's push_corr block, typing_peel_push_corr_fold)     *)
+(* then its field values [vs] (typing_subst_list_tm_eval_ctx_global).    *)
+(* The peeled field types [subst_list_lt lts (inst_ctor_type_open …)]    *)
+(* equal the constructor's [inst_ctor_type … lts] because lts are        *)
+(* lt-closed in an eval_ctx (subst_list_lt_in_ty_inst_ctor_type_open).   *)
+(* The branch result type is reconciled with [T] via elim_ty_n_sound_pos.*)
+Lemma matchyes_preserves : forall Γ K l lts Ts vs n_lt yes_body no_body T,
   eval_ctx Γ -> Forall value vs ->
   Γ ⊢ₜ term_match (term_ctor K l lts Ts vs) K n_lt (List.length vs) yes_body no_body : T ->
   Γ ⊢ₜ subst_list_tm vs (subst_list_lt_in_tm lts yes_body) : T.
+Proof.
+  intros Γ K l lts Ts vs n_lt yes_body no_body T Hec Hvals Hty.
+  apply match_typing_inv in Hty.
+  destruct Hty as (n_lt' & n_ty & sigma_fields & result_ty_schema & Ts' & Delta &
+    scrut_result_ty & result_tag & result_l & eta & elim_result & HKne & Hlk & Heff &
+    Hn_lt_eq & HlenTs & Hscrut_result & Hscrut_shape & Hrtne & HwfDelta & Hresult_l &
+    Hscrut & Harity & Hyes & Helim & Hno & HsubOr).
+  subst n_lt'.
+  apply ctor_typing_inv in Hscrut.
+  destruct Hscrut as (n_lt2 & n_ty2 & sigma2 & result2 & result_tag2 &
+    Hlk2 & Hltlen & HTslen2 & Hresult2 & Hbounded & Hvslen & Hf2 & Hsub2).
+  rewrite Hlk in Hlk2. injection Hlk2 as Hn2 Hnty2 Hsig2 Hres2.
+  subst n_lt2 n_ty2 sigma2 result2.
+  destruct (sub_ctor_inv Γ (type_ctor result_tag2 l Ts) result_tag Delta Ts' Hec Hsub2 Hrtne)
+    as (l'' & Heq & Hl_Delta).
+  injection Heq as Htag2 Hl'' HTseq. subst result_tag2. subst Ts'. subst l''.
+  (* lts are lt-closed (well-formed lifetimes in an eval_ctx). *)
+  assert (Hclosed : Forall (fun l0 => lt_lt_closed 0 l0) lts).
+  { eapply Forall_impl; [|exact Hbounded]. intros l0 Hl0.
+    eapply lt_wf_eval_ctx_lt_closed; [exact Hec|].
+    exact (proj1 (lt_sub_wf Γ l0 l Hl0)). }
+  (* lts <: Delta (transitively through l). *)
+  assert (HboundedD : Forall (fun l0 => Γ ⊢ₗ l0 <: Delta) lts).
+  { eapply Forall_impl; [|exact Hbounded]. intros l0 Hl0.
+    eapply LS_Trans; [exact Hl0 | exact Hl_Delta]. }
+  (* peel the push_corr block by substituting lts. *)
+  assert (Hyes' :
+    (List.fold_right (fun rho G => bind_tm rho :: G)
+      (push_corr (List.length lts) Delta Γ)
+      (List.map (inst_ctor_type_open n_lt n_ty Ts) sigma_fields))
+      ⊢ₜ yes_body : eta).
+  { rewrite Hltlen. exact Hyes. }
+  pose proof (typing_peel_push_corr_fold lts Delta
+    (List.map (inst_ctor_type_open n_lt n_ty Ts) sigma_fields)
+    yes_body eta Γ HboundedD Hyes') as Hpeel.
+  (* the peeled field types are exactly the constructor's field types. *)
+  assert (Hmapeq :
+    List.map (subst_list_lt_in_ty lts)
+      (List.map (inst_ctor_type_open n_lt n_ty Ts) sigma_fields) =
+    List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields).
+  { rewrite List.map_map. apply List.map_ext. intro s.
+    apply subst_list_lt_in_ty_inst_ctor_type_open. exact Hclosed. }
+  rewrite Hmapeq in Hpeel.
+  (* substitute the field values. *)
+  pose proof (typing_subst_list_tm_eval_ctx_global Γ vs
+    (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields)
+    (subst_list_lt_in_tm lts yes_body) (subst_list_lt_in_ty lts eta)
+    Hec Hf2 Hvals) as Hsubst.
+  assert (Hfree : List.concat (List.map (free_tm_vars 0) vs) = []).
+  { clear -Hec Hf2. induction Hf2; simpl; [reflexivity|].
+    rewrite (typing_closed _ _ _ Hec H), IHHf2. reflexivity. }
+  specialize (Hsubst Hfree Hpeel).
+  (* reconcile the branch result type with T via elim soundness. *)
+  assert (HwfEta : ty_wf (push_corr n_lt Delta Γ) eta).
+  { apply (ty_wf_fold_bind_tm_inv (List.map (inst_ctor_type_open n_lt n_ty Ts) sigma_fields)).
+    eapply typing_implies_wf. exact Hyes. }
+  pose proof (elim_ty_n_sound_pos n_lt Delta lts eta elim_result Γ
+    Helim Hltlen HwfDelta HwfEta HboundedD) as HetaSub.
+  eapply T_Sub; [exact Hsubst|].
+  destruct HsubOr as [Heq | Hsub]; [subst elim_result; exact HetaSub|].
+  eapply SA_Trans; [exact HetaSub | exact Hsub].
+Qed.
 
 Axiom perform_preserves :
   forall Γ E_tag m n_beta Ts T_B T_R op_body Ss v P T,

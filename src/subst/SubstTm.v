@@ -1097,6 +1097,151 @@ Proof.
   rewrite IH. reflexivity.
 Qed.
 
+(* ================================================================== *)
+(* Bridge: for lt-CLOSED (ground) witnesses, the telescoping           *)
+(* [subst_list_lt_in_ty] coincides with the parallel                   *)
+(* [multi_subst_lt_in_ty 0] (= [inst_lt_vars]).  This connects the     *)
+(* match operational substitution (subst_list, peeled by               *)
+(* [typing_peel_push_corr_fold]) to the constructor instantiation      *)
+(* [inst_ctor_type] (multi_subst).  Witnesses are closed because in an *)
+(* eval_ctx every lifetime is ground.                                  *)
+(* ================================================================== *)
+
+Lemma multi_subst_lt_closed_id : forall lts c l,
+  lt_lt_closed 0 l -> multi_subst_lt c lts l = l.
+Proof.
+  intros lts c l. revert c. induction l as [y| | |l1 IH1 l2 IH2]; intros c Hcl; simpl in *.
+  - exfalso; lia.
+  - reflexivity.
+  - reflexivity.
+  - destruct Hcl as [H1 H2]. rewrite IH1 by exact H1. rewrite IH2 by exact H2. reflexivity.
+Qed.
+
+Lemma multi_subst_lt_cons_closed : forall rest l c y,
+  lt_lt_closed 0 l ->
+  multi_subst_lt c (l :: rest) y = multi_subst_lt c rest (subst_lt c l y).
+Proof.
+  intros rest l c y Hcl. revert c.
+  induction y as [x| | |y1 IH1 y2 IH2]; intros c; simpl.
+  2,3: reflexivity.
+  2:{ rewrite IH1, IH2. reflexivity. }
+  (* lt_var x *)
+  destruct (Nat.eqb x c) eqn:Exeqc.
+  - (* x = c *)
+    apply Nat.eqb_eq in Exeqc. subst x.
+    rewrite (proj2 (Nat.ltb_ge c c) (Nat.le_refl c)).
+    replace (c - c) with 0 by lia. simpl.
+    rewrite shift_lt_closed_lifetime by (eapply lt_lt_closed_mono; [|exact Hcl]; lia).
+    rewrite multi_subst_lt_closed_id by exact Hcl. reflexivity.
+  - apply Nat.eqb_neq in Exeqc.
+    destruct (Nat.ltb c x) eqn:Ecx.
+    + (* c < x : subst_lt = lt_var (pred x) *)
+      apply Nat.ltb_lt in Ecx. simpl.
+      rewrite (proj2 (Nat.ltb_ge x c) ltac:(lia)).
+      rewrite (proj2 (Nat.ltb_ge (Init.Nat.pred x) c) ltac:(lia)).
+      destruct (Nat.ltb (x - c) (S (List.length rest))) eqn:E1.
+      * apply Nat.ltb_lt in E1.
+        replace (x - c) with (S (Init.Nat.pred x - c)) by lia. simpl.
+        rewrite (proj2 (Nat.ltb_lt (Init.Nat.pred x - c) (List.length rest)) ltac:(lia)).
+        reflexivity.
+      * apply Nat.ltb_ge in E1.
+        rewrite (proj2 (Nat.ltb_ge (Init.Nat.pred x - c) (List.length rest)) ltac:(lia)).
+        f_equal. lia.
+    + (* x < c : subst_lt = lt_var x *)
+      apply Nat.ltb_ge in Ecx.
+      assert (Hxc : Nat.ltb x c = true) by (apply Nat.ltb_lt; lia).
+      rewrite Hxc. simpl. rewrite Hxc. reflexivity.
+Qed.
+
+Lemma multi_subst_lt_in_ty_cons_closed : forall T c w rest,
+  lt_lt_closed 0 w ->
+  multi_subst_lt_in_ty c (w :: rest) T = multi_subst_lt_in_ty c rest (subst_lt_in_ty c w T).
+Proof.
+  intros T.
+  induction T using type_list_ind with
+    (Q := fun Ts => forall c w rest, lt_lt_closed 0 w ->
+       List.map (multi_subst_lt_in_ty c (w :: rest)) Ts =
+       List.map (multi_subst_lt_in_ty c rest) (List.map (subst_lt_in_ty c w) Ts));
+    intros c w rest Hcl.
+  - reflexivity.
+  - simpl. rewrite IHT1, IHT2 by exact Hcl.
+    rewrite multi_subst_lt_cons_closed by exact Hcl. reflexivity.
+  - simpl. rewrite !multi_subst_lt_in_ty_go_eq_map.
+    rewrite multi_subst_lt_cons_closed by exact Hcl.
+    rewrite IHT by exact Hcl. reflexivity.
+  - simpl. rewrite shift_lt_closed_lifetime by (eapply lt_lt_closed_mono; [|exact Hcl]; lia).
+    rewrite IHT by exact Hcl. reflexivity.
+  - simpl. rewrite IHT1, IHT2 by exact Hcl. reflexivity.
+  - reflexivity.
+  - simpl. rewrite IHT by exact Hcl. rewrite IHT0 by exact Hcl. reflexivity.
+Qed.
+
+Lemma multi_subst_lt_nil : forall c l, multi_subst_lt c [] l = l.
+Proof.
+  intros c l. induction l as [x| | |l1 IH1 l2 IH2]; simpl; try reflexivity.
+  - destruct (Nat.ltb x c) eqn:E; [reflexivity|].
+    cbn [List.length]. replace (x - 0) with x by lia. reflexivity.
+  - rewrite IH1, IH2. reflexivity.
+Qed.
+
+Lemma multi_subst_lt_in_ty_nil : forall c T, multi_subst_lt_in_ty c [] T = T.
+Proof.
+  intros c T. revert c.
+  induction T using type_list_ind with
+    (Q := fun Ts => forall c, List.map (multi_subst_lt_in_ty c []) Ts = Ts);
+    intros c; simpl.
+  - reflexivity.
+  - rewrite IHT1, IHT2, multi_subst_lt_nil. reflexivity.
+  - rewrite multi_subst_lt_in_ty_go_eq_map, IHT, multi_subst_lt_nil. reflexivity.
+  - rewrite IHT. reflexivity.
+  - rewrite IHT1, IHT2. reflexivity.
+  - reflexivity.
+  - rewrite IHT, IHT0. reflexivity.
+Qed.
+
+Lemma multi_subst_lt_in_ty_eq_iter_closed : forall lts T,
+  Forall (fun l => lt_lt_closed 0 l) lts ->
+  multi_subst_lt_in_ty 0 lts T = iter_subst_lt_in_ty lts T.
+Proof.
+  induction lts as [|l rest IH]; intros T Hcl; simpl.
+  - apply multi_subst_lt_in_ty_nil.
+  - inversion Hcl; subst.
+    rewrite multi_subst_lt_in_ty_cons_closed by assumption.
+    rewrite IH by assumption. reflexivity.
+Qed.
+
+Lemma shift_each_lt_closed : forall lts,
+  Forall (fun l => lt_lt_closed 0 l) lts -> shift_each_lt lts = lts.
+Proof.
+  induction lts as [|l rest IH]; intros Hcl; simpl; [reflexivity|].
+  inversion Hcl; subst.
+  rewrite shift_lt_closed_lifetime by (eapply lt_lt_closed_mono; [|eassumption]; lia).
+  rewrite IH by assumption. reflexivity.
+Qed.
+
+Lemma subst_list_lt_in_ty_eq_multi_closed : forall lts T,
+  Forall (fun l => lt_lt_closed 0 l) lts ->
+  subst_list_lt_in_ty lts T = multi_subst_lt_in_ty 0 lts T.
+Proof.
+  intros lts T Hcl.
+  rewrite subst_list_lt_in_ty_eq_iter.
+  rewrite shift_each_lt_closed by exact Hcl.
+  symmetry. apply multi_subst_lt_in_ty_eq_iter_closed. exact Hcl.
+Qed.
+
+(* The matchyes reconciliation: substituting the (closed) constructor   *)
+(* lifetimes [lts] into the match field type [inst_ctor_type_open] gives *)
+(* exactly the constructor's instantiated field type [inst_ctor_type].  *)
+Lemma subst_list_lt_in_ty_inst_ctor_type_open : forall lts n_lt n_ty Ts sigma,
+  Forall (fun l => lt_lt_closed 0 l) lts ->
+  subst_list_lt_in_ty lts (inst_ctor_type_open n_lt n_ty Ts sigma) =
+  inst_ctor_type n_lt n_ty lts Ts sigma.
+Proof.
+  intros lts n_lt n_ty Ts sigma Hcl.
+  rewrite subst_list_lt_in_ty_eq_multi_closed by exact Hcl.
+  unfold inst_ctor_type, inst_lt_vars, inst_ctor_type_open. reflexivity.
+Qed.
+
 Lemma bounded_ctor_inst_type_core : forall k lts T,
   List.length lts = k ->
   ctor_field_bounded_ty k T ->
