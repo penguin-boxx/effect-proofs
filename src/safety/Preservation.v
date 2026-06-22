@@ -37,9 +37,9 @@ Proof.
     rewrite IHP. reflexivity.
 Qed.
 
-(* ================================================================== *)
-(* Principal-type inversions for elimination forms (residual `<:: T`).*)
-(* ================================================================== *)
+(* =================================================================== *)
+(* Principal-type inversions for elimination forms (residual `<:: T`). *)
+(* =================================================================== *)
 
 Lemma app_typing_inv_p : forall Γ f x T,
   Γ ⊢ₜ term_app f x : T ->
@@ -112,7 +112,7 @@ Qed.
 (* feed the main `preservation` theorem: contracting a redex in an    *)
 (* `eval_ctx` preserves typing.  They draw on the eval_ctx            *)
 (* substitution metatheory in subst/ (typing_SubstTm / SubstLt /      *)
-(* SubstTy and the push_match_bound peels).                                  *)
+(* SubstTy and the push_match_bound peels).                           *)
 (* ================================================================== *)
 
 (* Term substitution at index 0 preserves typing (typing_SubstTm_eval_ctx). *)
@@ -272,25 +272,25 @@ Proof.
   eapply SA_Trans; [exact HetaSub | exact Hsub].
 Qed.
 
-(* ================================================================== *)
-(*  perform_preserves.                                                 *)
-(*                                                                    *)
-(*  Reducing  handler_m m T_B T_R (P[perform (cap …) Ss v]) to         *)
-(*  op_body[Ss][v, resume]  preserves typing.  The proof:             *)
-(*  (a) handler/plug/perform/cap inversions recover the cap's op_body  *)
-(*      typing (under push_ty_vars n_β any_at_free, two bind_tm) and   *)
-(*      reconcile the two effect lookups (perform vs cap) via          *)
-(*      sub_ctor_inv + lookup determinism;                             *)
-(*  (b) the push_ty_vars TYPE peel substitutes Ss into op_body, with   *)
-(*      the operation-signature reconciliation                         *)
-(*      subst_list_ty Ss (inst_op_ty_args …) = inst_op_all_args … Ss …;       *)
-(*  (c) the reified resumption plug (shift P)(var 0) is typed by       *)
-(*      weakening + shift_tm_plug + plug_typing_replace, the focus     *)
-(*      replacement justified by the perform's principal type ret_inst *)
-(*      being unchanged under term-shift (perform_principal_general);  *)
-(*  (d) the two term arguments [v; resume] are substituted by          *)
-(*      typing_subst_list_tm_eval_ctx_global.                          *)
-(* ================================================================== *)
+(* ==================================================================== *)
+(*  perform_preserves.                                                  *)
+(*                                                                      *)
+(*  Reducing  handler_m m T_B T_R (P[perform (cap …) Ss v]) to          *)
+(*  op_body[Ss][v, resume]  preserves typing.  The proof:               *)
+(*  (a) handler/plug/perform/cap inversions recover the cap's op_body   *)
+(*      typing (under push_ty_vars n_β any_at_free, two bind_tm) and    *)
+(*      reconcile the two effect lookups (perform vs cap) via           *)
+(*      sub_ctor_inv + lookup determinism;                              *)
+(*  (b) the push_ty_vars TYPE peel substitutes Ss into op_body, with    *)
+(*      the operation-signature reconciliation                          *)
+(*      subst_list_ty Ss (inst_op_ty_args …) = inst_op_all_args … Ss …; *)
+(*  (c) the reified resumption plug (shift P)(var 0) is typed by        *)
+(*      weakening + shift_tm_plug + plug_typing_replace, the focus      *)
+(*      replacement justified by the perform's principal type ret_inst  *)
+(*      being unchanged under term-shift (perform_principal_general);   *)
+(*  (d) the two term arguments [v; resume] are substituted by           *)
+(*      typing_subst_list_tm_eval_ctx_global.                           *)
+(* ==================================================================== *)
 
 (* ctx_lookup_ty / ctx_lookup_eff ignore a bind_tm prefix. *)
 Lemma ctx_lookup_ty_bind_tm : forall A Γ α,

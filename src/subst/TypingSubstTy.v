@@ -6,11 +6,11 @@ Require Import Syntax.
 Require Import Substitution.
 Require Import Typing.
 Require Import ShiftLaws.
-Require Import Insertions.
+Require Import Weakening.
 Require Import SubstLt.
 Require Import SubstTy.
 Require Import SubstTm.
-Require Import EvalCtx.
+Require Import ProgramCtx.
 
 (* ================================================================== *)
 (* typing_SubstTy : type-substitution preserves typing.               *)
@@ -640,11 +640,11 @@ Proof.
 Qed.
 
 (* ================================================================== *)
-(* PER-FIELD ESCAPE ALIGNMENT.  For a (ty- and lt-closed) constructor  *)
-(* field schema S, substituting a type through the instantiated field  *)
-(* raises its escape lifetime by at most the join of the substituted   *)
-(* type arguments' escape lifetimes.  This is exactly what keeps the   *)
-(* T_Ctor effective-lifetime escape premise stable under subst_ty.     *)
+(* PER-FIELD ESCAPE ALIGNMENT.  For a (ty- and lt-closed) constructor *)
+(* field schema S, substituting a type through the instantiated field *)
+(* raises its escape lifetime by at most the join of the substituted  *)
+(* type arguments' escape lifetimes.  This is exactly what keeps the  *)
+(* T_Ctor effective-lifetime escape premise stable under subst_ty.    *)
 (* ================================================================== *)
 Lemma inst_ctor_field_alignment : forall S lts Ts n Sb G,
   ty_lt_closed (List.length lts) S ->
@@ -998,7 +998,7 @@ Proof.
 Qed.
 
 (* Map form on the target: the bound fields are already substituted into a   *)
-(* list (as the reformulated T_Match yes-branch provides them).              *)
+(* list (as the T_Match yes-branch provides them).                           *)
 Lemma SubstTy_fold_bind_tm_map : forall rhos Sb n G G',
   SubstTy Sb n G G' ->
   SubstTy Sb n
@@ -1895,13 +1895,13 @@ Lemma subst_nl_push_ty_vars : forall k Sb n Γ G',
     (push_ty_vars k any_at_free Γ) (push_ty_vars k any_at_free G').
 Proof. intros; exact I. Qed.
 
-(* ================================================================ *)
-(* The T_Match case of [typing_SubstTy]: [rho_fields] uses the      *)
-(* inst_ctor_type_open (inst_ty_vars-only) form, so it lives        *)
-(* consistently in the pushed context, and the commutation          *)
-(* [inst_ctor_type_open_subst_ty] (at the SHIFTED Sb) closes both   *)
-(* premise 5 and the yes-branch.                                    *)
-(* ================================================================ *)
+(* ================================================================== *)
+(* The T_Match case of [typing_SubstTy]: [rho_fields] uses the        *)
+(* inst_ctor_type_open (inst_ty_vars-only) form, so it lives          *)
+(* consistently in the pushed context, and the commutation            *)
+(* [inst_ctor_type_open_subst_ty] (at the SHIFTED Sb) closes both     *)
+(* premise 5 and the yes-branch.                                      *)
+(* ================================================================== *)
 
 Lemma typing_SubstTy : forall Γ t T,
   Γ ⊢ₜ t : T ->
@@ -2190,16 +2190,16 @@ Proof.
         (ctor_fields_closed_bind_tm A Γ Hcfc)).
 Qed.
 
-(* ===================================================================== *)
-(*  push_ty_vars TYPE peel — needed for perform_preserves.               *)
-(*                                                                       *)
-(*  An operation body is typed under [push_ty_vars n_β any_at_free Γ]    *)
-(*  (the n_β operation type parameters, each bounded by [any_at_free]),  *)
-(*  with two [bind_tm] binders on top (the argument and the resume).     *)
-(*  A [perform] instantiates the type parameters with concrete [Ss]      *)
-(*  (each no-local, hence [<:: any_at_free] via SA_Any).  This peel      *)
-(*  removes the n_β type binders by iterated [typing_SubstTy].           *)
-(* ===================================================================== *)
+(* ==================================================================== *)
+(*  push_ty_vars TYPE peel — needed for perform_preserves.              *)
+(*                                                                      *)
+(*  An operation body is typed under [push_ty_vars n_β any_at_free Γ]   *)
+(*  (the n_β operation type parameters, each bounded by [any_at_free]), *)
+(*  with two [bind_tm] binders on top (the argument and the resume).    *)
+(*  A [perform] instantiates the type parameters with concrete [Ss]     *)
+(*  (each no-local, hence [<:: any_at_free] via SA_Any).  This peel     *)
+(*  removes the n_β type binders by iterated [typing_SubstTy].          *)
+(* ==================================================================== *)
 
 (* Front-unfold for the (tail-recursive) [push_ty_vars]. *)
 Lemma push_ty_vars_S_front : forall n b Γ,
@@ -2283,9 +2283,9 @@ Proof.
     exact IH.
 Qed.
 
-(* ===================================================================== *)
-(*  Type-level reconciliations for perform_preserves.                    *)
-(* ===================================================================== *)
+(* ================================================================== *)
+(*  Type-level reconciliations for perform_preserves.                 *)
+(* ================================================================== *)
 
 (* [subst_list_ty] of a closed-length list IS [inst_ty_vars]. *)
 Lemma subst_list_ty_eq_inst_ty_vars : forall Ss T,

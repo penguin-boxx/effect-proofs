@@ -6,7 +6,7 @@ Require Import Syntax.
 Require Import Substitution.
 Require Import Typing.
 Require Import ShiftLaws.
-Require Import Insertions.
+Require Import Weakening.
 Require Import SubstLt.
 
 (* ================================================================== *)
@@ -151,7 +151,7 @@ Proof.
   - intros G T Hwf.
     induction Hwf as [Γ α B Hlk HwfB IHBound
                      |Γ A l B HwfA IHA Hwfl HwfB IHB
-                     |Γ K l Ts Hwfl HwfTs IHTs
+                     |Γ K l Ts Hwfl HwfTs
                      |Γ A HwfA IHA
                      |Γ B A HwfB IHB HwfA IHA].
     + unfold lt_of_ty_G.
@@ -197,7 +197,7 @@ Proof.
   - intros G T Hwf.
     induction Hwf as [Γ α B Hlk HwfB IHBound
                      |Γ A l B HwfA IHA Hwfl HwfB IHB
-                     |Γ K l Ts Hwfl HwfTs IHTs
+                     |Γ K l Ts Hwfl HwfTs
                      |Γ A HwfA IHA
                      |Γ B A HwfB IHB HwfA IHA].
     + apply LS_Free. change (lt_wf Γ (lt_of_ty_G Γ (type_var α))).
@@ -209,7 +209,7 @@ Proof.
     + rewrite lt_of_ty_ctx_ltall. apply LS_Refl. constructor.
     + rewrite lt_of_ty_ctx_tyall. apply LS_Refl. constructor.
   - intros G Ts Hwf.
-    induction Hwf as [Γ | Γ T Ts HwfT IHT HwfTs IHTs].
+    induction Hwf as [Γ | Γ T Ts HwfT IHT HwfTs].
     + rewrite lt_of_ty_ctx_list_nil. apply LS_Refl. constructor.
     + change (lt_of_ty_list (T :: Ts)) with (lt_min (lt_of_ty T) (lt_of_ty_list Ts)).
       rewrite lt_of_ty_ctx_list_cons.
@@ -225,13 +225,13 @@ Lemma lt_of_ty_list_cons : forall A Ts,
   lt_of_ty_list (A :: Ts) = lt_min (lt_of_ty A) (lt_of_ty_list Ts).
 Proof. reflexivity. Qed.
 
-(* ================================================================== *)
-(* Bounds on the context-free escape lifetime under type substitution.*)
-(* These are the substitution-stability facts that make the T_Ctor    *)
-(* effective-lifetime escape premise survive `subst_ty`:              *)
+(* =================================================================== *)
+(* Bounds on the context-free escape lifetime under type substitution. *)
+(* These are the substitution-stability facts that make the T_Ctor     *)
+(* effective-lifetime escape premise survive `subst_ty`:               *)
 (*   LOWER : lt_of_ty T <: lt_of_ty (subst T)   (subst only raises it) *)
 (*   UPPER : lt_of_ty (subst T) <: lt_min (lt_of_ty T) (lt_of_ty Sb)   *)
-(* ================================================================== *)
+(* =================================================================== *)
 Lemma lt_of_ty_subst_ty_ge : forall T n Sb G,
   lt_wf G (lt_of_ty Sb) -> ty_wf G (subst_ty n Sb T) ->
   G ⊢ₗ lt_of_ty T <: lt_of_ty (subst_ty n Sb T).
@@ -431,12 +431,12 @@ Proof.
   rewrite lt_of_ty_shift_lt_amt, IH. reflexivity.
 Qed.
 
-(* ================================================================== *)
+(* =================================================================== *)
 (* Parallel lifetime substitution (multi_subst_lt 0 lts) closes the    *)
 (* n_lt schema lt-parameter binders.  These lemmas let us push a       *)
-(* push_lt_vars-context subtyping down to G' — the final ingredient of  *)
+(* push_lt_vars-context subtyping down to G' — the final ingredient of *)
 (* the T_Ctor escape-premise alignment.                                *)
-(* ================================================================== *)
+(* =================================================================== *)
 
 Lemma push_lt_vars_app : forall n b G,
   push_lt_vars n b G = List.repeat (bind_lt b) n ++ G.

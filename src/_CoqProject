@@ -7,11 +7,11 @@ core/Substitution.v
 core/Semantics.v
 core/Typing.v
 subst/ShiftLaws.v
-subst/Insertions.v
+subst/Weakening.v
 subst/SubstLt.v
 subst/SubstTy.v
 subst/SubstTm.v
-subst/EvalCtx.v
+subst/ProgramCtx.v
 subst/TypingSubstTy.v
 subst/Subst.v
 subst/Narrowing.v
@@ -24,6 +24,5 @@ safety/Preservation.v
 safety/Soundness.v
 safety/Escape.v
 safety/Safety.v
-examples/Sugar.v
 examples/Examples.v
 examples/ExamplesProofs.v

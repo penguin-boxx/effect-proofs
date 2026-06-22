@@ -6,7 +6,7 @@ Require Import Syntax.
 Require Import Substitution.
 Require Import Typing.
 Require Import ShiftLaws.
-Require Import Insertions.
+Require Import Weakening.
 Require Import SubstLt.
 Require Import SubstTy.
 
@@ -1097,15 +1097,15 @@ Proof.
   rewrite IH. reflexivity.
 Qed.
 
-(* ================================================================== *)
-(* Bridge: for lt-CLOSED (ground) witnesses, the telescoping           *)
-(* [subst_list_lt_in_ty] coincides with the parallel                   *)
-(* [multi_subst_lt_in_ty 0] (= [inst_lt_vars]).  This connects the     *)
-(* match operational substitution (subst_list, peeled by               *)
-(* [typing_peel_push_match_bound_fold]) to the constructor instantiation      *)
-(* [inst_ctor_type] (multi_subst).  Witnesses are closed because in an *)
-(* eval_ctx every lifetime is ground.                                  *)
-(* ================================================================== *)
+(* ===================================================================== *)
+(* Bridge: for lt-CLOSED (ground) witnesses, the telescoping             *)
+(* [subst_list_lt_in_ty] coincides with the parallel                     *)
+(* [multi_subst_lt_in_ty 0] (= [inst_lt_vars]).  This connects the       *)
+(* match operational substitution (subst_list, peeled by                 *)
+(* [typing_peel_push_match_bound_fold]) to the constructor instantiation *)
+(* [inst_ctor_type] (multi_subst).  Witnesses are closed because in an   *)
+(* eval_ctx every lifetime is ground.                                    *)
+(* ===================================================================== *)
 
 Lemma multi_subst_lt_closed_id : forall lts c l,
   lt_lt_closed 0 l -> multi_subst_lt c lts l = l.

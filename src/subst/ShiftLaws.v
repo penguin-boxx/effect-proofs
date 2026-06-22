@@ -18,11 +18,11 @@ Require Import Typing.
 (* list-substitution laws below).                                     *)
 (*                                                                    *)
 (* Naming convention                                                  *)
-(* ----------------                                                   *)
+(* ------------------------------------------------------------------ *)
 (*   <op>_<sort>              — single-sort version (e.g. shift_lt)   *)
 (*   <op>_<sort>_in_<carrier> — cross-sort version                    *)
 (*                                                                    *)
-(* For every fixpoint in Substitution.v we state, where applicable:   *)
+(* For every fixpoint in Substitution.v, where applicable:            *)
 (*                                                                    *)
 (*   *_zero          : shifting by 0 is identity                      *)
 (*   *_fuse          : two shifts at the same cutoff combine          *)
@@ -2109,16 +2109,16 @@ Proof.
   - apply IH.
 Qed.
 
-(* ================================================================== *)
-(*  lt_of_ty_ctx: rewrite equations, var-bound invariant, fuel        *)
-(*  sufficiency, and shift commutation.                               *)
-(*                                                                    *)
-(*  The shift-on-lookup discipline makes EVERY context structurally   *)
-(*  acyclic (a bound looked up across k binders is var-bounded by k), *)
-(*  so fuel = |Γ| always suffices: the computed lt_∅ is independent   *)
-(*  of any fuel ≥ |Γ|.  This is what lets context weakening go through*)
-(*  at the `SA_Any` rule without a separate well-formedness premise.  *)
-(* ================================================================== *)
+(* =================================================================== *)
+(*  lt_of_ty_ctx: rewrite equations, var-bound invariant, fuel         *)
+(*  sufficiency, and shift commutation.                                *)
+(*                                                                     *)
+(*  The shift-on-lookup discipline makes EVERY context structurally    *)
+(*  acyclic (a bound looked up across k binders is var-bounded by k),  *)
+(*  so fuel = |Γ| always suffices: the computed lt_∅ is independent    *)
+(*  of any fuel ≥ |Γ|.  This is what lets context weakening go through *)
+(*  at the `SA_Any` rule without a separate well-formedness premise.   *)
+(* =================================================================== *)
 
 (* External per-field minimum, matching the internal field fold. *)
 Definition lt_of_ty_ctx_list (f : nat) (G : ctx) (Ts : list type) : lifetime :=
@@ -2160,7 +2160,7 @@ Proof.
 Qed.
 
 (* ------------------------------------------------------------------ *)
-(* Unfolding equations for shifts on type constructors.                *)
+(* Unfolding equations for shifts on type constructors.               *)
 (* ------------------------------------------------------------------ *)
 
 Lemma shift_ty_var_eq : forall a c n,

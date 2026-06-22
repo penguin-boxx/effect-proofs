@@ -216,9 +216,9 @@ Fixpoint shift_lt_in_tm (amount cutoff : nat) (t : term) : term :=
   end.
 
 (* ================================================================== *)
-(* Substitution                                                        *)
+(* Substitution                                                       *)
 (*                                                                    *)
-(* subst_X x s t  replaces free occurrences of X-variable x in t     *)
+(* subst_X x s t  replaces free occurrences of X-variable x in t      *)
 (* with s, decrementing higher indices to close the gap.              *)
 (* ================================================================== *)
 
@@ -449,20 +449,20 @@ Fixpoint subst_lt_in_tm (var : nat) (replacement : lifetime) (t : term) : term :
         (subst_lt_in_tm var replacement b)
   end.
 
-(* ================================================================== *)
-(* Simultaneous substitution of constructor arguments                 *)
-(*                                                                    *)
-(* subst_list_tm vs t  substitutes vs[0] for variable 0, vs[1] for    *)
-(* variable 1, ..., vs[n-1] for variable n-1 in t, which is assumed   *)
-(* to be under exactly n = length vs term binders.  Variables 0..n-1  *)
-(* correspond to constructor arguments outermost-first.               *)
-(*                                                                    *)
-(* Implementation: substitute each argument from outermost (index 0)  *)
-(* to innermost.  When substituting vs[i] (the head of the remaining  *)
-(* list) for variable 0, we first shift vs[i] by (length rest) to     *)
-(* compensate for the remaining open binders; each substitution closes*)
-(* one binder and decrements the remaining variable indices by one.   *)
-(* ================================================================== *)
+(* =================================================================== *)
+(* Simultaneous substitution of constructor arguments                  *)
+(*                                                                     *)
+(* subst_list_tm vs t  substitutes vs[0] for variable 0, vs[1] for     *)
+(* variable 1, ..., vs[n-1] for variable n-1 in t, which is assumed    *)
+(* to be under exactly n = length vs term binders.  Variables 0..n-1   *)
+(* correspond to constructor arguments outermost-first.                *)
+(*                                                                     *)
+(* Implementation: substitute each argument from outermost (index 0)   *)
+(* to innermost.  When substituting vs[i] (the head of the remaining   *)
+(* list) for variable 0, we first shift vs[i] by (length rest) to      *)
+(* compensate for the remaining open binders; each substitution closes *)
+(* one binder and decrements the remaining variable indices by one.    *)
+(* =================================================================== *)
 
 Fixpoint subst_list_tm (vs : list term) (t : term) : term :=
   match vs with
@@ -499,15 +499,15 @@ Fixpoint subst_list_lt_in_ty (lts : list lifetime) (T : type) : type :=
         (subst_lt_in_ty 0 (shift_lt (List.length rest) 0 l) T)
   end.
 
-(* ================================================================== *)
-(* Simultaneous substitution of n type witnesses in a term            *)
-(*                                                                    *)
-(* subst_list_ty_in_tm Ss t  substitutes Ss[0] for ty-var 0,          *)
-(* Ss[1] for ty-var 1, ..., Ss[n-1] for ty-var (n-1) in t, assumed    *)
-(* to live under exactly n = length Ss type-binders.  Same telescoping*)
-(* discipline as subst_list_tm: shift each entry by the number of     *)
-(* remaining open ty-binders before substituting at 0.                *)
-(* ================================================================== *)
+(* =================================================================== *)
+(* Simultaneous substitution of n type witnesses in a term             *)
+(*                                                                     *)
+(* subst_list_ty_in_tm Ss t  substitutes Ss[0] for ty-var 0,           *)
+(* Ss[1] for ty-var 1, ..., Ss[n-1] for ty-var (n-1) in t, assumed     *)
+(* to live under exactly n = length Ss type-binders.  Same telescoping *)
+(* discipline as subst_list_tm: shift each entry by the number of      *)
+(* remaining open ty-binders before substituting at 0.                 *)
+(* =================================================================== *)
 
 Fixpoint subst_list_ty_in_tm (Ss : list type) (t : term) : term :=
   match Ss with

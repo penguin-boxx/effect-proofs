@@ -10,7 +10,7 @@ Require Import Examples.
 Import CoreNotation.
 
 (* ================================================================== *)
-(* Multi-step plumbing                                                 *)
+(* Multi-step plumbing                                                *)
 (* ================================================================== *)
 
 Lemma ms_one : forall t t', t ==> t' -> t ==>> t'.
@@ -26,12 +26,12 @@ Qed.
 (* ================================================================== *)
 (* Evaluation-context congruence for multi-step reduction.            *)
 (*                                                                    *)
-(* Reduction lifts through an application/ty-/lt-application frame.    *)
-(* For [ty_app]/[lt_app] the frame carries no marker, so the lift is   *)
-(* unconditional.  For [app] the sibling operand's markers join the    *)
-(* term, so a [S_HandleCtx] (handler allocation) step would need a     *)
-(* marker fresh in the sibling too — we require the sibling to be      *)
-(* marker-free, which holds for every closed value/argument here.      *)
+(* Reduction lifts through an application/ty-/lt-application frame.   *)
+(* For [ty_app]/[lt_app] the frame carries no marker, so the lift is  *)
+(* unconditional.  For [app] the sibling operand's markers join the   *)
+(* term, so a [S_HandleCtx] (handler allocation) step would need a    *)
+(* marker fresh in the sibling too — we require the sibling to be     *)
+(* marker-free, which holds for every closed value/argument here.     *)
 (* ================================================================== *)
 
 Lemma step_ty_app : forall t t' S, t ==> t' -> term_ty_app t S ==> term_ty_app t' S.
@@ -190,7 +190,7 @@ Ltac solve_nat :=
     | eapply T_Ctor; cbn; try reflexivity ].
 
 (* ================================================================== *)
-(* Constructor/value typing statements                                 *)
+(* Constructor/value typing statements                                *)
 (* ================================================================== *)
 
 Theorem typed_unit_proof : typed_unit.
@@ -215,7 +215,7 @@ Proof.
 Qed.
 
 (* ================================================================== *)
-(* Direct typing statements                                            *)
+(* Direct typing statements                                           *)
 (* ================================================================== *)
 
 Theorem typed_withFile_proof : typed_withFile.
@@ -266,9 +266,9 @@ Proof.
     + cbn. solve_free_sub.
 Qed.
 
-(* ================================================================== *)
+(* ===================================================================== *)
 (* Example terms that USE the polymorphic functions: typing + reduction. *)
-(* ================================================================== *)
+(* ===================================================================== *)
 
 Theorem typed_id_example_proof : typed_id_example.
 Proof.
@@ -671,7 +671,7 @@ Theorem typed_foldEndo_proof : typed_foldEndo.
 Proof. exact I. Qed.
 
 (* ================================================================== *)
-(* Negative/error witnesses                                            *)
+(* Negative/error witnesses                                           *)
 (* ================================================================== *)
 
 Theorem rejected_testWithState_proof : rejected_testWithState.
@@ -687,7 +687,7 @@ Theorem typed_clash_ignored_local_proof : typed_clash_ignored_local.
 Proof. reflexivity. Qed.
 
 (* ================================================================== *)
-(* Reduction statements                                                *)
+(* Reduction statements                                               *)
 (* ================================================================== *)
 
 Theorem red_list_example_proof : red_list_example.

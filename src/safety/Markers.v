@@ -3615,7 +3615,7 @@ Proof.
 Qed.
 
 (* ================================================================== *)
-(* CONFINEMENT BUILDING BLOCKS for handler-elimination (H_Perform).      *)
+(* CONFINEMENT BUILDING BLOCKS for handler-elimination (H_Perform).   *)
 (* ================================================================== *)
 
 (* If every marker that appears in [t] is already in the ambient scope   *)
@@ -3694,7 +3694,7 @@ Proof.
   end.
 Qed.
 
-(* ================================================================== *)
+(* ==================================================================== *)
 (* The marker WELL-SCOPEDNESS invariant.                                *)
 (*                                                                      *)
 (* [well_scoped ms t] strengthens [marker_ok ms t]: at each cap it      *)
@@ -3704,7 +3704,7 @@ Qed.
 (* requires the bound marker to be fresh for the ambient scope.  This   *)
 (* is the runtime provenance fact needed to discharge the H_Perform     *)
 (* confinement, and it is vacuous on source terms (has_rt_cap = false). *)
-(* ================================================================== *)
+(* ==================================================================== *)
 
 (* The scope that was ambient when [m]'s handler was entered: the part  *)
 (* of [ms] strictly after the first occurrence of [m].                  *)
@@ -3936,7 +3936,7 @@ Proof.
 Qed.
 
 (* ================================================================== *)
-(* Phase 2 infrastructure: markers_in under shifts and substitutions.   *)
+(* Phase 2 infrastructure: markers_in under shifts and substitutions. *)
 (* ================================================================== *)
 
 Lemma markers_in_shift_tm : forall t amount cutoff,

@@ -9,11 +9,11 @@ Require Import Typing.
 Require Import Subst.
 
 (* ================================================================== *)
-(* Narrowing: typing/subtyping inversions and F<: narrowing theory.    *)
+(* Narrowing: typing/subtyping inversions and F<: narrowing theory.   *)
 (*                                                                    *)
 (* Split out of Progress: these lemmas (lambda/forall typing          *)
 (* inversions, the ∀-subtyping inversions, lt_of_ty monotonicity, and *)
-(* the narrowing/replacement theory [NT_*]/[RT_*]/[sub_NT]) are        *)
+(* the narrowing/replacement theory [NT_*]/[RT_*]/[sub_NT]) are       *)
 (* subtyping infrastructure, unrelated to the progress theorem.       *)
 (* ================================================================== *)
 
@@ -256,7 +256,7 @@ Proof.
   - intros f G T Hwf. revert f.
     induction Hwf as [Γ α B Hlk HwfB IHB
                      |Γ A l B HwfA IHA Hwfl HwfB IHB
-                     |Γ K l Ts Hwfl HwfTs IHTs
+                     |Γ K l Ts Hwfl HwfTs
                      |Γ A HwfA IHA
                      |Γ B A HwfB IHB HwfA IHA]; intros f Hf.
     + rewrite (lt_of_ty_ctx_var f Γ α). destruct f as [|f']; [constructor|].
@@ -282,7 +282,7 @@ Proof.
   - intros f G T Hwf. revert f.
     induction Hwf as [Γ α B Hlk HwfB IHB
                      |Γ A l B HwfA IHA Hwfl HwfB IHB
-                     |Γ K l Ts Hwfl HwfTs IHTs
+                     |Γ K l Ts Hwfl HwfTs
                      |Γ A HwfA IHA
                      |Γ B A HwfB IHB HwfA IHA]; intros f Hf.
     + rewrite (lt_of_ty_ctx_var f Γ α), (lt_of_ty_ctx_var (S f) Γ α).

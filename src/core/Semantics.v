@@ -20,10 +20,10 @@ Require Import Substitution.
 (* (`step_app_inv`, ...) recover the case-analysis principle.         *)
 (* ================================================================== *)
 
-(* ------------------------------------------------------------------ *)
-(* Evaluation contexts (defined first so head_step can reference plug,*)
-(* pure_ectx and shift_ectx_tm in the H_Perform rule).                *)
-(* ------------------------------------------------------------------ *)
+(* ------------------------------------------------------------------- *)
+(* Evaluation contexts (defined first so head_step can reference plug, *)
+(* pure_ectx and shift_ectx_tm in the H_Perform rule).                 *)
+(* ------------------------------------------------------------------- *)
 
 Inductive ectx : Type :=
   | EC_hole       : ectx

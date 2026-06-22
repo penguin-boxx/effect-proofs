@@ -6,13 +6,14 @@ Require Import Syntax.
 Require Import Substitution.
 Require Import Typing.
 Require Import ShiftLaws.
-Require Import Insertions.
+Require Import Weakening.
 Require Import SubstLt.
 Require Import SubstTy.
 Require Import SubstTm.
 
 (* ================================================================== *)
-(* Evaluation contexts (program-level typing contexts).               *)
+(* Program-level typing contexts: the `eval_ctx` predicate (NOT       *)
+(* `ectx`, the evaluation context in Semantics.v).                    *)
 (*                                                                    *)
 (* An `eval_ctx` contains ONLY constructor/effect bindings: no        *)
 (* `bind_tm`, `bind_ty`, or `bind_lt`.  Consequently a term typed     *)
@@ -3466,15 +3467,15 @@ Proof.
   apply (lt_local_not_escapes Γ Hec). eapply LS_Trans; [exact Hle | exact Hsub].
 Qed.
 
-(* ================================================================ *)
-(* Term-substitution preservation under an evaluation context.      *)
-(* [typing_SubstTm] threads [SubstTm_replacement_typed] as a        *)
-(* per-node invariant, re-established at each binder by weakening   *)
-(* (the bind_lt case via [typing_InsLt]); the base instance is      *)
-(* exactly [G |- v : A].  A per-node invariant (not one universal   *)
-(* replacement premise) is needed because the universal form fails  *)
-(* at bind_ctor/bind_eff, where ctx_lookup_ctor front-shadows.      *)
-(* ================================================================ *)
+(* ================================================================== *)
+(* Term-substitution preservation under an evaluation context.        *)
+(* [typing_SubstTm] threads [SubstTm_replacement_typed] as a          *)
+(* per-node invariant, re-established at each binder by weakening     *)
+(* (the bind_lt case via [typing_InsLt]); the base instance is        *)
+(* exactly [G |- v : A].  A per-node invariant (not one universal     *)
+(* replacement premise) is needed because the universal form fails    *)
+(* at bind_ctor/bind_eff, where ctx_lookup_ctor front-shadows.        *)
+(* ================================================================== *)
 
 (* [typing_SubstTm] specialised to a value substituted at index 0 in    *)
 (* an eval_ctx; the base instance is exactly [G |- v : A].              *)

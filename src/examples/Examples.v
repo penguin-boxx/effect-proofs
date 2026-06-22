@@ -54,7 +54,7 @@ Inductive multi_step : term -> term -> Prop :=
 Notation "t '==>>' t'" := (multi_step t t') (at level 40).
 
 (* ================================================================== *)
-(* 1. Data declarations                                                *)
+(* 1. Data declarations                                               *)
 (* ================================================================== *)
 
 Definition unit_tag : ctor_tag := 10.

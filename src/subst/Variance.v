@@ -381,13 +381,13 @@ Qed.
 
 (* --- Iterated elim soundness --- *)
 
-(* ================================================================== *)
-(* Over-approximate-in-context soundness.                             *)
-(* Eliminating n positive binders, then over-approximating the        *)
-(* eliminated variables by a context of n fresh lt-binders, yields    *)
-(*   push_match_bound n Delta G ⊢ eta <:: shift_lt_in_ty n 0 elim_result.    *)
-(* No witnesses (and hence no monotonicity) are required.             *)
-(* ================================================================== *)
+(* ====================================================================== *)
+(* Over-approximate-in-context soundness.                                 *)
+(* Eliminating n positive binders, then over-approximating the            *)
+(* eliminated variables by a context of n fresh lt-binders, yields        *)
+(*   push_match_bound n Delta G ⊢ eta <:: shift_lt_in_ty n 0 elim_result. *)
+(* No witnesses (and hence no monotonicity) are required.                 *)
+(* ====================================================================== *)
 Lemma elim_in_ctx_sound : forall n Delta eta elim_result G,
   elim_ty_n n (shift_lt n 0 Delta) var_pos eta = Some elim_result ->
   lt_wf G Delta ->

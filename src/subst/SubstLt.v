@@ -6,11 +6,11 @@ Require Import Syntax.
 Require Import Substitution.
 Require Import Typing.
 Require Import ShiftLaws.
-Require Import Insertions.
+Require Import Weakening.
 
-(* ============================================================ *)
-(* SubstLt : substitute a lifetime for an lt-binder at depth n  *)
-(* ============================================================ *)
+(* ================================================================== *)
+(* SubstLt : substitute a lifetime for an lt-binder at depth n        *)
+(* ================================================================== *)
 
 Definition subst_lt_var (n a : nat) : nat := if Nat.ltb n a then pred a else a.
 

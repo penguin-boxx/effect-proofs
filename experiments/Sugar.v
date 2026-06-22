@@ -256,8 +256,8 @@ Definition elab_bound (tag_of : tag_resolver) (env : name_env)
 (* 7. Signature desugaring                                            *)
 (*                                                                    *)
 (* desugar_sig produces a type schema of shape                        *)
-(*   ∀ l_1 ... l_n.  ∀ (α_1 <: B_1) ... (α_m <: B_m).                *)
-(*       τ_1 → ... → τ_k → τ_ret                                     *)
+(*   ∀ l_1 ... l_n.  ∀ (α_1 <: B_1) ... (α_m <: B_m).                 *)
+(*       τ_1 → ... → τ_k → τ_ret                                      *)
 (* using the current Core_Δ encoding (type_lt_all / type_ty_all /     *)
 (* type_fun).                                                         *)
 (* ================================================================== *)
@@ -292,7 +292,7 @@ Definition desugar_sig (tag_of : tag_resolver) (s : surface_sig) : type :=
 (* Proving that every well-formed surface signature desugars to a     *)
 (* type schema that is well-formed in Core_Δ requires substantial     *)
 (* machinery (well-formed ctor tags, bound monotonicity, no_local_ty  *)
-(* checks).  We state the conjecture here; its proof is future work.  *)
+(* checks), so it is kept as a Conjecture (unproven).                 *)
 (* ================================================================== *)
 
 (* A trivial well-formedness predicate stub; full version should      *)
@@ -443,10 +443,10 @@ Example extractFile_shape :
       (type_ctor File_tag (lt_var 0) []))).
 Proof. reflexivity. Qed.
 
-(* ================================================================== *)
-(* Example 4 — makeRepository                                         *)
+(* ======================================================================== *)
+(* Example 4 — makeRepository                                               *)
 (*   fun makeRepository(file: File, conn: Connection): Repository'file+conn *)
-(* ================================================================== *)
+(* ======================================================================== *)
 
 Definition makeRepository_sig : surface_sig := mk_sig
   []

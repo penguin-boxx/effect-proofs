@@ -7,14 +7,14 @@ Require Import Substitution.
 Require Import Typing.
 Require Import ShiftLaws.
 
-(* ================================================================== *)
-(* Depth-general bind_ty weakening for subtyping.                     *)
-(*                                                                    *)
-(* InsTy c G G' : G' is G with one bind_ty inserted after c ty-binders*)
-(* (counted from the head).  Subtyping is closed under InsTy, with    *)
-(* types shifted by `shift_ty 1 c`.  `sub_weaken_ty_shift` is the     *)
-(* front (c = 0) instance.                                            *)
-(* ================================================================== *)
+(* =================================================================== *)
+(* Depth-general bind_ty weakening for subtyping.                      *)
+(*                                                                     *)
+(* InsTy c G G' : G' is G with one bind_ty inserted after c ty-binders *)
+(* (counted from the head).  Subtyping is closed under InsTy, with     *)
+(* types shifted by `shift_ty 1 c`.  `sub_weaken_ty_shift` is the      *)
+(* front (c = 0) instance.                                             *)
+(* =================================================================== *)
 
 (* Shift swap law (different cutoffs); needed for the head bind_ty case. *)
 Lemma shift_ty_swap : forall T c1 c2, c1 <= c2 ->
@@ -3112,9 +3112,9 @@ Proof.
   - intros t ts IHt IHts c replacement. simpl. rewrite IHt, IHts. reflexivity.
 Qed.
 
-(* ============================================================ *)
-(* subst_lt_in_ty head-constructor rewrite equations            *)
-(* ============================================================ *)
+(* ================================================================== *)
+(* subst_lt_in_ty head-constructor rewrite equations                  *)
+(* ================================================================== *)
 Lemma subst_lt_in_ty_var_eq : forall v R n,
   subst_lt_in_ty v R (type_var n) = type_var n.
 Proof. reflexivity. Qed.
@@ -3142,9 +3142,9 @@ Proof.
   intros v R. rewrite subst_lt_var_eq, Nat.eqb_refl. reflexivity.
 Qed.
 
-(* ============================================================ *)
-(* subst_lt / shift_lt : cancel and commute                     *)
-(* ============================================================ *)
+(* ================================================================== *)
+(* subst_lt / shift_lt : cancel and commute                           *)
+(* ================================================================== *)
 
 Lemma subst_lt_shift_cancel : forall l c R,
   subst_lt c R (shift_lt 1 c l) = l.
