@@ -661,8 +661,81 @@ Proof.
     + solve_nat.
 Qed.
 
+(* [solve_lt_var] extends [solve_lt] with one more move: descend through
+   a lifetime variable's declared bound (LS_Trans + LS_Var).  Needed for
+   match-fresh lifetime variables, whose bound is the (shifted) scrutinee
+   lifetime. *)
+Ltac solve_lt_var :=
+  solve [ apply LS_Refl; solve_wf
+        | apply LS_Free; solve_wf
+        | eapply LS_Trans;
+          [ eapply LS_Var; [ cbn; reflexivity | solve_wf ] | solve_lt_var ]
+        | apply LS_MinR1; [ solve_lt_var | solve_wf ]
+        | apply LS_MinR2; [ solve_lt_var | solve_wf ]
+        | apply LS_MinL; [ solve_lt_var | solve_lt_var ] ].
+
 Theorem typed_lazyMap_body_proof : typed_lazyMap_body.
-Proof. exact I. Qed.
+Proof.
+  unfold typed_lazyMap_body, lazyMap_body, lazyMap_ctx.
+  eapply T_Match with
+    (Ts := [`T 1]) (Delta := `L 1) (arity := 0) (lts := [])
+    (rho_fields := []) (scrut_result_ty := T_LazyList `Lf (`T 1))
+    (result_tag := lazy_list_tag) (result_l := `Lf)
+    (eta := T_LazyList (`L 2 +l `L 1) (`T 0))
+    (elim_result := T_LazyList (`L 2 +l `L 1) (`T 0));
+    cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt | solve_var ].
+  - (* outer yes: LNil<b>, subsumed up to the joined lifetime *)
+    eapply T_Sub.
+    + eapply T_Ctor with
+        (n_lt := 0) (n_ty := 1) (lts := []) (Ts := [`T 0])
+        (sigma_fields := []) (result_ty_schema := T_LazyList `Lf (`T 0));
+        cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt ];
+        constructor.
+    + apply SA_Data; [ solve_lt | solve_wf ].
+  - (* outer no: the LCons match *)
+    eapply T_Match with
+      (Ts := [`T 1]) (Delta := `L 1) (arity := 2) (lts := lt_var_list 4)
+      (rho_fields := [T_Unit -{ `L 2 }-> `T 1;
+                      T_Unit -{ `L 1 }-> T_LazyList (`L 0) (`T 1)])
+      (scrut_result_ty := T_LazyList (`L 1) (`T 1))
+      (result_tag := lazy_list_tag) (result_l := `L 1)
+      (eta := T_LazyList (`L 6 +l `L 5) (`T 0))
+      (elim_result := T_LazyList (`L 2 +l `L 1) (`T 0));
+      cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt | solve_var ].
+    + (* inner yes: build LCons<b> with all four lifetimes = lf+la *)
+      eapply T_Ctor with
+        (n_lt := 4) (n_ty := 1)
+        (lts := [`L 6 +l `L 5; `L 6 +l `L 5; `L 6 +l `L 5; `L 6 +l `L 5])
+        (Ts := [`T 0])
+        (sigma_fields := [ T_Unit -{ `L 2 }-> `T 0
+                         ; T_Unit -{ `L 1 }-> T_LazyList (`L 0) (`T 0) ])
+        (result_ty_schema := T_LazyList (`L 3) (`T 0));
+        cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt_var ].
+      * (* Forall (<: J) lts *)
+        repeat (apply Forall_cons; [ solve_lt_var |]). apply Forall_nil.
+      * (* Forall2 field typings *)
+        constructor; [ | constructor; [ | constructor ] ].
+        -- (* thunk1 = λ(). f (h ()) *)
+           apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt_var ].
+           eapply T_App; [ solve_var |].
+           eapply T_App; [ solve_var |].
+           solve_nullary_ctor.
+        -- (* thunk2 = λ(). self (t ()) f *)
+           apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt_var ].
+           eapply T_App; [ | solve_var ].
+           eapply T_App; [ solve_var |].
+           eapply T_Sub.
+           ++ eapply T_App; [ solve_var | solve_nullary_ctor ].
+           ++ apply SA_Data; [ solve_lt_var | solve_wf ].
+    + (* inner no: LNil<b>, subsumed *)
+      eapply T_Sub.
+      * eapply T_Ctor with
+          (n_lt := 0) (n_ty := 1) (lts := []) (Ts := [`T 0])
+          (sigma_fields := []) (result_ty_schema := T_LazyList `Lf (`T 0));
+          cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt ];
+          constructor.
+      * apply SA_Data; [ solve_lt | solve_wf ].
+Qed.
 
 Theorem typed_mapFirst_proof : typed_mapFirst.
 Proof.
@@ -1159,4 +1232,167 @@ Proof.
     - repeat constructor.
     - apply H_Beta. apply two_v_value. }
   cbn. apply MS_Refl.
+Qed.
+
+Theorem typed_withReader_example_proof : typed_withReader_example.
+Proof.
+  unfold typed_withReader_example, withReader_example.
+  pose proof typed_withReader_proof as H. unfold typed_withReader in H.
+  eapply T_LtApp with (l := `Lf) in H; [ | solve_wf ]. cbn in H.
+  eapply T_TyApp with (S := T_Nat `Lf) in H;
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; solve_lt ] ]. cbn in H.
+  eapply T_TyApp with (S := T_Nat `Lf) in H;
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; solve_lt ] ]. cbn in H.
+  eapply T_App; [ | solve_nat ].
+  eapply T_App; [ exact H | ].
+  apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt_sub ].
+  eapply T_Perform with (Ss := (@nil type)).
+  - solve_var.
+  - cbn; reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - solve_wf.
+  - constructor.
+  - cbn; reflexivity.
+  - cbn; solve_lt_sub.
+  - cbn; reflexivity.
+  - solve_wf.
+  - unfold unit_v. solve_ctor.
+Qed.
+
+Theorem typed_withId_example_proof : typed_withId_example.
+Proof.
+  unfold typed_withId_example, withId_example.
+  pose proof typed_withId_proof as H. unfold typed_withId in H.
+  eapply T_TyApp with (S := T_Nat `Lf) in H;
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; solve_lt ] ]. cbn in H.
+  eapply T_App; [ exact H | ].
+  apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt_sub ].
+  eapply T_Perform with (Ss := [T_Nat `Lf]).
+  - solve_var.
+  - cbn; reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - solve_wf.
+  - constructor; [ cbn; solve_lt_sub | constructor ].
+  - cbn; reflexivity.
+  - cbn; solve_lt_sub.
+  - cbn; reflexivity.
+  - solve_wf.
+  - solve_nat.
+Qed.
+
+Theorem red_withReader_example_proof : red_withReader_example.
+Proof.
+  unfold red_withReader_example, withReader_example, withReader.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_app1 (EC_ty_app (EC_ty_app
+      EC_hole (T_Nat `Lf)) (T_Nat `Lf))
+      (λ: T_Reader `Ll (T_Nat `Lf) \\ term_perform ($$ 0) [] unit_v)) two_v)).
+    - repeat constructor.
+    - apply H_LtBeta. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_app1 (EC_ty_app
+      EC_hole (T_Nat `Lf))
+      (λ: T_Reader `Ll (T_Nat `Lf) \\ term_perform ($$ 0) [] unit_v)) two_v)).
+    - repeat constructor.
+    - apply H_TyBeta. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_app1
+      EC_hole
+      (λ: T_Reader `Ll (T_Nat `Lf) \\ term_perform ($$ 0) [] unit_v)) two_v)).
+    - repeat constructor.
+    - apply H_TyBeta. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole two_v)).
+    - repeat constructor.
+    - apply H_Beta. constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_HandleCtx (EC_app1 EC_hole two_v) Reader_tag 0 [T_Nat `Lf] _ _ _ _ 0).
+    - repeat constructor.
+    - cbn. intros H. inversion H. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_handler_m 0 _ _ (EC_app2 _ EC_hole)) two_v)).
+    - repeat constructor.
+    - apply H_Beta. constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole two_v)).
+    - repeat constructor.
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
+      + repeat constructor.
+      + repeat constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Beta. apply two_v_value. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole two_v)).
+    - repeat constructor.
+    - apply H_Resume. apply two_v_value. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_handler_m 0 _ _ EC_hole) two_v)).
+    - repeat constructor.
+    - apply H_Beta. apply two_v_value. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole two_v)).
+    - repeat constructor.
+    - apply H_Return. constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Beta. apply two_v_value. }
+  cbn. apply MS_Refl.
+Qed.
+
+Theorem red_withId_example_proof : red_withId_example.
+Proof.
+  unfold red_withId_example, withId_example, withId, withId_op_body.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole
+      (λ: T_Id `Ll \\ term_perform ($$ 0) [T_Nat `Lf] two_v))).
+    - repeat constructor.
+    - apply H_TyBeta. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Beta. constructor. }
+  cbn.
+  eapply MS_Step.
+  { eapply (S_Handle _ _ _ _ _ _ _ 0).
+    cbn. intros H. inversion H. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_handler_m 0 (T_Nat `Lf) (T_Nat `Lf) EC_hole)).
+    - repeat constructor.
+    - apply H_Beta. constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ EC_hole).
+      + apply two_v_value.
+      + constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Resume. apply two_v_value. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Return. apply two_v_value. }
+  apply MS_Refl.
 Qed.

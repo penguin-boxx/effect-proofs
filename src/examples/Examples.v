@@ -436,13 +436,13 @@ Definition lazyMap_body : term :=
   term_match ($$ 1) lnil_tag 0 0
     (term_ctor lnil_tag `Lf [] [`T 0] [])
     (term_match ($$ 1) lcons_tag 4 2
-       (term_ctor lcons_tag (`L 1 +l `L 2)
-          [`L 1 +l `L 2; `L 1 +l `L 2; `L 1 +l `L 2; `L 1 +l `L 2]
+       (term_ctor lcons_tag (`L 6 +l `L 5)
+          [`L 6 +l `L 5; `L 6 +l `L 5; `L 6 +l `L 5; `L 6 +l `L 5]
           [`T 0]
           [ λ: T_Unit \\
-              ($$ 4) @· (($$ 1) @· unit_v)
+              ($$ 3) @· (($$ 1) @· unit_v)
           ; λ: T_Unit \\
-              (($$ 5) @· (($$ 1) @· unit_v)) @· ($$ 4) ])
+              (($$ 5) @· (($$ 2) @· unit_v)) @· ($$ 3) ])
        (term_ctor lnil_tag `Lf [] [`T 0] [])).
 
 (* fun mapFirst[la, lb, lc]<a <: Any'la, b <: Any'lb, c <: Any'lc>(
@@ -522,6 +522,20 @@ Definition exampleOptionality : term :=
   term_handle Optionality_tag 1 []
     (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf (T_Nat `Lf)) optionality_op_body
     (term_perform ($$ 0) [T_Nat `Lf] three_v).
+
+(* let withReaderExample = withReader[free]<Nat, Nat>(
+       context(rd: Reader<Nat>'local) fun() perform rd.ask()
+   )(2)                                              -- = 2 *)
+Definition withReader_example : term :=
+  (withReader @lt[ `Lf ] @ty[ T_Nat `Lf ] @ty[ T_Nat `Lf ])
+    @· (λ: T_Reader `Ll (T_Nat `Lf) \\ term_perform ($$ 0) [] unit_v)
+    @· two_v.
+
+(* let withIdExample = withId<Nat>(context(h: Id'local) fun()
+       perform h.id<Nat>(2))                         -- = 2 *)
+Definition withId_example : term :=
+  (withId @ty[ T_Nat `Lf ])
+    @· (λ: T_Id `Ll \\ term_perform ($$ 0) [T_Nat `Lf] two_v).
 
 (* ================================================================== *)
 (* 4. Typing statements                                               *)
@@ -620,6 +634,14 @@ Definition typed_withException : Prop :=
 Definition typed_exampleException : Prop :=
   full_ctx ⊢ₜ exampleException : T_Result `Lf (T_Nat `Lf) (T_File `Lf).
 
+(*   withReader_example : Nat                                   *)
+Definition typed_withReader_example : Prop :=
+  full_ctx ⊢ₜ withReader_example : T_Nat `Lf.
+
+(*   withId_example : Nat                                       *)
+Definition typed_withId_example : Prop :=
+  full_ctx ⊢ₜ withId_example : T_Nat `Lf.
+
 (*   withId  :  <r>. (context(Id) () -> r) -> r                 *)
 Definition typed_withId : Prop :=
   full_ctx ⊢ₜ withId
@@ -630,8 +652,29 @@ Definition typed_withId : Prop :=
 Definition typed_exampleOptionality : Prop :=
   full_ctx ⊢ₜ exampleOptionality : T_Option `Lf (T_Nat `Lf).
 
-(* Open recursive body; typed under its explicit binder context below. *)
-Definition typed_lazyMap_body : Prop := True.
+(* The explicit binder context of [lazyMap_body] (innermost first):     *)
+(*   f    : (a)'lf -> b                                                 *)
+(*   xs   : LazyList<a>'la                                              *)
+(*   self : LazyList<a>'la -(lf+la)-> ((a)'lf -> b) -(lf+la)->          *)
+(*            LazyList<b>'(lf+la)                                       *)
+(*   b <: Any'lb, a <: Any'la,  [lb, la, lf]                            *)
+(* over data_ctx.  (lf = `L 2, la = `L 1, lb = `L 0; a = `T 1, b = `T 0.) *)
+Definition lazyMap_ctx : ctx :=
+  bind_tm (`T 1 -{ `L 2 }-> `T 0)
+  :: bind_tm (T_LazyList (`L 1) (`T 1))
+  :: bind_tm (T_LazyList (`L 1) (`T 1) -{ `L 2 +l `L 1 }->
+       ((`T 1 -{ `L 2 }-> `T 0) -{ `L 2 +l `L 1 }->
+        T_LazyList (`L 2 +l `L 1) (`T 0)))
+  :: bind_ty (T_Any (`L 0))
+  :: bind_ty (T_Any (`L 1))
+  :: bind_lt `Ll
+  :: bind_lt `Ll
+  :: bind_lt `Ll
+  :: data_ctx.
+
+(*   lazyMap_body : LazyList<b>'(lf+la)   (open, under lazyMap_ctx)    *)
+Definition typed_lazyMap_body : Prop :=
+  lazyMap_ctx ⊢ₜ lazyMap_body : T_LazyList (`L 2 +l `L 1) (`T 0).
 
 (*   mapFirst : [la,lb,lc]<a,b,c>.                              *)
 (*     Pair<c,b> -> Pair<a,b> -> ((a)'local -> c) -> Pair<c,b>  *)
@@ -697,6 +740,12 @@ Definition red_foldEndo_example : Prop := foldEndo_example ==>> four_v.
 (* is discarded — the op clause never resumes.                    *)
 Definition red_exampleException : Prop :=
   exampleException ==>> error_v (T_Nat `Lf) (T_File `Lf) three_v.
+
+(*   withReader<Nat,Nat>(fun() ask)(2)  ~~>*  2                 *)
+Definition red_withReader_example : Prop := withReader_example ==>> two_v.
+
+(*   withId<Nat>(fun() perform id 2)  ~~>*  2                   *)
+Definition red_withId_example : Prop := withId_example ==>> two_v.
 
 (*   handle { ask() resume(2) } perform ask()  ~~>*  2          *)
 Definition red_readerExample : Prop := readerExample ==>> two_v.
