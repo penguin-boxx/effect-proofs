@@ -14,13 +14,13 @@ Import CoreNotation.
 (* ================================================================== *)
 
 Lemma ms_one : forall t t', t ==> t' -> t ==>> t'.
-Proof. intros t t' H. eapply ms_step; [exact H | apply ms_refl]. Qed.
+Proof. intros t t' H. eapply MS_Step; [exact H | apply MS_Refl]. Qed.
 
 Lemma ms_trans : forall t1 t2 t3, t1 ==>> t2 -> t2 ==>> t3 -> t1 ==>> t3.
 Proof.
   intros t1 t2 t3 H12. revert t3.
   induction H12 as [|? ? ? Hs ? IH]; intros u H23; auto.
-  eapply ms_step; eauto.
+  eapply MS_Step; eauto.
 Qed.
 
 (* ================================================================== *)
@@ -67,27 +67,27 @@ Qed.
 
 Lemma ms_ty_app : forall t t' S, t ==>> t' -> term_ty_app t S ==>> term_ty_app t' S.
 Proof.
-  intros t t' S H. induction H; [ apply ms_refl |].
-  eapply ms_step; [ apply step_ty_app; eassumption | assumption ].
+  intros t t' S H. induction H; [ apply MS_Refl |].
+  eapply MS_Step; [ apply step_ty_app; eassumption | assumption ].
 Qed.
 
 Lemma ms_lt_app : forall t t' l, t ==>> t' -> term_lt_app t l ==>> term_lt_app t' l.
 Proof.
-  intros t t' l H. induction H; [ apply ms_refl |].
-  eapply ms_step; [ apply step_lt_app; eassumption | assumption ].
+  intros t t' l H. induction H; [ apply MS_Refl |].
+  eapply MS_Step; [ apply step_lt_app; eassumption | assumption ].
 Qed.
 
 Lemma ms_app1 : forall t t' u, markers_in u = [] -> t ==>> t' -> term_app t u ==>> term_app t' u.
 Proof.
-  intros t t' u Hu H. induction H; [ apply ms_refl |].
-  eapply ms_step; [ apply step_app1; eassumption | assumption ].
+  intros t t' u Hu H. induction H; [ apply MS_Refl |].
+  eapply MS_Step; [ apply step_app1; eassumption | assumption ].
 Qed.
 
 Lemma ms_app2 : forall v t t', value v -> markers_in v = [] -> t ==>> t' ->
   term_app v t ==>> term_app v t'.
 Proof.
-  intros v t t' Hv Hm H. induction H; [ apply ms_refl |].
-  eapply ms_step; [ apply step_app2; eassumption | assumption ].
+  intros v t t' Hv Hm H. induction H; [ apply MS_Refl |].
+  eapply MS_Step; [ apply step_app2; eassumption | assumption ].
 Qed.
 
 Lemma unit_v_value : value unit_v.
@@ -693,59 +693,59 @@ Proof. reflexivity. Qed.
 Theorem red_list_example_proof : red_list_example.
 Proof.
   unfold red_list_example, list_example, cons_fn, cons_v.
-  eapply ms_step.
+  eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole file_v)).
     - repeat constructor.
     - apply H_TyBeta. }
   cbn.
-  eapply ms_step.
+  eapply MS_Step.
   { apply (S_step EC_hole). constructor. apply H_Beta, file_v_value. }
-  cbn. apply ms_refl.
+  cbn. apply MS_Refl.
 Qed.
 
 Theorem red_readerExample_proof : red_readerExample.
 Proof.
   unfold red_readerExample, readerExample, readerExample_op_body.
-  eapply ms_step.
+  eapply MS_Step.
   { apply (S_Handle Reader_tag 0 [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) (($$ 1) @· two_v)
              (term_perform ($$ 0) [] unit_v) 0).
     cbn. intros H. inversion H. }
   cbn.
-  eapply ms_step.
+  eapply MS_Step.
   { apply (S_step EC_hole). constructor.
     apply (H_Perform Reader_tag 0 0 [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) (($$ 1) @· two_v) [] unit_v EC_hole);
       [apply unit_v_value | constructor]. }
   cbn.
-  eapply ms_step.
+  eapply MS_Step.
   { apply (S_step EC_hole). constructor. apply H_Resume, two_v_value. }
   cbn.
-  eapply ms_step.
+  eapply MS_Step.
   { apply (S_step EC_hole). constructor. apply H_Return, two_v_value. }
-  apply ms_refl.
+  apply MS_Refl.
 Qed.
 
 Theorem red_exampleOptionality_proof : red_exampleOptionality.
 Proof.
   unfold red_exampleOptionality, exampleOptionality, optionality_op_body, some_v.
-  eapply ms_step.
+  eapply MS_Step.
   { apply (S_Handle Optionality_tag 1 [] (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf (T_Nat `Lf))
              (($$ 1) @· term_ctor some_tag `Lf [] [`T 0] [$$ 0])
              (term_perform ($$ 0) [T_Nat `Lf] three_v) 0).
     cbn. intros H. inversion H. }
   cbn.
-  eapply ms_step.
+  eapply MS_Step.
   { apply (S_step EC_hole). constructor.
     apply (H_Perform Optionality_tag 0 1 [] (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf (T_Nat `Lf))
              (($$ 1) @· term_ctor some_tag `Lf [] [`T 0] [$$ 0])
              [T_Nat `Lf] three_v EC_hole);
       [apply three_v_value | constructor]. }
   cbn.
-  eapply ms_step.
+  eapply MS_Step.
   { apply (S_step EC_hole). constructor.
     apply H_Resume. repeat constructor. }
   cbn.
-  eapply ms_step.
+  eapply MS_Step.
   { apply (S_step EC_hole). constructor.
     apply H_Return. repeat constructor. }
-  cbn. apply ms_refl.
+  cbn. apply MS_Refl.
 Qed.

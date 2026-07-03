@@ -678,11 +678,6 @@ Qed.
 (* Type Safety corollary                                              *)
 (* ------------------------------------------------------------------ *)
 
-Inductive multi_step : term -> term -> Prop :=
-  | MS_Refl : forall t, multi_step t t
-  | MS_Step : forall t1 t2 t3,
-      t1 ==> t2 -> multi_step t2 t3 -> multi_step t1 t3.
-
 Lemma multi_step_value_inv : forall v t,
   value v ->
   multi_step v t ->

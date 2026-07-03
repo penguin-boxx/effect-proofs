@@ -920,3 +920,12 @@ Ltac no_step :=
   | H : term_cap _ _ _ _ _ _ ==> _ |- _ => exfalso; eapply no_step_cap; exact H
   | H : term_resume _ _ _ _  ==> _ |- _ => exfalso; eapply no_step_resume; exact H
   end.
+
+(* ------------------------------------------------------------------ *)
+(* Reflexive-transitive closure of the step relation.                 *)
+(* ------------------------------------------------------------------ *)
+
+Inductive multi_step : term -> term -> Prop :=
+  | MS_Refl : forall t, multi_step t t
+  | MS_Step : forall t1 t2 t3,
+      t1 ==> t2 -> multi_step t2 t3 -> multi_step t1 t3.

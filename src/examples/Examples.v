@@ -46,11 +46,6 @@ End CoreNotation.
 
 Import CoreNotation.
 
-Inductive multi_step : term -> term -> Prop :=
-  | ms_refl : forall t, multi_step t t
-  | ms_step : forall t1 t2 t3,
-      t1 ==> t2 -> multi_step t2 t3 -> multi_step t1 t3.
-
 Notation "t '==>>' t'" := (multi_step t t') (at level 40).
 
 (* ================================================================== *)
