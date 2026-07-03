@@ -1396,3 +1396,305 @@ Proof.
     - apply H_Return. apply two_v_value. }
   apply MS_Refl.
 Qed.
+
+Theorem typed_getOrElse_proof : typed_getOrElse.
+Proof.
+  unfold typed_getOrElse, getOrElse.
+  apply T_TyLam; [ solve_wf | solve_wf | reflexivity |].
+  apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
+  apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt_sub ].
+  eapply T_Match with
+    (Ts := [`T 0]) (Delta := `Lf) (arity := 1) (lts := [])
+    (rho_fields := [`T 0]) (scrut_result_ty := T_Option `Lf (`T 0))
+    (result_tag := option_tag) (result_l := `Lf)
+    (eta := `T 0) (elim_result := `T 0);
+    cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt | solve_var ].
+Qed.
+
+Theorem typed_getOrElse_some_proof : typed_getOrElse_some.
+Proof.
+  unfold typed_getOrElse_some, getOrElse_some.
+  pose proof typed_getOrElse_proof as H. unfold typed_getOrElse in H.
+  eapply T_TyApp with (S := T_Nat `Lf) in H;
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; solve_lt ] ]. cbn in H.
+  eapply T_App.
+  - eapply T_App; [ exact H | solve_nat ].
+  - unfold some_v. eapply T_Ctor with
+      (n_lt := 0) (n_ty := 1) (lts := []) (Ts := [T_Nat `Lf])
+      (sigma_fields := [`T 0]) (result_ty_schema := T_Option `Lf (`T 0));
+      cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt ].
+    + constructor.
+    + constructor; [ solve_nat | constructor ].
+Qed.
+
+Theorem typed_getOrElse_none_proof : typed_getOrElse_none.
+Proof.
+  unfold typed_getOrElse_none, getOrElse_none.
+  pose proof typed_getOrElse_proof as H. unfold typed_getOrElse in H.
+  eapply T_TyApp with (S := T_Nat `Lf) in H;
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; solve_lt ] ]. cbn in H.
+  eapply T_App.
+  - eapply T_App; [ exact H | solve_nat ].
+  - unfold none_v. eapply T_Ctor with
+      (n_lt := 0) (n_ty := 1) (lts := []) (Ts := [T_Nat `Lf])
+      (sigma_fields := []) (result_ty_schema := T_Option `Lf (`T 0));
+      cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt ];
+      constructor.
+Qed.
+
+Theorem typed_list_example_full_proof : typed_list_example_full.
+Proof.
+  unfold typed_list_example_full, list_example_full.
+  pose proof typed_list_example_proof as H. unfold typed_list_example in H.
+  eapply T_App; [ exact H | ].
+  unfold nil_v. eapply T_Ctor with
+    (n_lt := 0) (n_ty := 1) (lts := []) (Ts := [T_File `Ll])
+    (sigma_fields := []) (result_ty_schema := T_List `Lf (`T 0));
+    cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt ];
+    constructor.
+Qed.
+
+Theorem typed_multishotExample_proof : typed_multishotExample.
+Proof.
+  unfold typed_multishotExample, multishotExample, multishot_op_body.
+  eapply T_Handle; try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
+  - apply SA_Refl. solve_wf.
+  - cbn. eapply T_App with (A := T_Nat `Lf) (l := `Ll) (B := T_Nat `Lf).
+    + apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt_sub ].
+      eapply T_App; [ solve_var | solve_nat ].
+    + eapply T_App; [ solve_var | solve_nat ].
+  - cbn. eapply T_Perform with (Ss := (@nil type)).
+    + solve_var.
+    + cbn; reflexivity.
+    + reflexivity.
+    + reflexivity.
+    + solve_wf.
+    + constructor.
+    + cbn; reflexivity.
+    + cbn; solve_lt_sub.
+    + cbn; reflexivity.
+    + solve_wf.
+    + unfold unit_v. solve_ctor.
+Qed.
+
+Theorem typed_forwardExample_proof : typed_forwardExample.
+Proof.
+  unfold typed_forwardExample, forwardExample, forward_inner_body,
+         error_v, ok_v.
+  eapply T_Handle; try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
+  - apply SA_Refl. solve_wf.
+  - (* throw clause: Error<Nat,File>(e) *)
+    cbn. eapply T_Ctor with
+      (n_lt := 0) (n_ty := 2) (lts := []) (Ts := [T_Nat `Lf; T_File `Lf])
+      (sigma_fields := [`T 0]) (result_ty_schema := T_Result `Lf (`T 0) (`T 1));
+      cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt ].
+    + constructor.
+    + constructor; [ solve_var | constructor ].
+  - (* body: Ok( inner reader handle ) *)
+    cbn. eapply T_Ctor with
+      (n_lt := 0) (n_ty := 2) (lts := []) (Ts := [T_Nat `Lf; T_File `Lf])
+      (sigma_fields := [`T 1]) (result_ty_schema := T_Result `Lf (`T 0) (`T 1));
+      cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt ].
+    + constructor.
+    + constructor; [ | constructor ].
+      eapply T_Handle; try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
+      * apply SA_Refl. solve_wf.
+      * (* ask clause: resume(2) *)
+        cbn. eapply T_App; [ solve_var | solve_nat ].
+      * (* let x = ask in throw x *)
+        cbn. eapply T_App with (A := T_Nat `Lf) (l := `Ll) (B := T_File `Lf).
+        -- apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt_sub ].
+           eapply T_Perform with (Ss := [T_File `Lf]).
+           ++ solve_var.
+           ++ cbn; reflexivity.
+           ++ reflexivity.
+           ++ reflexivity.
+           ++ solve_wf.
+           ++ constructor; [ cbn; solve_lt_sub | constructor ].
+           ++ cbn; reflexivity.
+           ++ cbn; solve_lt_sub.
+           ++ cbn; reflexivity.
+           ++ solve_wf.
+           ++ solve_var.
+        -- eapply T_Perform with (Ss := (@nil type)).
+           ++ solve_var.
+           ++ cbn; reflexivity.
+           ++ reflexivity.
+           ++ reflexivity.
+           ++ solve_wf.
+           ++ constructor.
+           ++ cbn; reflexivity.
+           ++ cbn; solve_lt_sub.
+           ++ cbn; reflexivity.
+           ++ solve_wf.
+           ++ unfold unit_v. solve_ctor.
+Qed.
+
+Theorem red_getOrElse_some_proof : red_getOrElse_some.
+Proof.
+  unfold red_getOrElse_some, getOrElse_some, getOrElse, some_v.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_app1 EC_hole zero_v)
+                     (term_ctor some_tag `Lf [] [T_Nat `Lf] [three_v]))).
+    - repeat constructor.
+    - apply H_TyBeta. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole (term_ctor some_tag `Lf [] [T_Nat `Lf] [three_v]))).
+    - repeat constructor.
+    - apply H_Beta. repeat constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Beta. repeat constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply (H_MatchYes some_tag `Lf [] [T_Nat `Lf] [three_v]). repeat constructor. }
+  cbn. apply MS_Refl.
+Qed.
+
+Theorem red_getOrElse_none_proof : red_getOrElse_none.
+Proof.
+  unfold red_getOrElse_none, getOrElse_none, getOrElse, none_v.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_app1 EC_hole zero_v)
+                     (term_ctor none_tag `Lf [] [T_Nat `Lf] []))).
+    - repeat constructor.
+    - apply H_TyBeta. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole (term_ctor none_tag `Lf [] [T_Nat `Lf] []))).
+    - repeat constructor.
+    - apply H_Beta. repeat constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Beta. repeat constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_MatchNo.
+      + repeat constructor.
+      + unfold some_tag, none_tag. congruence. }
+  cbn. apply MS_Refl.
+Qed.
+
+Theorem red_list_example_full_proof : red_list_example_full.
+Proof.
+  unfold red_list_example_full, list_example_full, list_example, cons_fn,
+         cons_v, nil_v.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_app1 EC_hole file_v)
+                     (term_ctor nil_tag `Lf [] [T_File `Ll] []))).
+    - repeat constructor.
+    - apply H_TyBeta. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole (term_ctor nil_tag `Lf [] [T_File `Ll] []))).
+    - repeat constructor.
+    - apply H_Beta. apply file_v_value. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Beta. repeat constructor. }
+  cbn. apply MS_Refl.
+Qed.
+
+Theorem red_multishotExample_proof : red_multishotExample.
+Proof.
+  unfold red_multishotExample, multishotExample, multishot_op_body.
+  eapply MS_Step.
+  { eapply (S_Handle _ _ _ _ _ _ _ 0).
+    cbn. intros H. inversion H. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ EC_hole).
+      + repeat constructor.
+      + constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app2 _ EC_hole)).
+    - repeat constructor.
+    - apply H_Resume. apply two_v_value. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app2 _ EC_hole)).
+    - repeat constructor.
+    - apply H_Return. apply two_v_value. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Beta. apply two_v_value. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Resume. apply three_v_value. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Return. apply three_v_value. }
+  apply MS_Refl.
+Qed.
+
+Theorem red_forwardExample_proof : red_forwardExample.
+Proof.
+  unfold red_forwardExample, forwardExample, forward_inner_body, error_v, ok_v.
+  eapply MS_Step.
+  { eapply (S_Handle _ _ _ _ _ _ _ 0).
+    cbn. intros H. inversion H. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_HandleCtx
+      (EC_handler_m 0 (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
+                      (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
+        (EC_ctor ok_tag `Lf [] [T_Nat `Lf; T_File `Lf] [] EC_hole []))
+      Reader_tag 0 [T_Nat `Lf] (T_File `Lf) (T_File `Lf) _ _ 1).
+    - repeat constructor.
+    - cbn. intros H.
+      repeat (destruct H as [H|H]; [ discriminate H |]). exact H. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_handler_m 0 (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
+                      (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
+        (EC_ctor ok_tag `Lf [] [T_Nat `Lf; T_File `Lf] [] EC_hole []))).
+    - repeat constructor.
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
+      + repeat constructor.
+      + repeat constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_handler_m 0 (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
+                      (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
+        (EC_ctor ok_tag `Lf [] [T_Nat `Lf; T_File `Lf] [] EC_hole []))).
+    - repeat constructor.
+    - apply H_Resume. apply two_v_value. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_handler_m 0 (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
+                      (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
+        (EC_ctor ok_tag `Lf [] [T_Nat `Lf; T_File `Lf] []
+          (EC_handler_m 1 (T_File `Lf) (T_File `Lf) EC_hole) []))).
+    - repeat constructor.
+    - apply H_Beta. apply two_v_value. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _
+        (EC_ctor ok_tag `Lf [] [T_Nat `Lf; T_File `Lf] []
+          (EC_handler_m 1 (T_File `Lf) (T_File `Lf) EC_hole) [])).
+      + apply two_v_value.
+      + apply pem_ctor. apply pem_handler_m; [ discriminate | apply pem_hole ]. }
+  cbn. apply MS_Refl.
+Qed.

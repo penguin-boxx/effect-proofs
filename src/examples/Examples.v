@@ -537,6 +537,61 @@ Definition withId_example : term :=
   (withId @ty[ T_Nat `Lf ])
     @· (λ: T_Id `Ll \\ term_perform ($$ 0) [T_Nat `Lf] two_v).
 
+(* let multishotExample =
+     handle r: Reader<Nat> { op ask() let _ = resume(2) in resume(3) }
+     perform r.ask()
+   The op clause resumes TWICE: the captured continuation is re-run,
+   re-installing the delimiter each time (multi-shot).       -- = 3 *)
+Definition multishot_op_body : term :=
+  let: T_Nat `Lf <- ($$ 1) @· two_v in ($$ 2) @· three_v.
+
+Definition multishotExample : term :=
+  term_handle Reader_tag 0 [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) multishot_op_body
+    (term_perform ($$ 0) [] unit_v).
+
+(* let forwardExample =
+     handle h: Exception<Nat> { op throw<a>(e) Error<Nat,File>(e) }
+     Ok<Nat,File>(
+       handle r: Reader<Nat> { op ask() resume(2) }
+       let x: Nat = perform r.ask() in
+       perform h.throw<File>(x))
+   The throw is performed UNDER the live Reader delimiter: the perform
+   crosses it (an unrelated handler is transparent, pem_handler_m) and
+   the abortive clause discards both the Ok frame and the inner
+   delimiter.                                    -- = Error(2) *)
+Definition forward_inner_body : term :=
+  let: T_Nat `Lf <- term_perform ($$ 0) [] unit_v in
+  term_perform ($$ 2) [T_File `Lf] ($$ 0).
+
+Definition forwardExample : term :=
+  term_handle Exception_tag 1 [T_Nat `Lf]
+    (T_Result `Lf (T_Nat `Lf) (T_File `Lf)) (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
+    (error_v (T_Nat `Lf) (T_File `Lf) ($$ 0))
+    (ok_v (T_Nat `Lf) (T_File `Lf)
+      (term_handle Reader_tag 0 [T_Nat `Lf] (T_File `Lf) (T_File `Lf)
+        (($$ 1) @· two_v)
+        forward_inner_body)).
+
+(* fun getOrElse<t <: Any'local>(default: t, o: Option<t>): t =
+     match o { case Some(x) -> x; _ -> default } *)
+Definition getOrElse : term :=
+  Λt: T_Any `Ll \\
+    λ: `T 0 \\
+    λ: T_Option `Lf (`T 0) \\
+      term_match ($$ 0) some_tag 0 1 ($$ 0) ($$ 1).
+
+(* getOrElse<Nat>(0, Some(3)) -- = 3   (the yes branch)  *)
+Definition getOrElse_some : term :=
+  (getOrElse @ty[ T_Nat `Lf ]) @· zero_v @· some_v (T_Nat `Lf) three_v.
+
+(* getOrElse<Nat>(0, None())  -- = 0   (the no branch)   *)
+Definition getOrElse_none : term :=
+  (getOrElse @ty[ T_Nat `Lf ]) @· zero_v @· none_v (T_Nat `Lf).
+
+(* Completing list_example's partial application with Nil. *)
+Definition list_example_full : term :=
+  list_example @· nil_v (T_File `Ll).
+
 (* ================================================================== *)
 (* 4. Typing statements                                               *)
 (* ================================================================== *)
@@ -642,6 +697,28 @@ Definition typed_withReader_example : Prop :=
 Definition typed_withId_example : Prop :=
   full_ctx ⊢ₜ withId_example : T_Nat `Lf.
 
+(*   multishotExample : Nat                                     *)
+Definition typed_multishotExample : Prop :=
+  full_ctx ⊢ₜ multishotExample : T_Nat `Lf.
+
+(*   forwardExample : Result<Nat, File>                         *)
+Definition typed_forwardExample : Prop :=
+  full_ctx ⊢ₜ forwardExample : T_Result `Lf (T_Nat `Lf) (T_File `Lf).
+
+(*   getOrElse : <t>. t -> Option<t> -local-> t                 *)
+Definition typed_getOrElse : Prop :=
+  data_ctx ⊢ₜ getOrElse
+    : type_ty_all (T_Any `Ll)
+        (`T 0 -{ `Lf }-> (T_Option `Lf (`T 0) -{ `Ll }-> `T 0)).
+
+(*   getOrElse_some : Nat                                       *)
+Definition typed_getOrElse_some : Prop := data_ctx ⊢ₜ getOrElse_some : T_Nat `Lf.
+(*   getOrElse_none : Nat                                       *)
+Definition typed_getOrElse_none : Prop := data_ctx ⊢ₜ getOrElse_none : T_Nat `Lf.
+(*   list_example_full : List<File'local>                       *)
+Definition typed_list_example_full : Prop :=
+  data_ctx ⊢ₜ list_example_full : T_List `Lf (T_File `Ll).
+
 (*   withId  :  <r>. (context(Id) () -> r) -> r                 *)
 Definition typed_withId : Prop :=
   full_ctx ⊢ₜ withId
@@ -746,6 +823,21 @@ Definition red_withReader_example : Prop := withReader_example ==>> two_v.
 
 (*   withId<Nat>(fun() perform id 2)  ~~>*  2                   *)
 Definition red_withId_example : Prop := withId_example ==>> two_v.
+
+(*   handle { ask() resume(2); resume(3) } perform ask() ~~>* 3 *)
+Definition red_multishotExample : Prop := multishotExample ==>> three_v.
+
+(*   forwardExample  ~~>*  Error(2)                             *)
+Definition red_forwardExample : Prop :=
+  forwardExample ==>> error_v (T_Nat `Lf) (T_File `Lf) two_v.
+
+(*   getOrElse<Nat>(0, Some(3))  ~~>*  3   (H_MatchYes)         *)
+Definition red_getOrElse_some : Prop := getOrElse_some ==>> three_v.
+(*   getOrElse<Nat>(0, None())   ~~>*  0   (H_MatchNo)          *)
+Definition red_getOrElse_none : Prop := getOrElse_none ==>> zero_v.
+(*   list_example(Nil)  ~~>*  Cons(File(), Nil)                 *)
+Definition red_list_example_full : Prop :=
+  list_example_full ==>> cons_v (T_File `Ll) file_v (nil_v (T_File `Ll)).
 
 (*   handle { ask() resume(2) } perform ask()  ~~>*  2          *)
 Definition red_readerExample : Prop := readerExample ==>> two_v.
