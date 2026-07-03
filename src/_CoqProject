@@ -26,3 +26,4 @@ safety/Escape.v
 safety/Safety.v
 examples/Examples.v
 examples/ExamplesProofs.v
+examples/ExamplesSafety.v
