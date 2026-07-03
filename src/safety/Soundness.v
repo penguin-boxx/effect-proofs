@@ -29,7 +29,6 @@ Definition stuck (t : term) : Prop :=
 
 (* The runtime invariant carried by the multi-step proof.  Beyond      *)
 (* typing it bundles the marker invariants:                            *)
-(*  - [marker_ok]: every live capability's marker is delimited;        *)
 (*  - [marker_annots_closed]: marker type annotations are closed, so   *)
 (*    type/lifetime substitution preserves annotation equality;        *)
 (*  - [marker_types_safe]: annotations for the same marker agree;      *)
@@ -38,10 +37,13 @@ Definition stuck (t : term) : Prop :=
 (*    H_Perform contraction needs);                                    *)
 (*  - [rt_closed]: runtime cap op-bodies are term-closed (they are     *)
 (*    minted at spine positions of a closed program and stay closed).  *)
+(* [marker_ok] (every live capability's marker is delimited — what     *)
+(* Progress needs) is not threaded separately: it follows from         *)
+(* [well_scoped] via [well_scoped_marker_ok].                          *)
 (* Every component is established vacuously on source terms            *)
 (* ([has_rt_cap t = false]); see [source_type_soundness].              *)
 Definition safety_invariants (Γ : ctx) (T : type) (t : term) : Prop :=
-  marker_ok [] t /\ marker_annots_closed t /\ marker_types_safe t /\
+  marker_annots_closed t /\ marker_types_safe t /\
   well_scoped [] t /\ rt_closed t /\ Γ ⊢ₜ t : T.
 
 Lemma safe_state_not_stuck : forall Γ t T,
@@ -65,10 +67,7 @@ Lemma step_preserves_safety_invariants : forall Γ t t' T,
   safety_invariants Γ T t'.
 Proof.
   intros Γ t t' T Hec Hinv Hstep.
-  destruct Hinv as [Hmok [Hclosed [Hmsafe [Hws [Hrt Hty]]]]].
-  split; [eapply step_preserves_marker_ok;
-            [exact Hec | exact Hmok | exact Hmsafe | exact Hty
-            | exact Hws | exact Hstep] |].
+  destruct Hinv as [Hclosed [Hmsafe [Hws [Hrt Hty]]]].
   split; [eapply step_preserves_marker_annots_closed_typed;
             [exact Hec | exact Hclosed | exact Hty | exact Hstep] |].
   split; [eapply step_preserves_marker_types_safe_closed_typed;
@@ -101,7 +100,6 @@ Lemma source_safety_invariants : forall Γ t T,
   safety_invariants Γ T t.
 Proof.
   intros Γ t T Hsrc Hty.
-  split; [apply marker_ok_no_rt_cap; exact Hsrc|].
   split; [apply marker_annots_closed_no_rt_cap; exact Hsrc|].
   split; [apply marker_types_safe_no_rt_cap; exact Hsrc|].
   split; [apply well_scoped_no_rt_cap; exact Hsrc|].
@@ -127,8 +125,9 @@ Theorem type_soundness :
 Proof.
   intros Γ t t' T Hec Hinv Hms.
   destruct (multi_step_preserves_safety_invariants _ _ _ _ Hec Hinv Hms)
-    as [Hmok [_ [Hmsafe [_ [_ Hty]]]]].
-  eapply safe_state_not_stuck; eauto.
+    as [_ [Hmsafe [Hws [_ Hty]]]].
+  eapply safe_state_not_stuck;
+    [exact Hec | apply well_scoped_marker_ok; exact Hws | exact Hmsafe | exact Hty].
 Qed.
 
 (* Source-facing form: a well-typed program with no runtime marker     *)

@@ -479,47 +479,6 @@ Proof.
   apply marker_annots_no_rt_cap. exact Hcap.
 Qed.
 
-Lemma marker_ok_no_rt_cap : forall t ms,
-  has_rt_cap t = false -> marker_ok ms t.
-Proof.
-  apply (term_list_ind
-    (fun t => forall ms, has_rt_cap t = false -> marker_ok ms t)
-    (fun ts => forall ms,
-       (fix go (ts : list term) : bool :=
-          match ts with
-          | [] => false
-          | u :: rest => orb (has_rt_cap u) (go rest)
-          end) ts = false ->
-       (fix marker_ok_list (ts : list term) : Prop :=
-          match ts with
-          | [] => True
-          | u :: rest => marker_ok ms u /\ marker_ok_list rest
-          end) ts)).
-  - intros n ms H. exact I.
-  - intros t1 t2 IH1 IH2 ms H. simpl in *.
-    apply Bool.orb_false_iff in H as [H1 H2]. split; [apply IH1 | apply IH2]; assumption.
-  - intros body T IH ms H. simpl in *. apply IH. exact H.
-  - intros t T IH ms H. simpl in *. apply IH. exact H.
-  - intros bound body IH ms H. simpl in *. apply IH. exact H.
-  - intros t l IH ms H. simpl in *. apply IH. exact H.
-  - intros body IH ms H. simpl in *. apply IH. exact H.
-  - intros K l lts Ts ts IH ms H. simpl in *. apply IH. exact H.
-  - intros scrut tag n_lt arity yes no IHs IHy IHn ms H. simpl in *.
-    apply Bool.orb_false_iff in H as [Hs Hyn].
-    apply Bool.orb_false_iff in Hyn as [Hy Hn].
-    repeat split; [apply IHs | apply IHy | apply IHn]; assumption.
-  - intros E n_beta Ts T_B T_R op_body body IHop IHbody ms H. simpl in *.
-    apply Bool.orb_false_iff in H as [Hop Hbody]. split; [apply IHop | apply IHbody]; assumption.
-  - intros recv Ss arg IHrecv IHarg ms H. simpl in *.
-    apply Bool.orb_false_iff in H as [Hr Ha]. split; [apply IHrecv | apply IHarg]; assumption.
-  - intros E m n_beta Ts T_R op_body IHop ms H. simpl in H. discriminate.
-  - intros m T_B T_R body IH ms H. simpl in H. discriminate.
-  - intros m T_B T_R body IH ms H. simpl in H. discriminate.
-  - intros ms H. exact I.
-  - intros t ts IHt IHts ms H. simpl in *.
-    apply Bool.orb_false_iff in H as [Ht Hts]. split; [apply IHt | apply IHts]; assumption.
-Qed.
-
 Lemma marker_types_safe_incl : forall sub whole,
   incl (marker_annots sub) (marker_annots whole) ->
   marker_types_safe whole ->
@@ -3277,47 +3236,12 @@ Proof.
     rewrite IH. reflexivity.
 Qed.
 
-(* Extract per-argument marker_ok from a constructor's marker_ok. *)
-Lemma marker_ok_ctor_args_forall : forall ms K l lts Ts vs,
-  marker_ok ms (term_ctor K l lts Ts vs) -> Forall (marker_ok ms) vs.
-Proof.
-  intros ms K l lts Ts vs H. rewrite marker_ok_ctor_eq in H.
-  induction vs as [|v vs IH]; constructor.
-  - destruct H as [Hv _]. exact Hv.
-  - apply IH. destruct H as [_ Hrest]. exact Hrest.
-Qed.
-
 (* Recompose marker_ok through an evaluation context: replacing the hole
    contents by anything that is marker_ok in every marker scope preserves
    marker_ok of the whole plug.  The handler frame extends the scope by m,
    which the uniform (forall ms') replacement condition absorbs.  Use
    [cbn [plug]]/[destruct], NOT [simpl], to avoid unfolding marker_ok's
    nested constructor fixpoint (which would defeat marker_ok_ctor_eq). *)
-Lemma marker_ok_plug_replace : forall E r r' ms,
-  marker_ok ms (plug E r) ->
-  (forall ms', marker_ok ms' r -> marker_ok ms' r') ->
-  marker_ok ms (plug E r').
-Proof.
-  induction E as
-    [ | E1 IHE ta | ta E1 IHE | E1 IHE Ty | E1 IHE lt
-    | tag dl lts Tys vs E1 IHE ts | E1 IHE K nlt ar yes no
-    | mk TB TR E1 IHE | E1 IHE Ss ar2 | rcv Ss E1 IHE ];
-    intros r r' ms Hok Hrep; cbn [plug] in Hok |- *.
-  - apply Hrep. exact Hok.
-  - destruct Hok as [H1 H2]. split; [eapply IHE; eauto | exact H2].
-  - destruct Hok as [H1 H2]. split; [exact H1 | eapply IHE; eauto].
-  - eapply IHE; eauto.
-  - eapply IHE; eauto.
-  - rewrite marker_ok_ctor_eq in Hok |- *.
-    induction vs as [|a vs' IHvs]; cbn [List.app] in Hok |- *.
-    + destruct Hok as [Hfoc Hrest]. split; [eapply IHE; eauto | exact Hrest].
-    + destruct Hok as [Ha Hrest]. split; [exact Ha | apply IHvs; exact Hrest].
-  - destruct Hok as [Hs [Hy Hn]]. repeat split; [eapply IHE; eauto | exact Hy | exact Hn].
-  - eapply IHE; eauto.
-  - destruct Hok as [H1 H2]. split; [eapply IHE; eauto | exact H2].
-  - destruct Hok as [H1 H2]. split; [exact H1 | eapply IHE; eauto].
-Qed.
-
 (* incl is preserved by prepending a common head. *)
 Lemma incl_same_cons : forall (m : marker) ms ms',
   incl ms ms' -> incl (m :: ms) (m :: ms').
@@ -3369,173 +3293,6 @@ Ltac mok_inv_noctor :=
   try (solve [ intros; simpl in *;
        repeat match goal with [ H : _ /\ _ |- _ ] => destruct H end;
        repeat split; eauto ]).
-
-(* Shifting term variables does not affect marker_ok. *)
-Lemma marker_ok_shift_tm : forall t ms k c,
-  marker_ok ms t -> marker_ok ms (shift_tm k c t).
-Proof.
-  apply (term_list_ind
-    (fun t => forall ms k c, marker_ok ms t -> marker_ok ms (shift_tm k c t))
-    (fun ts => forall ms k c, marker_ok_list ms ts ->
-       marker_ok_list ms (List.map (shift_tm k c) ts)));
-    mok_inv_noctor.
-  intros K l lts Ts ts HQ ms k c Hm.
-  cbn [shift_tm]. rewrite shift_tm_go_eq_map.
-  rewrite marker_ok_ctor_eq in Hm. rewrite marker_ok_ctor_eq.
-  apply HQ; exact Hm.
-Qed.
-
-(* Shifting type variables inside a term does not affect marker_ok. *)
-Lemma marker_ok_shift_ty_in_tm : forall t ms k c,
-  marker_ok ms t -> marker_ok ms (shift_ty_in_tm k c t).
-Proof.
-  apply (term_list_ind
-    (fun t => forall ms k c, marker_ok ms t -> marker_ok ms (shift_ty_in_tm k c t))
-    (fun ts => forall ms k c, marker_ok_list ms ts ->
-       marker_ok_list ms (List.map (shift_ty_in_tm k c) ts)));
-    mok_inv_noctor.
-  intros K l lts Ts ts HQ ms k c Hm.
-  cbn [shift_ty_in_tm]. rewrite shift_ty_in_tm_go_eq_map.
-  rewrite marker_ok_ctor_eq in Hm. rewrite marker_ok_ctor_eq.
-  apply HQ; exact Hm.
-Qed.
-
-(* Shifting lifetime variables inside a term does not affect marker_ok. *)
-Lemma marker_ok_shift_lt_in_tm : forall t ms k c,
-  marker_ok ms t -> marker_ok ms (shift_lt_in_tm k c t).
-Proof.
-  apply (term_list_ind
-    (fun t => forall ms k c, marker_ok ms t -> marker_ok ms (shift_lt_in_tm k c t))
-    (fun ts => forall ms k c, marker_ok_list ms ts ->
-       marker_ok_list ms (List.map (shift_lt_in_tm k c) ts)));
-    mok_inv_noctor.
-  intros K l lts Ts ts HQ ms k c Hm.
-  cbn [shift_lt_in_tm]. rewrite shift_lt_in_tm_go_eq_map.
-  rewrite marker_ok_ctor_eq in Hm. rewrite marker_ok_ctor_eq.
-  apply HQ; exact Hm.
-Qed.
-
-(* Type substitution inside a term does not affect marker_ok. *)
-Lemma marker_ok_subst_ty_in_tm : forall t ms var R,
-  marker_ok ms t -> marker_ok ms (subst_ty_in_tm var R t).
-Proof.
-  apply (term_list_ind
-    (fun t => forall ms var R, marker_ok ms t -> marker_ok ms (subst_ty_in_tm var R t))
-    (fun ts => forall ms var R, marker_ok_list ms ts ->
-       marker_ok_list ms (List.map (subst_ty_in_tm var R) ts)));
-    mok_inv_noctor.
-  intros K l lts Ts ts HQ ms var R Hm.
-  cbn [subst_ty_in_tm]. rewrite subst_ty_in_tm_go_eq_map.
-  rewrite marker_ok_ctor_eq in Hm. rewrite marker_ok_ctor_eq.
-  apply HQ; exact Hm.
-Qed.
-
-(* Lifetime substitution inside a term does not affect marker_ok. *)
-Lemma marker_ok_subst_lt_in_tm : forall t ms var R,
-  marker_ok ms t -> marker_ok ms (subst_lt_in_tm var R t).
-Proof.
-  apply (term_list_ind
-    (fun t => forall ms var R, marker_ok ms t -> marker_ok ms (subst_lt_in_tm var R t))
-    (fun ts => forall ms var R, marker_ok_list ms ts ->
-       marker_ok_list ms (List.map (subst_lt_in_tm var R) ts)));
-    mok_inv_noctor.
-  intros K l lts Ts ts HQ ms var R Hm.
-  cbn [subst_lt_in_tm]. rewrite subst_lt_in_tm_go_eq_map.
-  rewrite marker_ok_ctor_eq in Hm. rewrite marker_ok_ctor_eq.
-  apply HQ; exact Hm.
-Qed.
-
-(* Substituting a marker_ok term into a marker_ok term yields marker_ok. *)
-Lemma marker_ok_subst_tm : forall t ms var repl,
-  marker_ok ms repl -> marker_ok ms t -> marker_ok ms (subst_tm var repl t).
-Proof.
-  apply (term_list_ind
-    (fun t => forall ms var repl,
-       marker_ok ms repl -> marker_ok ms t -> marker_ok ms (subst_tm var repl t))
-    (fun ts => forall ms var repl,
-       marker_ok ms repl -> marker_ok_list ms ts ->
-       marker_ok_list ms (List.map (subst_tm var repl) ts))).
-  - (* var *) intros n ms var repl Hrepl Hm. simpl.
-    destruct (Nat.eqb n var); [exact Hrepl|].
-    destruct (Nat.ltb var n); exact I.
-  - (* app *) intros t1 t2 H1 H2 ms var repl Hrepl Hm. simpl in *.
-    destruct Hm as [Ha Hb]. split; [eapply H1 | eapply H2]; eauto.
-  - (* lam *) intros body T H ms var repl Hrepl Hm. simpl in *.
-    eapply H; [ apply marker_ok_shift_tm; exact Hrepl | exact Hm ].
-  - (* ty_app *) intros t T H ms var repl Hrepl Hm. simpl in *.
-    eapply H; eauto.
-  - (* ty_lam *) intros bound body H ms var repl Hrepl Hm. simpl in *.
-    eapply H; [ apply marker_ok_shift_ty_in_tm; exact Hrepl | exact Hm ].
-  - (* lt_app *) intros t l H ms var repl Hrepl Hm. simpl in *.
-    eapply H; eauto.
-  - (* lt_lam *) intros body H ms var repl Hrepl Hm. simpl in *.
-    eapply H; [ apply marker_ok_shift_lt_in_tm; exact Hrepl | exact Hm ].
-  - (* ctor *) intros K l lts Ts ts HQ ms var repl Hrepl Hm.
-    cbn [subst_tm]. rewrite subst_tm_go_eq_map.
-    rewrite marker_ok_ctor_eq in Hm. rewrite marker_ok_ctor_eq.
-    apply HQ; [exact Hrepl | exact Hm].
-  - (* match *) intros scrut tag n_lt arity yes no Hs Hy Hn ms var repl Hrepl Hm.
-    simpl in *. destruct Hm as [Hsc [Hye Hno]]. repeat split.
-    + eapply Hs; eauto.
-    + eapply Hy; [ apply marker_ok_shift_tm; apply marker_ok_shift_lt_in_tm; exact Hrepl
-                 | exact Hye ].
-    + eapply Hn; eauto.
-  - (* handle *) intros E n_beta Ts T_B T_R op body Hop Hb ms var repl Hrepl Hm. simpl in *.
-    destruct Hm as [Ho Hbo]. split.
-    + eapply Hop; [ apply marker_ok_shift_tm; exact Hrepl | exact Ho ].
-    + eapply Hb;  [ apply marker_ok_shift_tm; exact Hrepl | exact Hbo ].
-  - (* perform *) intros t Ss arg Ht Ha ms var repl Hrepl Hm. simpl in *.
-    destruct Hm as [Ht1 Ha1]. split; [eapply Ht | eapply Ha]; eauto.
-  - (* cap *) intros E m n_beta Ts T_R op Hop ms var repl Hrepl Hm. simpl in *.
-    destruct Hm as [Hin Hrec]. split.
-    + exact Hin.
-    + apply (Hop (m :: ms) (var + 2) (shift_tm 2 0 repl)).
-      * eapply marker_ok_mono; [ apply incl_tl; apply incl_refl
-                               | apply marker_ok_shift_tm; exact Hrepl ].
-      * exact Hrec.
-  - (* handler_m *) intros m T_B T_R t H ms var repl Hrepl Hm. simpl in *.
-    apply (H (m :: ms) var repl).
-    + eapply marker_ok_mono; [ apply incl_tl; apply incl_refl | exact Hrepl ].
-    + exact Hm.
-  - (* resume *) intros m T_B T_R b H ms var repl Hrepl Hm. simpl in *.
-    apply (H (m :: ms) (S var) (shift_tm 1 0 repl)).
-    + eapply marker_ok_mono; [ apply incl_tl; apply incl_refl
-                             | apply marker_ok_shift_tm; exact Hrepl ].
-    + exact Hm.
-  - (* nil *) intros ms var repl Hrepl Hm. exact I.
-  - (* cons *) intros u ts Hu Hts ms var repl Hrepl Hm. simpl in *.
-    destruct Hm as [Hu_m Hts_m]. split; [eapply Hu | eapply Hts]; eauto.
-Qed.
-
-(* Simultaneous term substitution preserves marker_ok. *)
-Lemma marker_ok_subst_list_tm : forall vs t ms,
-  Forall (marker_ok ms) vs -> marker_ok ms t -> marker_ok ms (subst_list_tm vs t).
-Proof.
-  induction vs as [|v rest IH]; intros t ms HF Hm; simpl.
-  - exact Hm.
-  - assert (Hv := Forall_inv HF).
-    assert (HFrest := Forall_inv_tail HF).
-    apply IH; [exact HFrest|].
-    apply marker_ok_subst_tm; [ apply marker_ok_shift_tm; exact Hv | exact Hm ].
-Qed.
-
-(* Simultaneous lifetime substitution preserves marker_ok. *)
-Lemma marker_ok_subst_list_lt_in_tm : forall lts t ms,
-  marker_ok ms t -> marker_ok ms (subst_list_lt_in_tm lts t).
-Proof.
-  induction lts as [|l rest IH]; intros t ms Hm; simpl.
-  - exact Hm.
-  - apply IH. apply marker_ok_subst_lt_in_tm. exact Hm.
-Qed.
-
-(* Simultaneous type substitution preserves marker_ok. *)
-Lemma marker_ok_subst_list_ty_in_tm : forall Ss t ms,
-  marker_ok ms t -> marker_ok ms (subst_list_ty_in_tm Ss t).
-Proof.
-  induction Ss as [|S0 rest IH]; intros t ms Hm; simpl.
-  - exact Hm.
-  - apply IH. apply marker_ok_subst_ty_in_tm. exact Hm.
-Qed.
 
 (* has_rt_cap on a constructor reduces to has_rt_cap_list on its       *)
 (* argument list (the in-body fixpoint equals the named list version).  *)
@@ -3590,15 +3347,6 @@ Proof.
   - (* cons *) intros u ts Hu Hts ms m Hcap Hm. simpl in *.
     apply Bool.orb_false_iff in Hcap as [Hc1 Hc2].
     destruct Hm as [Ha Hb]. split; [eapply Hu | eapply Hts]; eauto.
-Qed.
-
-Lemma marker_ok_handler_return_no_cap : forall m T_B T_R v ms,
-  has_rt_cap v = false ->
-  marker_ok ms (term_handler_m m T_B T_R v) ->
-  marker_ok ms v.
-Proof.
-  intros m T_B T_R v ms Hcap Hok.
-  simpl in Hok. eapply marker_ok_strengthen_no_cap; eauto.
 Qed.
 
 (* Principal typing inversion for a runtime delimiter: recover the body  *)
@@ -3663,20 +3411,6 @@ Proof.
   - intros u ts IHu IHts ms Hin. simpl in *. split.
     + apply IHu. intros x Hx. apply Hin. apply List.in_or_app. left. exact Hx.
     + apply IHts. intros x Hx. apply Hin. apply List.in_or_app. right. exact Hx.
-Qed.
-
-(* Term-variable shift commutes with plug (local copy; Preservation.v has *)
-(* its own [shift_tm_plug], but Markers precedes it in the build order).   *)
-Lemma shift_tm_plug_markers : forall P amount cutoff u,
-  shift_tm amount cutoff (plug P u)
-  = plug (shift_ectx_tm amount cutoff P) (shift_tm amount cutoff u).
-Proof.
-  induction P; intros amount cutoff u;
-    try (simpl; rewrite IHP; reflexivity).
-  - simpl; reflexivity.
-  - cbn [plug shift_ectx_tm shift_tm].
-    rewrite shift_tm_go_eq_map. rewrite List.map_app. cbn [List.map].
-    rewrite IHP. reflexivity.
 Qed.
 
 (* A perform-headed term plugged into any evaluation context is not a     *)
@@ -4975,42 +4709,6 @@ Proof.
   pose proof (well_scoped_pure_cap_confined P m (m :: ms) E_tag nb Ts T_R' op_body Ss v
     Hpure Hws) as Hc.
   rewrite scope_below_cons_eq in Hc. exact Hc.
-Qed.
-
-(* Combined plug-replace: thread BOTH marker_ok and well_scoped        *)
-(* through an ectx down to the focus.                                   *)
-Lemma marker_ok_well_scoped_plug_replace : forall E r r' ms,
-  marker_ok ms (plug E r) ->
-  well_scoped ms (plug E r) ->
-  (forall ms', marker_ok ms' r -> well_scoped ms' r -> marker_ok ms' r') ->
-  marker_ok ms (plug E r').
-Proof.
-  induction E as
-    [ | E1 IHE ta | ta E1 IHE | E1 IHE Ty | E1 IHE lt
-    | tag dl lts Tys vs E1 IHE ts | E1 IHE K nlt ar yes no
-    | mk TB TR E1 IHE | E1 IHE Ss ar2 | rcv Ss E1 IHE ];
-    intros r r' ms Hok Hws Hrep; cbn [plug] in Hok, Hws |- *.
-  - apply Hrep; assumption.
-  - destruct Hok as [H1 H2]. destruct Hws as [W1 W2].
-    split; [eapply IHE; [exact H1|exact W1|exact Hrep] | exact H2].
-  - destruct Hok as [H1 H2]. destruct Hws as [W1 W2].
-    split; [exact H1 | eapply IHE; [exact H2|exact W2|exact Hrep]].
-  - eapply IHE; [exact Hok|exact Hws|exact Hrep].
-  - eapply IHE; [exact Hok|exact Hws|exact Hrep].
-  - rewrite marker_ok_ctor_eq in Hok |- *. rewrite well_scoped_ctor_eq in Hws.
-    revert Hok Hws.
-    induction vs as [|a vs' IHvs]; intros Hok Hws; cbn [List.app] in Hok, Hws |- *.
-    + destruct Hok as [Hfoc Hrest]. destruct Hws as [Wfoc Wrest].
-      split; [eapply IHE; [exact Hfoc|exact Wfoc|exact Hrep] | exact Hrest].
-    + destruct Hok as [Ha Hrest]. destruct Hws as [Wa Wrest].
-      split; [exact Ha | apply IHvs; [exact Hrest|exact Wrest]].
-  - destruct Hok as [Hs [Hy Hn]]. destruct Hws as [Ws [Wy Wn]].
-    repeat split; [eapply IHE; [exact Hs|exact Ws|exact Hrep] | exact Hy | exact Hn].
-  - eapply IHE; [exact Hok|exact Hws|exact Hrep].
-  - destruct Hok as [H1 H2]. destruct Hws as [W1 W2].
-    split; [eapply IHE; [exact H1|exact W1|exact Hrep] | exact H2].
-  - destruct Hok as [H1 H2]. destruct Hws as [W1 W2].
-    split; [exact H1 | eapply IHE; [exact H2|exact W2|exact Hrep]].
 Qed.
 
 (* ==================================================================== *)

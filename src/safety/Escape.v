@@ -114,7 +114,7 @@ Proof.
   intros u Hms'.
   destruct (multi_step_preserves_safety_invariants _ _ _ _ Hec
               (source_safety_invariants _ _ _ Hsrc Hty) Hms')
-    as [_ [_ [_ [_ [_ Htyu]]]]].
+    as [_ [_ [_ [_ Htyu]]]].
   exact Htyu.
 Qed.
 
@@ -202,6 +202,6 @@ Proof.
   intros u Hms'.
   destruct (multi_step_preserves_safety_invariants _ _ _ _ Hec
               (source_safety_invariants _ _ _ Hsrc Hty) Hms')
-    as [Hmok _].
-  exact Hmok.
+    as [_ [_ [Hws _]]].
+  apply well_scoped_marker_ok. exact Hws.
 Qed.
