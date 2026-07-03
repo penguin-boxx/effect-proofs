@@ -3694,20 +3694,10 @@ Proof.
   end.
 Qed.
 
-(* ==================================================================== *)
-(* The marker WELL-SCOPEDNESS invariant.                                *)
-(*                                                                      *)
-(* [well_scoped ms t] strengthens [marker_ok ms t]: at each cap it      *)
-(* additionally requires the cap body to be [marker_ok] at the scope    *)
-(* that was ambient at the cap's OWN handler (= the suffix of [ms]      *)
-(* after the cap's marker), and at each handler_m/resume binder it      *)
-(* requires the bound marker to be fresh for the ambient scope.  This   *)
-(* is the runtime provenance fact needed to discharge the H_Perform     *)
-(* confinement, and it is vacuous on source terms (has_rt_cap = false). *)
-(* ==================================================================== *)
-
 (* The scope that was ambient when [m]'s handler was entered: the part  *)
-(* of [ms] strictly after the first occurrence of [m].                  *)
+(* of [ms] strictly after the first (innermost) occurrence of [m] —     *)
+(* matching [pure_ectx_m]'s innermost-delimiter targeting.  Used by the *)
+(* cap clause of [well_scoped] below.                                   *)
 Fixpoint scope_below (m : marker) (ms : list marker) : list marker :=
   match ms with
   | []         => []
@@ -3722,109 +3712,6 @@ Lemma scope_below_cons_neq : forall m m' ms, m' <> m ->
 Proof.
   intros m m' ms Hne. simpl.
   destruct (Nat.eqb_spec m' m) as [Heq|]; [contradiction|reflexivity].
-Qed.
-
-Fixpoint well_scoped (ms : list marker) (t : term) : Prop :=
-  let fix well_scoped_list (ts : list term) : Prop :=
-    match ts with
-    | [] => True
-    | u :: rest => well_scoped ms u /\ well_scoped_list rest
-    end
-  in
-  match t with
-  | term_var _ => True
-  | term_app t1 t2 => well_scoped ms t1 /\ well_scoped ms t2
-  | term_lam body _ => well_scoped ms body
-  | term_ty_app t1 _ => well_scoped ms t1
-  | term_ty_lam _ body => well_scoped ms body
-  | term_lt_app t1 _ => well_scoped ms t1
-  | term_lt_lam body => well_scoped ms body
-  | term_ctor _ _ _ _ ts => well_scoped_list ts
-  | term_match scrut _ _ _ yes_body no_body =>
-      well_scoped ms scrut /\ well_scoped ms yes_body /\ well_scoped ms no_body
-  | term_handle _ _ _ _ _ op_body body => well_scoped ms op_body /\ well_scoped ms body
-  | term_perform recv _ arg => well_scoped ms recv /\ well_scoped ms arg
-  | term_cap _ m _ _ _ op_body =>
-      In m ms /\ marker_ok (scope_below m ms) op_body /\ well_scoped ms op_body
-  | term_handler_m m _ _ body => ~ In m ms /\ well_scoped (m :: ms) body
-  | term_resume m _ _ body => ~ In m ms /\ well_scoped (m :: ms) body
-  end.
-
-Fixpoint well_scoped_list (ms : list marker) (ts : list term) : Prop :=
-  match ts with
-  | [] => True
-  | u :: rest => well_scoped ms u /\ well_scoped_list ms rest
-  end.
-
-Lemma well_scoped_ctor_eq : forall ms K l lts Ts ts,
-  well_scoped ms (term_ctor K l lts Ts ts) = well_scoped_list ms ts.
-Proof.
-  intros ms K l lts Ts ts. induction ts as [|u rest IH].
-  - reflexivity.
-  - change (well_scoped ms (term_ctor K l lts Ts (u :: rest)))
-      with (well_scoped ms u /\ well_scoped ms (term_ctor K l lts Ts rest)).
-    rewrite IH. reflexivity.
-Qed.
-
-(* well_scoped is strictly stronger than marker_ok. *)
-Lemma well_scoped_marker_ok : forall t ms, well_scoped ms t -> marker_ok ms t.
-Proof.
-  apply (term_list_ind
-    (fun t => forall ms, well_scoped ms t -> marker_ok ms t)
-    (fun ts => forall ms, well_scoped_list ms ts -> marker_ok_list ms ts)).
-  - intros n ms H. exact I.
-  - intros t1 t2 IH1 IH2 ms [H1 H2]. split; [apply IH1|apply IH2]; assumption.
-  - intros body T IH ms H. apply IH. exact H.
-  - intros t T IH ms H. apply IH. exact H.
-  - intros bound body IH ms H. apply IH. exact H.
-  - intros t l IH ms H. apply IH. exact H.
-  - intros body IH ms H. apply IH. exact H.
-  - intros K l lts Ts ts IH ms H. rewrite marker_ok_ctor_eq. apply IH.
-    rewrite well_scoped_ctor_eq in H. exact H.
-  - intros scrut tag nlt ar y n IHs IHy IHn ms [Hs [Hy Hn]].
-    split; [apply IHs|split;[apply IHy|apply IHn]]; assumption.
-  - intros E nb Ts T_B T_R op body IHop IHb ms [Hop Hb].
-    split; [apply IHop|apply IHb]; assumption.
-  - intros t Ss arg IHt IHa ms [Ht Ha]. split; [apply IHt|apply IHa]; assumption.
-  - intros E_tag m nb Ts T_R op IHop ms [Hin [Hmok Hws]]. split.
-    + exact Hin.
-    + apply (marker_ok_mono op ms (m :: ms)); [apply incl_tl; apply incl_refl|].
-      apply IHop. exact Hws.
-  - intros m T_B T_R body IH ms [Hnin Hws]. apply IH. exact Hws.
-  - intros m T_B T_R body IH ms [Hnin Hws]. apply IH. exact Hws.
-  - intros ms H. exact I.
-  - intros u ts IHu IHts ms [Hu Hts]. split; [apply IHu|apply IHts]; assumption.
-Qed.
-
-(* well_scoped holds vacuously on terms with no runtime capability. *)
-Lemma well_scoped_no_rt_cap : forall t ms, has_rt_cap t = false -> well_scoped ms t.
-Proof.
-  apply (term_list_ind
-    (fun t => forall ms, has_rt_cap t = false -> well_scoped ms t)
-    (fun ts => forall ms, has_rt_cap_list ts = false -> well_scoped_list ms ts)).
-  - intros n ms H. exact I.
-  - intros t1 t2 IH1 IH2 ms H. simpl in H. apply Bool.orb_false_iff in H as [H1 H2].
-    split; [apply IH1|apply IH2]; assumption.
-  - intros body T IH ms H. simpl in H. apply IH. exact H.
-  - intros t T IH ms H. simpl in H. apply IH. exact H.
-  - intros bound body IH ms H. simpl in H. apply IH. exact H.
-  - intros t l IH ms H. simpl in H. apply IH. exact H.
-  - intros body IH ms H. simpl in H. apply IH. exact H.
-  - intros K l lts Ts ts IH ms H. rewrite well_scoped_ctor_eq. apply IH.
-    rewrite has_rt_cap_ctor_eq in H. exact H.
-  - intros scrut tag nlt ar y n IHs IHy IHn ms H. simpl in H.
-    apply Bool.orb_false_iff in H as [Hs Hyn]. apply Bool.orb_false_iff in Hyn as [Hy Hn].
-    split; [apply IHs|split;[apply IHy|apply IHn]]; assumption.
-  - intros E nb Ts T_B T_R op body IHop IHb ms H. simpl in H.
-    apply Bool.orb_false_iff in H as [Hop Hb]. split; [apply IHop|apply IHb]; assumption.
-  - intros t Ss arg IHt IHa ms H. simpl in H.
-    apply Bool.orb_false_iff in H as [Ht Ha]. split; [apply IHt|apply IHa]; assumption.
-  - intros E_tag m nb Ts T_R op IHop ms H. simpl in H. discriminate.
-  - intros m T_B T_R body IH ms H. simpl in H. discriminate.
-  - intros m T_B T_R body IH ms H. simpl in H. discriminate.
-  - intros ms H. exact I.
-  - intros u ts IHu IHts ms H. simpl in H. apply Bool.orb_false_iff in H as [Hu Hts].
-    split; [apply IHu|apply IHts]; assumption.
 Qed.
 
 (* No runtime capability ⇒ no markers at all. *)
@@ -3856,83 +3743,6 @@ Proof.
   - intros H. reflexivity.
   - intros u ts IHu IHts H. simpl in H |- *. apply Bool.orb_false_iff in H as [Hu Hts].
     rewrite (IHu Hu), (IHts Hts). reflexivity.
-Qed.
-
-(* Combined plug-replace: thread BOTH marker_ok and well_scoped through a
-   plug so the focus is available at its local scope. *)
-Lemma marker_ok_well_scoped_plug_replace : forall E r r' ms,
-  marker_ok ms (plug E r) ->
-  well_scoped ms (plug E r) ->
-  (forall ms', marker_ok ms' r -> well_scoped ms' r -> marker_ok ms' r') ->
-  marker_ok ms (plug E r').
-Proof.
-  induction E as
-    [ | E1 IHE ta | ta E1 IHE | E1 IHE Ty | E1 IHE lt
-    | tag dl lts Tys vs E1 IHE ts | E1 IHE K nlt ar yes no
-    | mk TB TR E1 IHE | E1 IHE Ss ar2 | rcv Ss E1 IHE ];
-    intros r r' ms Hok Hws Hrep; cbn [plug] in Hok, Hws |- *.
-  - apply Hrep; assumption.
-  - destruct Hok as [H1 H2]. destruct Hws as [W1 W2].
-    split; [eapply IHE; [exact H1|exact W1|exact Hrep] | exact H2].
-  - destruct Hok as [H1 H2]. destruct Hws as [W1 W2].
-    split; [exact H1 | eapply IHE; [exact H2|exact W2|exact Hrep]].
-  - eapply IHE; [exact Hok|exact Hws|exact Hrep].
-  - eapply IHE; [exact Hok|exact Hws|exact Hrep].
-  - rewrite marker_ok_ctor_eq in Hok |- *. rewrite well_scoped_ctor_eq in Hws.
-    revert Hok Hws.
-    induction vs as [|a vs' IHvs]; intros Hok Hws; cbn [List.app] in Hok, Hws |- *.
-    + destruct Hok as [Hfoc Hrest]. destruct Hws as [Wfoc Wrest].
-      split; [eapply IHE; [exact Hfoc|exact Wfoc|exact Hrep] | exact Hrest].
-    + destruct Hok as [Ha Hrest]. destruct Hws as [Wa Wrest].
-      split; [exact Ha | apply IHvs; [exact Hrest|exact Wrest]].
-  - destruct Hok as [Hs [Hy Hn]]. destruct Hws as [Ws [Wy Wn]].
-    repeat split; [eapply IHE; [exact Hs|exact Ws|exact Hrep] | exact Hy | exact Hn].
-  - destruct Hws as [Wnin Wbody]. eapply IHE; [exact Hok|exact Wbody|exact Hrep].
-  - destruct Hok as [H1 H2]. destruct Hws as [W1 W2].
-    split; [eapply IHE; [exact H1|exact W1|exact Hrep] | exact H2].
-  - destruct Hok as [H1 H2]. destruct Hws as [W1 W2].
-    split; [exact H1 | eapply IHE; [exact H2|exact W2|exact Hrep]].
-Qed.
-
-(* Descend a pure context to the focus cap and read off the confinement. *)
-Lemma well_scoped_pure_cap_confined :
-  forall P m ms E_tag nb Ts T_R op_body Ss v,
-  pure_ectx_m m P ->
-  well_scoped ms (plug P (term_perform (term_cap E_tag m nb Ts T_R op_body) Ss v)) ->
-  marker_ok (scope_below m ms) op_body.
-Proof.
-  intros P m ms E_tag nb Ts T_R op_body Ss v Hpure. revert ms.
-  induction Hpure; intros ms Hws; cbn [plug] in Hws.
-  - destruct Hws as [Hcap _]. destruct Hcap as [_ [Hmok _]]. exact Hmok.
-  - destruct Hws as [W1 _]. apply IHHpure. exact W1.
-  - destruct Hws as [_ W2]. apply IHHpure. exact W2.
-  - apply IHHpure. exact Hws.
-  - apply IHHpure. exact Hws.
-  - rewrite well_scoped_ctor_eq in Hws.
-    apply IHHpure.
-    induction vs as [|u vs IHvs]; cbn [List.app] in Hws.
-    + destruct Hws as [Wfoc _]. exact Wfoc.
-    + destruct Hws as [_ Wrest]. apply IHvs. exact Wrest.
-  - destruct Hws as [Ws _]. apply IHHpure. exact Ws.
-  - destruct Hws as [_ Wbody]. specialize (IHHpure (m' :: ms) Wbody).
-    rewrite scope_below_cons_neq in IHHpure; [exact IHHpure | auto].
-  - destruct Hws as [W1 _]. apply IHHpure. exact W1.
-  - destruct Hws as [_ W2]. apply IHHpure. exact W2.
-Qed.
-
-(* The H_Perform confinement, from well_scoped. *)
-Lemma well_scoped_step_handler_confinement :
-  forall ms m T_B T_R E_tag nb Ts T_R' op_body Ss v P,
-  well_scoped ms (term_handler_m m T_B T_R
-    (plug P (term_perform (term_cap E_tag m nb Ts T_R' op_body) Ss v))) ->
-  pure_ectx_m m P ->
-  marker_ok ms op_body.
-Proof.
-  intros ms m T_B T_R E_tag nb Ts T_R' op_body Ss v P Hws Hpure.
-  destruct Hws as [Hnin Hbody].
-  pose proof (well_scoped_pure_cap_confined P m (m :: ms) E_tag nb Ts T_R' op_body Ss v
-    Hpure Hbody) as Hc.
-  rewrite scope_below_cons_eq in Hc. exact Hc.
 Qed.
 
 (* ================================================================== *)
@@ -4024,58 +3834,815 @@ Proof.
   - intros u ts IHu IHts a c. simpl. rewrite IHu, IHts. reflexivity.
 Qed.
 
-(* Substituting a value with NO runtime capability preserves well_scoped:
-   such a value has no markers, hence is marker_ok at every scope, so it
-   cannot disturb any cap-body's confinement. *)
-Lemma well_scoped_subst_tm_no_cap : forall t i w ms,
-  has_rt_cap w = false ->
-  well_scoped ms t ->
-  well_scoped ms (subst_tm i w t).
+(* ==================================================================== *)
+(* Scope extension.                                                     *)
+(*                                                                      *)
+(* [scope_ext s ms] relates an ambient marker scope [s] to any scope    *)
+(* [ms] obtained from it by inserting extra markers above and/or        *)
+(* between the markers of [s], preserving their order.  Well-           *)
+(* scopedness (v2) is monotone along this relation: a value moved       *)
+(* under a newly installed delimiter (H_Resume) or under binders        *)
+(* during substitution only ever sees scope_ext-extensions of the       *)
+(* scope it was checked at.                                             *)
+(* ==================================================================== *)
+
+Inductive scope_ext : list marker -> list marker -> Prop :=
+  | se_refl : forall s, scope_ext s s
+  | se_top  : forall s ms m, scope_ext s ms -> scope_ext s (m :: ms)
+  | se_cons : forall s ms m, scope_ext s ms -> scope_ext (m :: s) (m :: ms).
+
+Lemma scope_ext_incl : forall s ms, scope_ext s ms -> incl s ms.
+Proof.
+  intros s ms H. induction H as [s' | s' ms' m' H IH | s' ms' m' H IH].
+  - apply incl_refl.
+  - apply incl_tl. exact IH.
+  - intros x [Hx | Hx]; [left; exact Hx | right; apply IH; exact Hx].
+Qed.
+
+Lemma scope_ext_nil : forall ms, scope_ext [] ms.
+Proof.
+  induction ms as [|m ms IH]; [apply se_refl | apply se_top; exact IH].
+Qed.
+
+(* The suffix below any marker is a scope_ext-shrinking of the scope. *)
+Lemma scope_below_scope_ext : forall k s, scope_ext (scope_below k s) s.
+Proof.
+  intros k. induction s as [|m rest IH]; simpl.
+  - apply se_refl.
+  - destruct (Nat.eqb m k).
+    + apply se_top. apply se_refl.
+    + apply se_top. exact IH.
+Qed.
+
+Lemma scope_below_incl : forall k ms, incl (scope_below k ms) ms.
+Proof.
+  intros k ms. apply scope_ext_incl. apply scope_below_scope_ext.
+Qed.
+
+(* scope_ext absorbs a scope_below on its source. *)
+Lemma scope_ext_scope_below_l : forall s ms k,
+  scope_ext s ms -> scope_ext (scope_below k s) ms.
+Proof.
+  intros s ms k H. induction H as [s' | s' ms' m' H IH | s' ms' m' H IH].
+  - apply scope_below_scope_ext.
+  - apply se_top. exact IH.
+  - simpl. destruct (Nat.eqb m' k).
+    + apply se_top. exact H.
+    + apply se_top. exact IH.
+Qed.
+
+(* Scope extension transports through scope_below: inserting markers    *)
+(* above/between can only move the cut-point up, never expose a         *)
+(* smaller suffix.                                                      *)
+Lemma scope_ext_scope_below : forall s ms k,
+  scope_ext s ms -> scope_ext (scope_below k s) (scope_below k ms).
+Proof.
+  intros s ms k H. induction H as [s' | s' ms' m' H IH | s' ms' m' H IH].
+  - apply se_refl.
+  - simpl. destruct (Nat.eqb m' k).
+    + apply scope_ext_scope_below_l. exact H.
+    + exact IH.
+  - simpl. destruct (Nat.eqb m' k).
+    + exact H.
+    + exact IH.
+Qed.
+
+(* ==================================================================== *)
+(* The marker well-scopedness invariant, v2.                            *)
+(*                                                                      *)
+(* [well_scoped ms t] records marker provenance without freshness:     *)
+(*  - at a cap, its marker is in scope AND its op-body is well-scoped   *)
+(*    at the scope that was ambient OUTSIDE the cap's own delimiter     *)
+(*    (= the suffix of [ms] below the innermost occurrence of the       *)
+(*    cap's marker).  This is exactly what the H_Perform reduct needs:  *)
+(*    the op-body lands outside the consumed delimiter.                 *)
+(*  - at a delimiter/resumption, the bound marker is pushed; NO         *)
+(*    freshness is required (marker shadowing is operationally fine:    *)
+(*    [pure_ectx_m] and [scope_below] both target the innermost         *)
+(*    occurrence).                                                      *)
+(* Unlike v1, this predicate is monotone along [scope_ext] and hence    *)
+(* preserved by reduction (see step_preserves_well_scoped).            *)
+(* ==================================================================== *)
+
+Fixpoint well_scoped (ms : list marker) (t : term) : Prop :=
+  let fix well_scoped_list (ts : list term) : Prop :=
+    match ts with
+    | [] => True
+    | u :: rest => well_scoped ms u /\ well_scoped_list rest
+    end
+  in
+  match t with
+  | term_var _ => True
+  | term_app t1 t2 => well_scoped ms t1 /\ well_scoped ms t2
+  | term_lam body _ => well_scoped ms body
+  | term_ty_app t1 _ => well_scoped ms t1
+  | term_ty_lam _ body => well_scoped ms body
+  | term_lt_app t1 _ => well_scoped ms t1
+  | term_lt_lam body => well_scoped ms body
+  | term_ctor _ _ _ _ ts => well_scoped_list ts
+  | term_match scrut _ _ _ yes_body no_body =>
+      well_scoped ms scrut /\ well_scoped ms yes_body /\ well_scoped ms no_body
+  | term_handle _ _ _ _ _ op_body body =>
+      well_scoped ms op_body /\ well_scoped ms body
+  | term_perform recv _ arg => well_scoped ms recv /\ well_scoped ms arg
+  | term_cap _ m _ _ _ op_body =>
+      In m ms /\ well_scoped (scope_below m ms) op_body
+  | term_handler_m m _ _ body => well_scoped (m :: ms) body
+  | term_resume m _ _ body => well_scoped (m :: ms) body
+  end.
+
+Fixpoint well_scoped_list (ms : list marker) (ts : list term) : Prop :=
+  match ts with
+  | [] => True
+  | u :: rest => well_scoped ms u /\ well_scoped_list ms rest
+  end.
+
+Lemma well_scoped_ctor_eq : forall ms K l lts Ts ts,
+  well_scoped ms (term_ctor K l lts Ts ts) = well_scoped_list ms ts.
+Proof.
+  intros ms K l lts Ts ts. induction ts as [|u rest IH].
+  - reflexivity.
+  - change (well_scoped ms (term_ctor K l lts Ts (u :: rest)))
+      with (well_scoped ms u /\ well_scoped ms (term_ctor K l lts Ts rest)).
+    rewrite IH. reflexivity.
+Qed.
+
+(* ==================================================================== *)
+(* Term-closedness of runtime marker constructs.                        *)
+(*                                                                      *)
+(* Caps, delimiters, and resumptions are minted at evaluation (spine)   *)
+(* positions of a closed program, so their op-bodies never reference    *)
+(* enclosing term binders — and substitution into a closed subterm is   *)
+(* the identity, so they stay closed.  [rt_closed] records this for     *)
+(* CAPS ONLY: the cap clause of well_scoped is the one place the       *)
+(* scope SHRINKS (scope_below), which monotonicity cannot transport     *)
+(* a substituted value across; closedness makes substitution vacuous    *)
+(* there.  handler_m/resume bodies need no such condition — their       *)
+(* clauses only EXTEND the scope, and [well_scoped_mono] transports    *)
+(* the value.  (Indeed resume bodies are NOT term-closed: the reified   *)
+(* continuation body contains the resumption hole [term_var 0], also    *)
+(* inside re-captured handler_m frames.)                                *)
+(* ==================================================================== *)
+
+Fixpoint rt_closed (t : term) : Prop :=
+  let fix rt_closed_list (ts : list term) : Prop :=
+    match ts with
+    | [] => True
+    | u :: rest => rt_closed u /\ rt_closed_list rest
+    end
+  in
+  match t with
+  | term_var _ => True
+  | term_app t1 t2 => rt_closed t1 /\ rt_closed t2
+  | term_lam body _ => rt_closed body
+  | term_ty_app t1 _ => rt_closed t1
+  | term_ty_lam _ body => rt_closed body
+  | term_lt_app t1 _ => rt_closed t1
+  | term_lt_lam body => rt_closed body
+  | term_ctor _ _ _ _ ts => rt_closed_list ts
+  | term_match scrut _ _ _ yes_body no_body =>
+      rt_closed scrut /\ rt_closed yes_body /\ rt_closed no_body
+  | term_handle _ _ _ _ _ op_body body => rt_closed op_body /\ rt_closed body
+  | term_perform recv _ arg => rt_closed recv /\ rt_closed arg
+  | term_cap _ _ _ _ _ op_body => free_tm_vars 2 op_body = [] /\ rt_closed op_body
+  | term_handler_m _ _ _ body => rt_closed body
+  | term_resume _ _ _ body => rt_closed body
+  end.
+
+Fixpoint rt_closed_list (ts : list term) : Prop :=
+  match ts with
+  | [] => True
+  | u :: rest => rt_closed u /\ rt_closed_list rest
+  end.
+
+Lemma rt_closed_ctor_eq : forall K l lts Ts ts,
+  rt_closed (term_ctor K l lts Ts ts) = rt_closed_list ts.
+Proof.
+  intros K l lts Ts ts. induction ts as [|u rest IH].
+  - reflexivity.
+  - change (rt_closed (term_ctor K l lts Ts (u :: rest)))
+      with (rt_closed u /\ rt_closed (term_ctor K l lts Ts rest)).
+    rewrite IH. reflexivity.
+Qed.
+
+(* well_scoped is stronger than marker_ok. *)
+Lemma well_scoped_marker_ok : forall t ms, well_scoped ms t -> marker_ok ms t.
 Proof.
   apply (term_list_ind
-    (fun t => forall i w ms, has_rt_cap w = false -> well_scoped ms t ->
-       well_scoped ms (subst_tm i w t))
-    (fun ts => forall i w ms, has_rt_cap w = false -> well_scoped_list ms ts ->
-       well_scoped_list ms (List.map (subst_tm i w) ts))).
-  - intros n i w ms Hcap Hws. cbn [subst_tm].
-    destruct (Nat.eqb n i); [apply well_scoped_no_rt_cap; exact Hcap|].
-    destruct (Nat.ltb i n); exact I.
-  - intros t1 t2 IH1 IH2 i w ms Hcap [H1 H2]. split; [apply IH1|apply IH2]; assumption.
-  - intros body T IH i w ms Hcap Hws. cbn [subst_tm]. apply IH;
-      [rewrite has_rt_cap_shift_tm; exact Hcap | exact Hws].
-  - intros t T IH i w ms Hcap Hws. cbn [subst_tm]. apply IH; assumption.
-  - intros bound body IH i w ms Hcap Hws. cbn [subst_tm]. apply IH;
-      [rewrite has_rt_cap_shift_ty_in_tm; exact Hcap | exact Hws].
-  - intros t l IH i w ms Hcap Hws. cbn [subst_tm]. apply IH; assumption.
-  - intros body IH i w ms Hcap Hws. cbn [subst_tm]. apply IH;
-      [rewrite has_rt_cap_shift_lt_in_tm; exact Hcap | exact Hws].
-  - intros K l lts Ts ts IH i w ms Hcap Hws.
-    replace (subst_tm i w (term_ctor K l lts Ts ts))
-      with (term_ctor K l lts Ts (List.map (subst_tm i w) ts))
-      by (cbn [subst_tm]; rewrite subst_tm_go_eq_map; reflexivity).
-    rewrite well_scoped_ctor_eq. apply IH; [exact Hcap|].
+    (fun t => forall ms, well_scoped ms t -> marker_ok ms t)
+    (fun ts => forall ms, well_scoped_list ms ts -> marker_ok_list ms ts)).
+  - intros n ms H. exact I.
+  - intros t1 t2 IH1 IH2 ms [H1 H2]. split; [apply IH1|apply IH2]; assumption.
+  - intros body T IH ms H. apply IH. exact H.
+  - intros t T IH ms H. apply IH. exact H.
+  - intros bound body IH ms H. apply IH. exact H.
+  - intros t l IH ms H. apply IH. exact H.
+  - intros body IH ms H. apply IH. exact H.
+  - intros K l lts Ts ts IH ms H. rewrite marker_ok_ctor_eq. apply IH.
+    rewrite well_scoped_ctor_eq in H. exact H.
+  - intros scrut tag nlt ar y n IHs IHy IHn ms [Hs [Hy Hn]].
+    split; [apply IHs|split;[apply IHy|apply IHn]]; assumption.
+  - intros E nb Ts T_B T_R op body IHop IHb ms [Hop Hb].
+    split; [apply IHop|apply IHb]; assumption.
+  - intros t Ss arg IHt IHa ms [Ht Ha]. split; [apply IHt|apply IHa]; assumption.
+  - intros E_tag m nb Ts T_R op IHop ms [Hin Hws]. split.
+    + exact Hin.
+    + apply (marker_ok_mono op (scope_below m ms) (m :: ms)).
+      * apply incl_tl. apply scope_below_incl.
+      * apply IHop. exact Hws.
+  - intros m T_B T_R body IH ms Hws. apply IH. exact Hws.
+  - intros m T_B T_R body IH ms Hws. apply IH. exact Hws.
+  - intros ms H. exact I.
+  - intros u ts IHu IHts ms [Hu Hts]. split; [apply IHu|apply IHts]; assumption.
+Qed.
+
+(* well_scoped holds vacuously on terms with no runtime capability. *)
+Lemma well_scoped_no_rt_cap : forall t ms, has_rt_cap t = false -> well_scoped ms t.
+Proof.
+  apply (term_list_ind
+    (fun t => forall ms, has_rt_cap t = false -> well_scoped ms t)
+    (fun ts => forall ms, has_rt_cap_list ts = false -> well_scoped_list ms ts)).
+  - intros n ms H. exact I.
+  - intros t1 t2 IH1 IH2 ms H. simpl in H. apply Bool.orb_false_iff in H as [H1 H2].
+    split; [apply IH1|apply IH2]; assumption.
+  - intros body T IH ms H. simpl in H. apply IH. exact H.
+  - intros t T IH ms H. simpl in H. apply IH. exact H.
+  - intros bound body IH ms H. simpl in H. apply IH. exact H.
+  - intros t l IH ms H. simpl in H. apply IH. exact H.
+  - intros body IH ms H. simpl in H. apply IH. exact H.
+  - intros K l lts Ts ts IH ms H. rewrite well_scoped_ctor_eq. apply IH.
+    rewrite has_rt_cap_ctor_eq in H. exact H.
+  - intros scrut tag nlt ar y n IHs IHy IHn ms H. simpl in H.
+    apply Bool.orb_false_iff in H as [Hs Hyn]. apply Bool.orb_false_iff in Hyn as [Hy Hn].
+    split; [apply IHs|split;[apply IHy|apply IHn]]; assumption.
+  - intros E nb Ts T_B T_R op body IHop IHb ms H. simpl in H.
+    apply Bool.orb_false_iff in H as [Hop Hb]. split; [apply IHop|apply IHb]; assumption.
+  - intros t Ss arg IHt IHa ms H. simpl in H.
+    apply Bool.orb_false_iff in H as [Ht Ha]. split; [apply IHt|apply IHa]; assumption.
+  - intros E_tag m nb Ts T_R op IHop ms H. simpl in H. discriminate.
+  - intros m T_B T_R body IH ms H. simpl in H. discriminate.
+  - intros m T_B T_R body IH ms H. simpl in H. discriminate.
+  - intros ms H. exact I.
+  - intros u ts IHu IHts ms H. simpl in H. apply Bool.orb_false_iff in H as [Hu Hts].
+    split; [apply IHu|apply IHts]; assumption.
+Qed.
+
+(* rt_closed holds vacuously on terms with no runtime capability. *)
+Lemma rt_closed_no_rt_cap : forall t, has_rt_cap t = false -> rt_closed t.
+Proof.
+  apply (term_list_ind
+    (fun t => has_rt_cap t = false -> rt_closed t)
+    (fun ts => has_rt_cap_list ts = false -> rt_closed_list ts)).
+  - intros n H. exact I.
+  - intros t1 t2 IH1 IH2 H. simpl in H. apply Bool.orb_false_iff in H as [H1 H2].
+    split; [apply IH1|apply IH2]; assumption.
+  - intros body T IH H. simpl in H. apply IH. exact H.
+  - intros t T IH H. simpl in H. apply IH. exact H.
+  - intros bound body IH H. simpl in H. apply IH. exact H.
+  - intros t l IH H. simpl in H. apply IH. exact H.
+  - intros body IH H. simpl in H. apply IH. exact H.
+  - intros K l lts Ts ts IH H. rewrite rt_closed_ctor_eq. apply IH.
+    rewrite has_rt_cap_ctor_eq in H. exact H.
+  - intros scrut tag nlt ar y n IHs IHy IHn H. simpl in H.
+    apply Bool.orb_false_iff in H as [Hs Hyn]. apply Bool.orb_false_iff in Hyn as [Hy Hn].
+    split; [apply IHs|split;[apply IHy|apply IHn]]; assumption.
+  - intros E nb Ts T_B T_R op body IHop IHb H. simpl in H.
+    apply Bool.orb_false_iff in H as [Hop Hb]. split; [apply IHop|apply IHb]; assumption.
+  - intros t Ss arg IHt IHa H. simpl in H.
+    apply Bool.orb_false_iff in H as [Ht Ha]. split; [apply IHt|apply IHa]; assumption.
+  - intros E_tag m nb Ts T_R op IHop H. simpl in H. discriminate.
+  - intros m T_B T_R body IH H. simpl in H. discriminate.
+  - intros m T_B T_R body IH H. simpl in H. discriminate.
+  - intros H. exact I.
+  - intros u ts IHu IHts H. simpl in H. apply Bool.orb_false_iff in H as [Hu Hts].
+    split; [apply IHu|apply IHts]; assumption.
+Qed.
+
+(* Monotonicity of well_scoped along scope extension: the payoff of    *)
+(* dropping freshness.  A well-scoped value stays well-scoped when its  *)
+(* ambient scope is extended above/between (new delimiters installed    *)
+(* around it, or binders crossed during substitution).                  *)
+Lemma well_scoped_mono : forall t s ms,
+  scope_ext s ms -> well_scoped s t -> well_scoped ms t.
+Proof.
+  apply (term_list_ind
+    (fun t => forall s ms, scope_ext s ms -> well_scoped s t -> well_scoped ms t)
+    (fun ts => forall s ms, scope_ext s ms -> well_scoped_list s ts -> well_scoped_list ms ts)).
+  - intros n s ms Hse H. exact I.
+  - intros t1 t2 IH1 IH2 s ms Hse [H1 H2].
+    split; [eapply IH1|eapply IH2]; eassumption.
+  - intros body T IH s ms Hse H. eapply IH; eassumption.
+  - intros t T IH s ms Hse H. eapply IH; eassumption.
+  - intros bound body IH s ms Hse H. eapply IH; eassumption.
+  - intros t l IH s ms Hse H. eapply IH; eassumption.
+  - intros body IH s ms Hse H. eapply IH; eassumption.
+  - intros K l lts Ts ts IH s ms Hse H.
+    rewrite well_scoped_ctor_eq. rewrite well_scoped_ctor_eq in H.
+    eapply IH; eassumption.
+  - intros scrut tag nlt ar y n IHs IHy IHn s ms Hse [Hs [Hy Hn]].
+    split; [eapply IHs; eassumption
+           |split; [eapply IHy; eassumption|eapply IHn; eassumption]].
+  - intros E nb Ts T_B T_R op body IHop IHb s ms Hse [Hop Hb].
+    split; [eapply IHop|eapply IHb]; eassumption.
+  - intros t Ss arg IHt IHa s ms Hse [Ht Ha].
+    split; [eapply IHt|eapply IHa]; eassumption.
+  - intros E_tag m nb Ts T_R op IHop s ms Hse [Hin Hws]. split.
+    + exact (scope_ext_incl _ _ Hse m Hin).
+    + eapply IHop; [apply scope_ext_scope_below; exact Hse | exact Hws].
+  - intros m T_B T_R body IH s ms Hse Hws.
+    eapply IH; [apply se_cons; exact Hse | exact Hws].
+  - intros m T_B T_R body IH s ms Hse Hws.
+    eapply IH; [apply se_cons; exact Hse | exact Hws].
+  - intros s ms Hse H. exact I.
+  - intros u ts IHu IHts s ms Hse [Hu Hts].
+    split; [eapply IHu|eapply IHts]; eassumption.
+Qed.
+
+(* ==================================================================== *)
+(* Closed-subterm identity laws.                                        *)
+(*                                                                      *)
+(* A term with no free variables at/above [c] is untouched by shifts    *)
+(* and substitutions at index >= c.  Runtime marker constructs have     *)
+(* closed bodies ([rt_closed]), so these laws make term substitution    *)
+(* vacuous exactly at the scope-sensitive positions of well_scoped.    *)
+(* ==================================================================== *)
+
+Lemma shift_tm_closed_id : forall t c a cutoff,
+  free_tm_vars c t = [] -> c <= cutoff -> shift_tm a cutoff t = t.
+Proof.
+  apply (term_list_ind
+    (fun t => forall c a cutoff,
+       free_tm_vars c t = [] -> c <= cutoff -> shift_tm a cutoff t = t)
+    (fun ts => forall c a cutoff,
+       List.concat (List.map (free_tm_vars c) ts) = [] -> c <= cutoff ->
+       List.map (shift_tm a cutoff) ts = ts)).
+  - intros n c a cutoff Hfv Hle. simpl in Hfv |- *.
+    destruct (Nat.ltb n c) eqn:Hlt.
+    + apply Nat.ltb_lt in Hlt.
+      destruct (Nat.leb cutoff n) eqn:Hcn.
+      * apply Nat.leb_le in Hcn. lia.
+      * reflexivity.
+    + discriminate Hfv.
+  - intros t1 t2 IH1 IH2 c a cutoff Hfv Hle. simpl in Hfv |- *.
+    apply app_eq_nil in Hfv as [H1 H2].
+    rewrite (IH1 c a cutoff H1 Hle), (IH2 c a cutoff H2 Hle). reflexivity.
+  - intros body T IH c a cutoff Hfv Hle. simpl in Hfv |- *.
+    rewrite (IH (S c) a (S cutoff) Hfv); [reflexivity | lia].
+  - intros t T IH c a cutoff Hfv Hle. simpl in Hfv |- *.
+    rewrite (IH c a cutoff Hfv Hle). reflexivity.
+  - intros bound body IH c a cutoff Hfv Hle. simpl in Hfv |- *.
+    rewrite (IH c a cutoff Hfv Hle). reflexivity.
+  - intros t l IH c a cutoff Hfv Hle. simpl in Hfv |- *.
+    rewrite (IH c a cutoff Hfv Hle). reflexivity.
+  - intros body IH c a cutoff Hfv Hle. simpl in Hfv |- *.
+    rewrite (IH c a cutoff Hfv Hle). reflexivity.
+  - intros K l lts Ts ts IH c a cutoff Hfv Hle.
+    simpl in Hfv. rewrite free_tm_vars_go_eq_concat in Hfv.
+    cbn [shift_tm]. rewrite shift_tm_go_eq_map.
+    rewrite (IH c a cutoff Hfv Hle). reflexivity.
+  - intros scrut tag nlt ar y n IHs IHy IHn c a cutoff Hfv Hle. simpl in Hfv |- *.
+    apply app_eq_nil in Hfv as [Hs Hyn]. apply app_eq_nil in Hyn as [Hy Hn].
+    rewrite (IHs c a cutoff Hs Hle).
+    rewrite (IHy (c + ar) a (cutoff + ar) Hy); [|lia].
+    rewrite (IHn c a cutoff Hn Hle). reflexivity.
+  - intros E nb Ts T_B T_R op body IHop IHb c a cutoff Hfv Hle. simpl in Hfv |- *.
+    apply app_eq_nil in Hfv as [Hop Hb].
+    rewrite (IHop (c + 2) a (cutoff + 2) Hop); [|lia].
+    rewrite (IHb (S c) a (S cutoff) Hb); [|lia]. reflexivity.
+  - intros t Ss arg IHt IHa c a cutoff Hfv Hle. simpl in Hfv |- *.
+    apply app_eq_nil in Hfv as [Ht Ha].
+    rewrite (IHt c a cutoff Ht Hle), (IHa c a cutoff Ha Hle). reflexivity.
+  - intros E_tag m nb Ts T_R op IHop c a cutoff Hfv Hle. simpl in Hfv |- *.
+    rewrite (IHop (c + 2) a (cutoff + 2) Hfv); [reflexivity|lia].
+  - intros m T_B T_R body IH c a cutoff Hfv Hle. simpl in Hfv |- *.
+    rewrite (IH c a cutoff Hfv Hle). reflexivity.
+  - intros m T_B T_R body IH c a cutoff Hfv Hle. simpl in Hfv |- *.
+    rewrite (IH (S c) a (S cutoff) Hfv); [reflexivity|lia].
+  - intros c a cutoff _ _. reflexivity.
+  - intros u ts IHu IHts c a cutoff Hfv Hle. simpl in Hfv.
+    apply app_eq_nil in Hfv as [Hu Hts].
+    simpl. rewrite (IHu c a cutoff Hu Hle), (IHts c a cutoff Hts Hle). reflexivity.
+Qed.
+
+Lemma subst_tm_closed_id : forall t c var r,
+  free_tm_vars c t = [] -> c <= var -> subst_tm var r t = t.
+Proof.
+  apply (term_list_ind
+    (fun t => forall c var r,
+       free_tm_vars c t = [] -> c <= var -> subst_tm var r t = t)
+    (fun ts => forall c var r,
+       List.concat (List.map (free_tm_vars c) ts) = [] -> c <= var ->
+       List.map (subst_tm var r) ts = ts)).
+  - intros n c var r Hfv Hle. simpl in Hfv |- *.
+    destruct (Nat.ltb n c) eqn:Hlt.
+    + apply Nat.ltb_lt in Hlt.
+      destruct (Nat.eqb n var) eqn:Heq.
+      * apply Nat.eqb_eq in Heq. lia.
+      * destruct (Nat.ltb var n) eqn:Hvn.
+        -- apply Nat.ltb_lt in Hvn. lia.
+        -- reflexivity.
+    + discriminate Hfv.
+  - intros t1 t2 IH1 IH2 c var r Hfv Hle. simpl in Hfv |- *.
+    apply app_eq_nil in Hfv as [H1 H2].
+    rewrite (IH1 c var _ H1 Hle), (IH2 c var _ H2 Hle). reflexivity.
+  - intros body T IH c var r Hfv Hle. simpl in Hfv |- *.
+    rewrite (IH (S c) (S var) _ Hfv); [reflexivity | lia].
+  - intros t T IH c var r Hfv Hle. simpl in Hfv |- *.
+    rewrite (IH c var _ Hfv Hle). reflexivity.
+  - intros bound body IH c var r Hfv Hle. simpl in Hfv |- *.
+    rewrite (IH c var _ Hfv Hle). reflexivity.
+  - intros t l IH c var r Hfv Hle. simpl in Hfv |- *.
+    rewrite (IH c var _ Hfv Hle). reflexivity.
+  - intros body IH c var r Hfv Hle. simpl in Hfv |- *.
+    rewrite (IH c var _ Hfv Hle). reflexivity.
+  - intros K l lts Ts ts IH c var r Hfv Hle.
+    simpl in Hfv. rewrite free_tm_vars_go_eq_concat in Hfv.
+    cbn [subst_tm]. rewrite subst_tm_go_eq_map.
+    rewrite (IH c var r Hfv Hle). reflexivity.
+  - intros scrut tag nlt ar y n IHs IHy IHn c var r Hfv Hle. simpl in Hfv |- *.
+    apply app_eq_nil in Hfv as [Hs Hyn]. apply app_eq_nil in Hyn as [Hy Hn].
+    rewrite (IHs c var _ Hs Hle).
+    rewrite (IHy (c + ar) (var + ar) _ Hy); [|lia].
+    rewrite (IHn c var _ Hn Hle). reflexivity.
+  - intros E nb Ts T_B T_R op body IHop IHb c var r Hfv Hle. simpl in Hfv |- *.
+    apply app_eq_nil in Hfv as [Hop Hb].
+    rewrite (IHop (c + 2) (var + 2) _ Hop); [|lia].
+    rewrite (IHb (S c) (S var) _ Hb); [|lia]. reflexivity.
+  - intros t Ss arg IHt IHa c var r Hfv Hle. simpl in Hfv |- *.
+    apply app_eq_nil in Hfv as [Ht Ha].
+    rewrite (IHt c var _ Ht Hle), (IHa c var _ Ha Hle). reflexivity.
+  - intros E_tag m nb Ts T_R op IHop c var r Hfv Hle. simpl in Hfv |- *.
+    rewrite (IHop (c + 2) (var + 2) _ Hfv); [reflexivity|lia].
+  - intros m T_B T_R body IH c var r Hfv Hle. simpl in Hfv |- *.
+    rewrite (IH c var _ Hfv Hle). reflexivity.
+  - intros m T_B T_R body IH c var r Hfv Hle. simpl in Hfv |- *.
+    rewrite (IH (S c) (S var) _ Hfv); [reflexivity|lia].
+  - intros c var r _ _. reflexivity.
+  - intros u ts IHu IHts c var r Hfv Hle. simpl in Hfv.
+    apply app_eq_nil in Hfv as [Hu Hts].
+    simpl. rewrite (IHu c var _ Hu Hle), (IHts c var _ Hts Hle). reflexivity.
+Qed.
+
+(* Term/type/lifetime shifts never move markers, so well_scoped is     *)
+(* preserved at the SAME scope.                                         *)
+Lemma well_scoped_shift_tm : forall t ms a cutoff,
+  well_scoped ms t -> well_scoped ms (shift_tm a cutoff t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall ms a cutoff,
+       well_scoped ms t -> well_scoped ms (shift_tm a cutoff t))
+    (fun ts => forall ms a cutoff,
+       well_scoped_list ms ts ->
+       well_scoped_list ms (List.map (shift_tm a cutoff) ts))).
+  - intros n ms a cutoff _. cbn [shift_tm].
+    destruct (Nat.leb cutoff n); exact I.
+  - intros t1 t2 IH1 IH2 ms a cutoff [H1 H2]. cbn [shift_tm].
+    split; [apply IH1|apply IH2]; assumption.
+  - intros body T IH ms a cutoff Hws. cbn [shift_tm]. apply IH; exact Hws.
+  - intros t T IH ms a cutoff Hws. cbn [shift_tm]. apply IH; exact Hws.
+  - intros bound body IH ms a cutoff Hws. cbn [shift_tm]. apply IH; exact Hws.
+  - intros t l IH ms a cutoff Hws. cbn [shift_tm]. apply IH; exact Hws.
+  - intros body IH ms a cutoff Hws. cbn [shift_tm]. apply IH; exact Hws.
+  - intros K l lts Ts ts IH ms a cutoff Hws.
+    cbn [shift_tm]. rewrite shift_tm_go_eq_map.
+    rewrite well_scoped_ctor_eq. apply IH.
     rewrite well_scoped_ctor_eq in Hws. exact Hws.
-  - intros scrut tag nlt ar y n IHs IHy IHn i w ms Hcap [Hs [Hy Hn]].
-    cbn [subst_tm]. split; [apply IHs; assumption | split].
-    + apply IHy; [rewrite has_rt_cap_shift_tm, has_rt_cap_shift_lt_in_tm; exact Hcap | exact Hy].
+  - intros scrut tag nlt ar y n IHs IHy IHn ms a cutoff [Hs [Hy Hn]]. cbn [shift_tm].
+    split; [apply IHs; exact Hs | split; [apply IHy; exact Hy | apply IHn; exact Hn]].
+  - intros E nb Ts T_B T_R op body IHop IHb ms a cutoff [Hop Hb]. cbn [shift_tm].
+    split; [apply IHop; exact Hop | apply IHb; exact Hb].
+  - intros t Ss arg IHt IHa ms a cutoff [Ht Ha]. cbn [shift_tm].
+    split; [apply IHt; exact Ht | apply IHa; exact Ha].
+  - intros E_tag m nb Ts T_R op IHop ms a cutoff [Hin Hws]. cbn [shift_tm].
+    split; [exact Hin | apply IHop; exact Hws].
+  - intros m T_B T_R body IH ms a cutoff Hws. cbn [shift_tm]. apply IH; exact Hws.
+  - intros m T_B T_R body IH ms a cutoff Hws. cbn [shift_tm]. apply IH; exact Hws.
+  - intros ms a cutoff _. exact I.
+  - intros u ts IHu IHts ms a cutoff [Hu Hts].
+    split; [apply IHu|apply IHts]; assumption.
+Qed.
+
+Lemma well_scoped_shift_ty_in_tm : forall t ms a cutoff,
+  well_scoped ms t -> well_scoped ms (shift_ty_in_tm a cutoff t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall ms a cutoff,
+       well_scoped ms t -> well_scoped ms (shift_ty_in_tm a cutoff t))
+    (fun ts => forall ms a cutoff,
+       well_scoped_list ms ts ->
+       well_scoped_list ms (List.map (shift_ty_in_tm a cutoff) ts))).
+  - intros n ms a cutoff _. exact I.
+  - intros t1 t2 IH1 IH2 ms a cutoff [H1 H2]. cbn [shift_ty_in_tm].
+    split; [apply IH1|apply IH2]; assumption.
+  - intros body T IH ms a cutoff Hws. cbn [shift_ty_in_tm]. apply IH; exact Hws.
+  - intros t T IH ms a cutoff Hws. cbn [shift_ty_in_tm]. apply IH; exact Hws.
+  - intros bound body IH ms a cutoff Hws. cbn [shift_ty_in_tm]. apply IH; exact Hws.
+  - intros t l IH ms a cutoff Hws. cbn [shift_ty_in_tm]. apply IH; exact Hws.
+  - intros body IH ms a cutoff Hws. cbn [shift_ty_in_tm]. apply IH; exact Hws.
+  - intros K l lts Ts ts IH ms a cutoff Hws.
+    cbn [shift_ty_in_tm]. rewrite shift_ty_in_tm_go_eq_map.
+    rewrite well_scoped_ctor_eq. apply IH.
+    rewrite well_scoped_ctor_eq in Hws. exact Hws.
+  - intros scrut tag nlt ar y n IHs IHy IHn ms a cutoff [Hs [Hy Hn]]. cbn [shift_ty_in_tm].
+    split; [apply IHs; exact Hs | split; [apply IHy; exact Hy | apply IHn; exact Hn]].
+  - intros E nb Ts T_B T_R op body IHop IHb ms a cutoff [Hop Hb]. cbn [shift_ty_in_tm].
+    split; [apply IHop; exact Hop | apply IHb; exact Hb].
+  - intros t Ss arg IHt IHa ms a cutoff [Ht Ha]. cbn [shift_ty_in_tm].
+    split; [apply IHt; exact Ht | apply IHa; exact Ha].
+  - intros E_tag m nb Ts T_R op IHop ms a cutoff [Hin Hws]. cbn [shift_ty_in_tm].
+    split; [exact Hin | apply IHop; exact Hws].
+  - intros m T_B T_R body IH ms a cutoff Hws. cbn [shift_ty_in_tm]. apply IH; exact Hws.
+  - intros m T_B T_R body IH ms a cutoff Hws. cbn [shift_ty_in_tm]. apply IH; exact Hws.
+  - intros ms a cutoff _. exact I.
+  - intros u ts IHu IHts ms a cutoff [Hu Hts].
+    split; [apply IHu|apply IHts]; assumption.
+Qed.
+
+Lemma well_scoped_shift_lt_in_tm : forall t ms a cutoff,
+  well_scoped ms t -> well_scoped ms (shift_lt_in_tm a cutoff t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall ms a cutoff,
+       well_scoped ms t -> well_scoped ms (shift_lt_in_tm a cutoff t))
+    (fun ts => forall ms a cutoff,
+       well_scoped_list ms ts ->
+       well_scoped_list ms (List.map (shift_lt_in_tm a cutoff) ts))).
+  - intros n ms a cutoff _. exact I.
+  - intros t1 t2 IH1 IH2 ms a cutoff [H1 H2]. cbn [shift_lt_in_tm].
+    split; [apply IH1|apply IH2]; assumption.
+  - intros body T IH ms a cutoff Hws. cbn [shift_lt_in_tm]. apply IH; exact Hws.
+  - intros t T IH ms a cutoff Hws. cbn [shift_lt_in_tm]. apply IH; exact Hws.
+  - intros bound body IH ms a cutoff Hws. cbn [shift_lt_in_tm]. apply IH; exact Hws.
+  - intros t l IH ms a cutoff Hws. cbn [shift_lt_in_tm]. apply IH; exact Hws.
+  - intros body IH ms a cutoff Hws. cbn [shift_lt_in_tm]. apply IH; exact Hws.
+  - intros K l lts Ts ts IH ms a cutoff Hws.
+    cbn [shift_lt_in_tm]. rewrite shift_lt_in_tm_go_eq_map.
+    rewrite well_scoped_ctor_eq. apply IH.
+    rewrite well_scoped_ctor_eq in Hws. exact Hws.
+  - intros scrut tag nlt ar y n IHs IHy IHn ms a cutoff [Hs [Hy Hn]]. cbn [shift_lt_in_tm].
+    split; [apply IHs; exact Hs | split; [apply IHy; exact Hy | apply IHn; exact Hn]].
+  - intros E nb Ts T_B T_R op body IHop IHb ms a cutoff [Hop Hb]. cbn [shift_lt_in_tm].
+    split; [apply IHop; exact Hop | apply IHb; exact Hb].
+  - intros t Ss arg IHt IHa ms a cutoff [Ht Ha]. cbn [shift_lt_in_tm].
+    split; [apply IHt; exact Ht | apply IHa; exact Ha].
+  - intros E_tag m nb Ts T_R op IHop ms a cutoff [Hin Hws]. cbn [shift_lt_in_tm].
+    split; [exact Hin | apply IHop; exact Hws].
+  - intros m T_B T_R body IH ms a cutoff Hws. cbn [shift_lt_in_tm]. apply IH; exact Hws.
+  - intros m T_B T_R body IH ms a cutoff Hws. cbn [shift_lt_in_tm]. apply IH; exact Hws.
+  - intros ms a cutoff _. exact I.
+  - intros u ts IHu IHts ms a cutoff [Hu Hts].
+    split; [apply IHu|apply IHts]; assumption.
+Qed.
+
+(* rt_closed is preserved by shifts: at marker bodies the shift is the  *)
+(* identity (bodies are closed); elsewhere it is structural.            *)
+Lemma rt_closed_shift_tm : forall t a cutoff,
+  rt_closed t -> rt_closed (shift_tm a cutoff t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall a cutoff, rt_closed t -> rt_closed (shift_tm a cutoff t))
+    (fun ts => forall a cutoff,
+       rt_closed_list ts -> rt_closed_list (List.map (shift_tm a cutoff) ts))).
+  - intros n a cutoff _. cbn [shift_tm]. destruct (Nat.leb cutoff n); exact I.
+  - intros t1 t2 IH1 IH2 a cutoff [H1 H2]. cbn [shift_tm].
+    split; [apply IH1|apply IH2]; assumption.
+  - intros body T IH a cutoff H. cbn [shift_tm]. apply IH; exact H.
+  - intros t T IH a cutoff H. cbn [shift_tm]. apply IH; exact H.
+  - intros bound body IH a cutoff H. cbn [shift_tm]. apply IH; exact H.
+  - intros t l IH a cutoff H. cbn [shift_tm]. apply IH; exact H.
+  - intros body IH a cutoff H. cbn [shift_tm]. apply IH; exact H.
+  - intros K l lts Ts ts IH a cutoff H.
+    cbn [shift_tm]. rewrite shift_tm_go_eq_map.
+    rewrite rt_closed_ctor_eq. apply IH.
+    rewrite rt_closed_ctor_eq in H. exact H.
+  - intros scrut tag nlt ar y n IHs IHy IHn a cutoff [Hs [Hy Hn]]. cbn [shift_tm].
+    split; [apply IHs; exact Hs | split; [apply IHy; exact Hy | apply IHn; exact Hn]].
+  - intros E nb Ts T_B T_R op body IHop IHb a cutoff [Hop Hb]. cbn [shift_tm].
+    split; [apply IHop; exact Hop | apply IHb; exact Hb].
+  - intros t Ss arg IHt IHa a cutoff [Ht Ha]. cbn [shift_tm].
+    split; [apply IHt; exact Ht | apply IHa; exact Ha].
+  - intros E_tag m nb Ts T_R op IHop a cutoff [Hfv Hrt]. cbn [shift_tm].
+    rewrite (shift_tm_closed_id op 2 a (cutoff + 2) Hfv) by lia.
+    split; assumption.
+  - intros m T_B T_R body IH a cutoff Hrt. cbn [shift_tm]. apply IH; exact Hrt.
+  - intros m T_B T_R body IH a cutoff Hrt. cbn [shift_tm]. apply IH; exact Hrt.
+  - intros a cutoff _. exact I.
+  - intros u ts IHu IHts a cutoff [Hu Hts].
+    split; [apply IHu|apply IHts]; assumption.
+Qed.
+
+Lemma rt_closed_shift_ty_in_tm : forall t a cutoff,
+  rt_closed t -> rt_closed (shift_ty_in_tm a cutoff t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall a cutoff, rt_closed t -> rt_closed (shift_ty_in_tm a cutoff t))
+    (fun ts => forall a cutoff,
+       rt_closed_list ts -> rt_closed_list (List.map (shift_ty_in_tm a cutoff) ts))).
+  - intros n a cutoff _. exact I.
+  - intros t1 t2 IH1 IH2 a cutoff [H1 H2]. cbn [shift_ty_in_tm].
+    split; [apply IH1|apply IH2]; assumption.
+  - intros body T IH a cutoff H. cbn [shift_ty_in_tm]. apply IH; exact H.
+  - intros t T IH a cutoff H. cbn [shift_ty_in_tm]. apply IH; exact H.
+  - intros bound body IH a cutoff H. cbn [shift_ty_in_tm]. apply IH; exact H.
+  - intros t l IH a cutoff H. cbn [shift_ty_in_tm]. apply IH; exact H.
+  - intros body IH a cutoff H. cbn [shift_ty_in_tm]. apply IH; exact H.
+  - intros K l lts Ts ts IH a cutoff H.
+    cbn [shift_ty_in_tm]. rewrite shift_ty_in_tm_go_eq_map.
+    rewrite rt_closed_ctor_eq. apply IH.
+    rewrite rt_closed_ctor_eq in H. exact H.
+  - intros scrut tag nlt ar y n IHs IHy IHn a cutoff [Hs [Hy Hn]]. cbn [shift_ty_in_tm].
+    split; [apply IHs; exact Hs | split; [apply IHy; exact Hy | apply IHn; exact Hn]].
+  - intros E nb Ts T_B T_R op body IHop IHb a cutoff [Hop Hb]. cbn [shift_ty_in_tm].
+    split; [apply IHop; exact Hop | apply IHb; exact Hb].
+  - intros t Ss arg IHt IHa a cutoff [Ht Ha]. cbn [shift_ty_in_tm].
+    split; [apply IHt; exact Ht | apply IHa; exact Ha].
+  - intros E_tag m nb Ts T_R op IHop a cutoff [Hfv Hrt]. cbn [shift_ty_in_tm].
+    split; [rewrite free_tm_vars_shift_ty_in_tm_any; exact Hfv | apply IHop; exact Hrt].
+  - intros m T_B T_R body IH a cutoff Hrt. cbn [shift_ty_in_tm]. apply IH; exact Hrt.
+  - intros m T_B T_R body IH a cutoff Hrt. cbn [shift_ty_in_tm]. apply IH; exact Hrt.
+  - intros a cutoff _. exact I.
+  - intros u ts IHu IHts a cutoff [Hu Hts].
+    split; [apply IHu|apply IHts]; assumption.
+Qed.
+
+Lemma rt_closed_shift_lt_in_tm : forall t a cutoff,
+  rt_closed t -> rt_closed (shift_lt_in_tm a cutoff t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall a cutoff, rt_closed t -> rt_closed (shift_lt_in_tm a cutoff t))
+    (fun ts => forall a cutoff,
+       rt_closed_list ts -> rt_closed_list (List.map (shift_lt_in_tm a cutoff) ts))).
+  - intros n a cutoff _. exact I.
+  - intros t1 t2 IH1 IH2 a cutoff [H1 H2]. cbn [shift_lt_in_tm].
+    split; [apply IH1|apply IH2]; assumption.
+  - intros body T IH a cutoff H. cbn [shift_lt_in_tm]. apply IH; exact H.
+  - intros t T IH a cutoff H. cbn [shift_lt_in_tm]. apply IH; exact H.
+  - intros bound body IH a cutoff H. cbn [shift_lt_in_tm]. apply IH; exact H.
+  - intros t l IH a cutoff H. cbn [shift_lt_in_tm]. apply IH; exact H.
+  - intros body IH a cutoff H. cbn [shift_lt_in_tm]. apply IH; exact H.
+  - intros K l lts Ts ts IH a cutoff H.
+    cbn [shift_lt_in_tm]. rewrite shift_lt_in_tm_go_eq_map.
+    rewrite rt_closed_ctor_eq. apply IH.
+    rewrite rt_closed_ctor_eq in H. exact H.
+  - intros scrut tag nlt ar y n IHs IHy IHn a cutoff [Hs [Hy Hn]]. cbn [shift_lt_in_tm].
+    split; [apply IHs; exact Hs | split; [apply IHy; exact Hy | apply IHn; exact Hn]].
+  - intros E nb Ts T_B T_R op body IHop IHb a cutoff [Hop Hb]. cbn [shift_lt_in_tm].
+    split; [apply IHop; exact Hop | apply IHb; exact Hb].
+  - intros t Ss arg IHt IHa a cutoff [Ht Ha]. cbn [shift_lt_in_tm].
+    split; [apply IHt; exact Ht | apply IHa; exact Ha].
+  - intros E_tag m nb Ts T_R op IHop a cutoff [Hfv Hrt]. cbn [shift_lt_in_tm].
+    split; [rewrite free_tm_vars_shift_lt_in_tm_any; exact Hfv | apply IHop; exact Hrt].
+  - intros m T_B T_R body IH a cutoff Hrt. cbn [shift_lt_in_tm]. apply IH; exact Hrt.
+  - intros m T_B T_R body IH a cutoff Hrt. cbn [shift_lt_in_tm]. apply IH; exact Hrt.
+  - intros a cutoff _. exact I.
+  - intros u ts IHu IHts a cutoff [Hu Hts].
+    split; [apply IHu|apply IHts]; assumption.
+Qed.
+
+(* ==================================================================== *)
+(* The crux substitution lemma.                                         *)
+(*                                                                      *)
+(* Substituting a CLOSED value preserves well_scoped at the same       *)
+(* scope, with no marker side conditions on the value: substitution     *)
+(* is the identity inside every scope-sensitive body (rt_closed), and   *)
+(* everywhere else the ambient scope never changes (only handler_m /    *)
+(* resume / cap change scope, and those have closed bodies).            *)
+(* ==================================================================== *)
+
+Lemma well_scoped_subst_tm : forall t var w ms,
+  rt_closed t ->
+  free_tm_vars 0 w = [] ->
+  well_scoped ms w ->
+  well_scoped ms t ->
+  well_scoped ms (subst_tm var w t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall var w ms,
+       rt_closed t -> free_tm_vars 0 w = [] -> well_scoped ms w ->
+       well_scoped ms t -> well_scoped ms (subst_tm var w t))
+    (fun ts => forall var w ms,
+       rt_closed_list ts -> free_tm_vars 0 w = [] -> well_scoped ms w ->
+       well_scoped_list ms ts ->
+       well_scoped_list ms (List.map (subst_tm var w) ts))).
+  - intros n var w ms _ Hfw Hww _. cbn [subst_tm].
+    destruct (Nat.eqb n var); [exact Hww|].
+    destruct (Nat.ltb var n); exact I.
+  - intros t1 t2 IH1 IH2 var w ms [Hr1 Hr2] Hfw Hww [H1 H2]. cbn [subst_tm].
+    split; [apply IH1|apply IH2]; assumption.
+  - intros body T IH var w ms Hrt Hfw Hww Hws. cbn [subst_tm].
+    rewrite (shift_tm_closed_id w 0 1 0 Hfw) by lia.
+    apply IH; assumption.
+  - intros t T IH var w ms Hrt Hfw Hww Hws. cbn [subst_tm].
+    apply IH; assumption.
+  - intros bound body IH var w ms Hrt Hfw Hww Hws. cbn [subst_tm].
+    apply IH; try assumption.
+    + rewrite free_tm_vars_shift_ty_in_tm_any. exact Hfw.
+    + apply well_scoped_shift_ty_in_tm. exact Hww.
+  - intros t l IH var w ms Hrt Hfw Hww Hws. cbn [subst_tm].
+    apply IH; assumption.
+  - intros body IH var w ms Hrt Hfw Hww Hws. cbn [subst_tm].
+    apply IH; try assumption.
+    + rewrite free_tm_vars_shift_lt_in_tm_any. exact Hfw.
+    + apply well_scoped_shift_lt_in_tm. exact Hww.
+  - intros K l lts Ts ts IH var w ms Hrt Hfw Hww Hws.
+    cbn [subst_tm]. rewrite subst_tm_go_eq_map.
+    rewrite rt_closed_ctor_eq in Hrt. rewrite well_scoped_ctor_eq in Hws.
+    rewrite well_scoped_ctor_eq. apply IH; assumption.
+  - intros scrut tag nlt ar y n IHs IHy IHn var w ms [Hrs [Hry Hrn]] Hfw Hww [Hs [Hy Hn]].
+    cbn [subst_tm].
+    assert (Hfw' : free_tm_vars 0 (shift_lt_in_tm nlt 0 w) = []).
+    { rewrite free_tm_vars_shift_lt_in_tm_any. exact Hfw. }
+    rewrite (shift_tm_closed_id (shift_lt_in_tm nlt 0 w) 0 ar 0 Hfw') by lia.
+    split; [apply IHs; assumption|].
+    split.
+    + apply IHy; try assumption.
+      apply well_scoped_shift_lt_in_tm. exact Hww.
     + apply IHn; assumption.
-  - intros E nb Ts T_B T_R op body IHop IHb i w ms Hcap [Hop Hb].
-    cbn [subst_tm]. split.
-    + apply IHop; [rewrite has_rt_cap_shift_tm; exact Hcap | exact Hop].
-    + apply IHb; [rewrite has_rt_cap_shift_tm; exact Hcap | exact Hb].
-  - intros t Ss arg IHt IHa i w ms Hcap [Ht Ha]. cbn [subst_tm].
-    split; [apply IHt|apply IHa]; assumption.
-  - intros E_tag m nb Ts T_R op IHop i w ms Hcap [Hin [Hmok Hws]].
-    cbn [subst_tm]. split; [exact Hin|]. split.
-    + apply marker_ok_subst_tm;
-        [apply marker_ok_no_rt_cap; rewrite has_rt_cap_shift_tm; exact Hcap | exact Hmok].
-    + apply IHop; [rewrite has_rt_cap_shift_tm; exact Hcap | exact Hws].
-  - intros m T_B T_R body IH i w ms Hcap [Hnin Hws]. cbn [subst_tm].
-    split; [exact Hnin | apply IH; assumption].
-  - intros m T_B T_R body IH i w ms Hcap [Hnin Hws]. cbn [subst_tm].
-    split; [exact Hnin | apply IH; [rewrite has_rt_cap_shift_tm; exact Hcap | exact Hws]].
-  - intros i w ms Hcap _. exact I.
-  - intros u ts IHu IHts i w ms Hcap [Hu Hts]. split; [apply IHu|apply IHts]; assumption.
+  - intros E nb Ts T_B T_R op body IHop IHb var w ms [Hrop Hrb] Hfw Hww [Hop Hb].
+    cbn [subst_tm].
+    rewrite (shift_tm_closed_id w 0 2 0 Hfw) by lia.
+    rewrite (shift_tm_closed_id w 0 1 0 Hfw) by lia.
+    split; [apply IHop; assumption | apply IHb; assumption].
+  - intros t Ss arg IHt IHa var w ms [Hrt Hra] Hfw Hww [Ht Ha]. cbn [subst_tm].
+    split; [apply IHt; assumption | apply IHa; assumption].
+  - intros E_tag m nb Ts T_R op IHop var w ms [Hfv2 Hrop] Hfw Hww [Hin Hws].
+    cbn [subst_tm].
+    rewrite (subst_tm_closed_id op 2 (var + 2) (shift_tm 2 0 w) Hfv2) by lia.
+    split; [exact Hin | exact Hws].
+  - intros m T_B T_R body IH var w ms Hrt Hfw Hww Hws. cbn [subst_tm].
+    apply IH; try assumption.
+    apply (well_scoped_mono w ms (m :: ms)); [apply se_top; apply se_refl | exact Hww].
+  - intros m T_B T_R body IH var w ms Hrt Hfw Hww Hws. cbn [subst_tm].
+    rewrite (shift_tm_closed_id w 0 1 0 Hfw) by lia.
+    apply IH; try assumption.
+    apply (well_scoped_mono w ms (m :: ms)); [apply se_top; apply se_refl | exact Hww].
+  - intros var w ms _ _ _ _. exact I.
+  - intros u ts IHu IHts var w ms [Hru Hrts] Hfw Hww [Hu Hts].
+    split; [apply IHu|apply IHts]; assumption.
+Qed.
+
+(* rt_closed is preserved by substitution of a closed rt_closed value.  *)
+Lemma rt_closed_subst_tm : forall t var w,
+  rt_closed t -> free_tm_vars 0 w = [] -> rt_closed w ->
+  rt_closed (subst_tm var w t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall var w,
+       rt_closed t -> free_tm_vars 0 w = [] -> rt_closed w ->
+       rt_closed (subst_tm var w t))
+    (fun ts => forall var w,
+       rt_closed_list ts -> free_tm_vars 0 w = [] -> rt_closed w ->
+       rt_closed_list (List.map (subst_tm var w) ts))).
+  - intros n var w _ Hfw Hrw. cbn [subst_tm].
+    destruct (Nat.eqb n var); [exact Hrw|].
+    destruct (Nat.ltb var n); exact I.
+  - intros t1 t2 IH1 IH2 var w [H1 H2] Hfw Hrw. cbn [subst_tm].
+    split; [apply IH1|apply IH2]; assumption.
+  - intros body T IH var w Hrt Hfw Hrw. cbn [subst_tm].
+    rewrite (shift_tm_closed_id w 0 1 0 Hfw) by lia.
+    apply IH; assumption.
+  - intros t T IH var w Hrt Hfw Hrw. cbn [subst_tm]. apply IH; assumption.
+  - intros bound body IH var w Hrt Hfw Hrw. cbn [subst_tm].
+    apply IH; try assumption.
+    + rewrite free_tm_vars_shift_ty_in_tm_any. exact Hfw.
+    + apply rt_closed_shift_ty_in_tm. exact Hrw.
+  - intros t l IH var w Hrt Hfw Hrw. cbn [subst_tm]. apply IH; assumption.
+  - intros body IH var w Hrt Hfw Hrw. cbn [subst_tm].
+    apply IH; try assumption.
+    + rewrite free_tm_vars_shift_lt_in_tm_any. exact Hfw.
+    + apply rt_closed_shift_lt_in_tm. exact Hrw.
+  - intros K l lts Ts ts IH var w Hrt Hfw Hrw.
+    cbn [subst_tm]. rewrite subst_tm_go_eq_map.
+    rewrite rt_closed_ctor_eq in Hrt.
+    rewrite rt_closed_ctor_eq. apply IH; assumption.
+  - intros scrut tag nlt ar y n IHs IHy IHn var w [Hrs [Hry Hrn]] Hfw Hrw.
+    cbn [subst_tm].
+    assert (Hfw' : free_tm_vars 0 (shift_lt_in_tm nlt 0 w) = []).
+    { rewrite free_tm_vars_shift_lt_in_tm_any. exact Hfw. }
+    rewrite (shift_tm_closed_id (shift_lt_in_tm nlt 0 w) 0 ar 0 Hfw') by lia.
+    split; [apply IHs; assumption|].
+    split.
+    + apply IHy; try assumption.
+      apply rt_closed_shift_lt_in_tm. exact Hrw.
+    + apply IHn; assumption.
+  - intros E nb Ts T_B T_R op body IHop IHb var w [Hrop Hrb] Hfw Hrw.
+    cbn [subst_tm].
+    rewrite (shift_tm_closed_id w 0 2 0 Hfw) by lia.
+    rewrite (shift_tm_closed_id w 0 1 0 Hfw) by lia.
+    split; [apply IHop; assumption | apply IHb; assumption].
+  - intros t Ss arg IHt IHa var w [Hrt Hra] Hfw Hrw. cbn [subst_tm].
+    split; [apply IHt; assumption | apply IHa; assumption].
+  - intros E_tag m nb Ts T_R op IHop var w [Hfv2 Hrop] Hfw Hrw. cbn [subst_tm].
+    rewrite (subst_tm_closed_id op 2 (var + 2) (shift_tm 2 0 w) Hfv2) by lia.
+    split; assumption.
+  - intros m T_B T_R body IH var w Hrt Hfw Hrw. cbn [subst_tm].
+    apply IH; assumption.
+  - intros m T_B T_R body IH var w Hrt Hfw Hrw. cbn [subst_tm].
+    rewrite (shift_tm_closed_id w 0 1 0 Hfw) by lia.
+    apply IH; assumption.
+  - intros var w _ _ _. exact I.
+  - intros u ts IHu IHts var w [Hru Hrts] Hfw Hrw.
+    split; [apply IHu|apply IHts]; assumption.
 Qed.
 
 (* Type substitution preserves well_scoped (it never touches markers). *)
@@ -4105,19 +4672,15 @@ Proof.
     split; [apply IHop; exact Hop | apply IHb; exact Hb].
   - intros t Ss arg IHt IHa var R ms [Ht Ha]. cbn [subst_ty_in_tm].
     split; [apply IHt; exact Ht | apply IHa; exact Ha].
-  - intros E_tag m nb Ts T_R op IHop var R ms [Hin [Hmok Hws]]. cbn [subst_ty_in_tm].
-    split; [exact Hin|]. split.
-    + apply marker_ok_subst_ty_in_tm. exact Hmok.
-    + apply IHop. exact Hws.
-  - intros m T_B T_R body IH var R ms [Hnin Hws]. cbn [subst_ty_in_tm].
-    split; [exact Hnin | apply IH; exact Hws].
-  - intros m T_B T_R body IH var R ms [Hnin Hws]. cbn [subst_ty_in_tm].
-    split; [exact Hnin | apply IH; exact Hws].
+  - intros E_tag m nb Ts T_R op IHop var R ms [Hin Hws]. cbn [subst_ty_in_tm].
+    split; [exact Hin | apply IHop; exact Hws].
+  - intros m T_B T_R body IH var R ms Hws. cbn [subst_ty_in_tm]. apply IH; exact Hws.
+  - intros m T_B T_R body IH var R ms Hws. cbn [subst_ty_in_tm]. apply IH; exact Hws.
   - intros var R ms _. exact I.
   - intros u ts IHu IHts var R ms [Hu Hts]. split; [apply IHu|apply IHts]; assumption.
 Qed.
 
-(* Lifetime substitution preserves well_scoped (it never touches markers). *)
+(* Lifetime substitution preserves well_scoped. *)
 Lemma well_scoped_subst_lt_in_tm : forall t var R ms,
   well_scoped ms t -> well_scoped ms (subst_lt_in_tm var R t).
 Proof.
@@ -4142,19 +4705,181 @@ Proof.
     split; [apply IHop; exact Hop | apply IHb; exact Hb].
   - intros t Ss arg IHt IHa var R ms [Ht Ha]. cbn [subst_lt_in_tm].
     split; [apply IHt; exact Ht | apply IHa; exact Ha].
-  - intros E_tag m nb Ts T_R op IHop var R ms [Hin [Hmok Hws]]. cbn [subst_lt_in_tm].
-    split; [exact Hin|]. split.
-    + apply marker_ok_subst_lt_in_tm. exact Hmok.
-    + apply IHop. exact Hws.
-  - intros m T_B T_R body IH var R ms [Hnin Hws]. cbn [subst_lt_in_tm].
-    split; [exact Hnin | apply IH; exact Hws].
-  - intros m T_B T_R body IH var R ms [Hnin Hws]. cbn [subst_lt_in_tm].
-    split; [exact Hnin | apply IH; exact Hws].
+  - intros E_tag m nb Ts T_R op IHop var R ms [Hin Hws]. cbn [subst_lt_in_tm].
+    split; [exact Hin | apply IHop; exact Hws].
+  - intros m T_B T_R body IH var R ms Hws. cbn [subst_lt_in_tm]. apply IH; exact Hws.
+  - intros m T_B T_R body IH var R ms Hws. cbn [subst_lt_in_tm]. apply IH; exact Hws.
   - intros var R ms _. exact I.
   - intros u ts IHu IHts var R ms [Hu Hts]. split; [apply IHu|apply IHts]; assumption.
 Qed.
 
-(* Structural plug-replace for well_scoped (the ectx has no cap frames). *)
+(* rt_closed is preserved by type/lifetime substitution. *)
+Lemma rt_closed_subst_ty_in_tm : forall t var R,
+  rt_closed t -> rt_closed (subst_ty_in_tm var R t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall var R, rt_closed t -> rt_closed (subst_ty_in_tm var R t))
+    (fun ts => forall var R, rt_closed_list ts ->
+       rt_closed_list (List.map (subst_ty_in_tm var R) ts))).
+  - intros n var R H. exact I.
+  - intros t1 t2 IH1 IH2 var R [H1 H2]. cbn [subst_ty_in_tm].
+    split; [apply IH1|apply IH2]; assumption.
+  - intros body T IH var R H. cbn [subst_ty_in_tm]. apply IH; exact H.
+  - intros t T IH var R H. cbn [subst_ty_in_tm]. apply IH; exact H.
+  - intros bound body IH var R H. cbn [subst_ty_in_tm]. apply IH; exact H.
+  - intros t l IH var R H. cbn [subst_ty_in_tm]. apply IH; exact H.
+  - intros body IH var R H. cbn [subst_ty_in_tm]. apply IH; exact H.
+  - intros K l lts Ts ts IH var R H.
+    replace (subst_ty_in_tm var R (term_ctor K l lts Ts ts))
+      with (term_ctor K l lts (subst_ty_list var R Ts) (List.map (subst_ty_in_tm var R) ts))
+      by (cbn [subst_ty_in_tm]; rewrite subst_ty_in_tm_go_eq_map; reflexivity).
+    rewrite rt_closed_ctor_eq. apply IH. rewrite rt_closed_ctor_eq in H. exact H.
+  - intros scrut tag nlt ar y n IHs IHy IHn var R [Hs [Hy Hn]]. cbn [subst_ty_in_tm].
+    split; [apply IHs; exact Hs | split; [apply IHy; exact Hy | apply IHn; exact Hn]].
+  - intros E nb Ts T_B T_R op body IHop IHb var R [Hop Hb]. cbn [subst_ty_in_tm].
+    split; [apply IHop; exact Hop | apply IHb; exact Hb].
+  - intros t Ss arg IHt IHa var R [Ht Ha]. cbn [subst_ty_in_tm].
+    split; [apply IHt; exact Ht | apply IHa; exact Ha].
+  - intros E_tag m nb Ts T_R op IHop var R [Hfv Hrt]. cbn [subst_ty_in_tm].
+    split; [rewrite free_tm_vars_subst_ty_in_tm; exact Hfv | apply IHop; exact Hrt].
+  - intros m T_B T_R body IH var R Hrt. cbn [subst_ty_in_tm]. apply IH; exact Hrt.
+  - intros m T_B T_R body IH var R Hrt. cbn [subst_ty_in_tm]. apply IH; exact Hrt.
+  - intros var R _. exact I.
+  - intros u ts IHu IHts var R [Hu Hts]. split; [apply IHu|apply IHts]; assumption.
+Qed.
+
+Lemma rt_closed_subst_lt_in_tm : forall t var R,
+  rt_closed t -> rt_closed (subst_lt_in_tm var R t).
+Proof.
+  apply (term_list_ind
+    (fun t => forall var R, rt_closed t -> rt_closed (subst_lt_in_tm var R t))
+    (fun ts => forall var R, rt_closed_list ts ->
+       rt_closed_list (List.map (subst_lt_in_tm var R) ts))).
+  - intros n var R H. exact I.
+  - intros t1 t2 IH1 IH2 var R [H1 H2]. cbn [subst_lt_in_tm].
+    split; [apply IH1|apply IH2]; assumption.
+  - intros body T IH var R H. cbn [subst_lt_in_tm]. apply IH; exact H.
+  - intros t T IH var R H. cbn [subst_lt_in_tm]. apply IH; exact H.
+  - intros bound body IH var R H. cbn [subst_lt_in_tm]. apply IH; exact H.
+  - intros t l IH var R H. cbn [subst_lt_in_tm]. apply IH; exact H.
+  - intros body IH var R H. cbn [subst_lt_in_tm]. apply IH; exact H.
+  - intros K l lts Ts ts IH var R H.
+    cbn [subst_lt_in_tm]. rewrite subst_lt_in_tm_go_eq_map.
+    rewrite rt_closed_ctor_eq. apply IH. rewrite rt_closed_ctor_eq in H. exact H.
+  - intros scrut tag nlt ar y n IHs IHy IHn var R [Hs [Hy Hn]]. cbn [subst_lt_in_tm].
+    split; [apply IHs; exact Hs | split; [apply IHy; exact Hy | apply IHn; exact Hn]].
+  - intros E nb Ts T_B T_R op body IHop IHb var R [Hop Hb]. cbn [subst_lt_in_tm].
+    split; [apply IHop; exact Hop | apply IHb; exact Hb].
+  - intros t Ss arg IHt IHa var R [Ht Ha]. cbn [subst_lt_in_tm].
+    split; [apply IHt; exact Ht | apply IHa; exact Ha].
+  - intros E_tag m nb Ts T_R op IHop var R [Hfv Hrt]. cbn [subst_lt_in_tm].
+    split; [rewrite free_tm_vars_subst_lt_in_tm; exact Hfv | apply IHop; exact Hrt].
+  - intros m T_B T_R body IH var R Hrt. cbn [subst_lt_in_tm]. apply IH; exact Hrt.
+  - intros m T_B T_R body IH var R Hrt. cbn [subst_lt_in_tm]. apply IH; exact Hrt.
+  - intros var R _. exact I.
+  - intros u ts IHu IHts var R [Hu Hts]. split; [apply IHu|apply IHts]; assumption.
+Qed.
+
+(* Iterated substitution of closed rt_closed values. *)
+Lemma well_scoped_subst_list_tm : forall vs t ms,
+  Forall (fun v => free_tm_vars 0 v = []) vs ->
+  Forall rt_closed vs ->
+  Forall (well_scoped ms) vs ->
+  rt_closed t ->
+  well_scoped ms t ->
+  well_scoped ms (subst_list_tm vs t).
+Proof.
+  induction vs as [|v rest IH]; intros t ms Hfv Hrc Hws Hrt Hwt.
+  - exact Hwt.
+  - inversion Hfv as [|? ? Hfv1 Hfvr]; subst.
+    inversion Hrc as [|? ? Hrc1 Hrcr]; subst.
+    inversion Hws as [|? ? Hws1 Hwsr]; subst.
+    cbn [subst_list_tm].
+    rewrite (shift_tm_closed_id v 0 (List.length rest) 0 Hfv1) by lia.
+    apply IH; try assumption.
+    + apply rt_closed_subst_tm; assumption.
+    + apply well_scoped_subst_tm; assumption.
+Qed.
+
+Lemma rt_closed_subst_list_tm : forall vs t,
+  Forall (fun v => free_tm_vars 0 v = []) vs ->
+  Forall rt_closed vs ->
+  rt_closed t ->
+  rt_closed (subst_list_tm vs t).
+Proof.
+  induction vs as [|v rest IH]; intros t Hfv Hrc Hrt.
+  - exact Hrt.
+  - inversion Hfv as [|? ? Hfv1 Hfvr]; subst.
+    inversion Hrc as [|? ? Hrc1 Hrcr]; subst.
+    cbn [subst_list_tm].
+    rewrite (shift_tm_closed_id v 0 (List.length rest) 0 Hfv1) by lia.
+    apply IH; try assumption.
+    apply rt_closed_subst_tm; assumption.
+Qed.
+
+(* ==================================================================== *)
+(* Plug lemmas: closedness and the v2 invariants through an ectx.       *)
+(* No ectx frame crosses a term binder, so all hole positions sit at    *)
+(* term-cutoff 0.                                                       *)
+(* ==================================================================== *)
+
+Lemma free_tm_vars_plug_nil_inv : forall E r,
+  free_tm_vars 0 (plug E r) = [] -> free_tm_vars 0 r = [].
+Proof.
+  induction E as
+    [ | E1 IHE ta | ta E1 IHE | E1 IHE Ty | E1 IHE lt
+    | tag dl lts Tys vs E1 IHE ts | E1 IHE K nlt ar yes no
+    | mk TB TR E1 IHE | E1 IHE Ss ar2 | rcv Ss E1 IHE ];
+    intros r Hfv; cbn [plug] in Hfv; simpl in Hfv.
+  - exact Hfv.
+  - apply app_eq_nil in Hfv as [H _]. apply IHE; exact H.
+  - apply app_eq_nil in Hfv as [_ H]. apply IHE; exact H.
+  - apply IHE; exact Hfv.
+  - apply IHE; exact Hfv.
+  - rewrite free_tm_vars_go_eq_concat in Hfv.
+    rewrite map_app in Hfv. rewrite concat_app in Hfv.
+    apply app_eq_nil in Hfv as [_ Hfv]. simpl in Hfv.
+    apply app_eq_nil in Hfv as [H _]. apply IHE; exact H.
+  - apply app_eq_nil in Hfv as [H _]. apply IHE; exact H.
+  - apply IHE; exact Hfv.
+  - apply app_eq_nil in Hfv as [H _]. apply IHE; exact H.
+  - apply app_eq_nil in Hfv as [_ H]. apply IHE; exact H.
+Qed.
+
+Lemma free_tm_vars_plug_nil_replace : forall E r r',
+  free_tm_vars 0 (plug E r) = [] -> free_tm_vars 0 r' = [] ->
+  free_tm_vars 0 (plug E r') = [].
+Proof.
+  induction E as
+    [ | E1 IHE ta | ta E1 IHE | E1 IHE Ty | E1 IHE lt
+    | tag dl lts Tys vs E1 IHE ts | E1 IHE K nlt ar yes no
+    | mk TB TR E1 IHE | E1 IHE Ss ar2 | rcv Ss E1 IHE ];
+    intros r r' Hfv Hfv'; cbn [plug] in Hfv |- *; simpl in Hfv |- *.
+  - exact Hfv'.
+  - apply app_eq_nil in Hfv as [H1 H2].
+    rewrite (IHE _ _ H1 Hfv'), H2. reflexivity.
+  - apply app_eq_nil in Hfv as [H1 H2].
+    rewrite H1, (IHE _ _ H2 Hfv'). reflexivity.
+  - exact (IHE _ _ Hfv Hfv').
+  - exact (IHE _ _ Hfv Hfv').
+  - rewrite free_tm_vars_go_eq_concat in Hfv |- *.
+    rewrite map_app in Hfv |- *. rewrite concat_app in Hfv |- *.
+    simpl in Hfv |- *.
+    apply app_eq_nil in Hfv as [Hvs Hrest].
+    apply app_eq_nil in Hrest as [Hr Hts].
+    rewrite Hvs, (IHE _ _ Hr Hfv'), Hts. reflexivity.
+  - apply app_eq_nil in Hfv as [H1 H2].
+    rewrite (IHE _ _ H1 Hfv'), H2. reflexivity.
+  - exact (IHE _ _ Hfv Hfv').
+  - apply app_eq_nil in Hfv as [H1 H2].
+    rewrite (IHE _ _ H1 Hfv'), H2. reflexivity.
+  - apply app_eq_nil in Hfv as [H1 H2].
+    rewrite H1, (IHE _ _ H2 Hfv'). reflexivity.
+Qed.
+
+(* Structural plug-replace for well_scoped: frames thread the scope,   *)
+(* the EC_handler_m frame prepends its marker, and the replacement      *)
+(* callback fires at whatever scope the hole sits at.                   *)
 Lemma well_scoped_plug_replace : forall E r r' ms,
   well_scoped ms (plug E r) ->
   (forall ms', well_scoped ms' r -> well_scoped ms' r') ->
@@ -4175,7 +4900,466 @@ Proof.
     + destruct Hws as [Hfoc Hrest]. split; [eapply IHE; eauto | exact Hrest].
     + destruct Hws as [Ha Hrest]. split; [exact Ha | apply IHvs; exact Hrest].
   - destruct Hws as [Hs [Hy Hn]]. repeat split; [eapply IHE; eauto | exact Hy | exact Hn].
-  - destruct Hws as [Hnin Hbody]. split; [exact Hnin | eapply IHE; eauto].
+  - eapply IHE; eauto.
   - destruct Hws as [H1 H2]. split; [eapply IHE; eauto | exact H2].
   - destruct Hws as [H1 H2]. split; [exact H1 | eapply IHE; eauto].
+Qed.
+
+Lemma rt_closed_plug_replace : forall E r r',
+  rt_closed (plug E r) ->
+  (rt_closed r -> rt_closed r') ->
+  rt_closed (plug E r').
+Proof.
+  induction E as
+    [ | E1 IHE ta | ta E1 IHE | E1 IHE Ty | E1 IHE lt
+    | tag dl lts Tys vs E1 IHE ts | E1 IHE K nlt ar yes no
+    | mk TB TR E1 IHE | E1 IHE Ss ar2 | rcv Ss E1 IHE ];
+    intros r r' Hrt Hrep; cbn [plug] in Hrt |- *.
+  - apply Hrep; exact Hrt.
+  - destruct Hrt as [H1 H2]. split; [eapply IHE; eauto | exact H2].
+  - destruct Hrt as [H1 H2]. split; [exact H1 | eapply IHE; eauto].
+  - eapply IHE; eauto.
+  - eapply IHE; eauto.
+  - rewrite rt_closed_ctor_eq in Hrt |- *.
+    revert Hrt. induction vs as [|a vs' IHvs]; intros Hrt; cbn [List.app] in Hrt |- *.
+    + destruct Hrt as [Hfoc Hrest]. split; [eapply IHE; eauto | exact Hrest].
+    + destruct Hrt as [Ha Hrest]. split; [exact Ha | apply IHvs; exact Hrest].
+  - destruct Hrt as [Hs [Hy Hn]]. repeat split; [eapply IHE; eauto | exact Hy | exact Hn].
+  - eapply IHE; eauto.
+  - destruct Hrt as [H1 H2]. split; [eapply IHE; eauto | exact H2].
+  - destruct Hrt as [H1 H2]. split; [exact H1 | eapply IHE; eauto].
+Qed.
+
+(* ==================================================================== *)
+(* v2 confinement: the H_Perform facts, now returning full              *)
+(* well-scopedness of the op-body at the scope OUTSIDE the delimiter    *)
+(* (v1 only delivered marker_ok there).                                 *)
+(* ==================================================================== *)
+
+Lemma well_scoped_pure_cap_confined :
+  forall P m ms E_tag nb Ts T_R op_body Ss v,
+  pure_ectx_m m P ->
+  well_scoped ms (plug P (term_perform (term_cap E_tag m nb Ts T_R op_body) Ss v)) ->
+  well_scoped (scope_below m ms) op_body.
+Proof.
+  intros P m ms E_tag nb Ts T_R op_body Ss v Hpure. revert ms.
+  induction Hpure; intros ms Hws; cbn [plug] in Hws.
+  - destruct Hws as [Hcap _]. destruct Hcap as [_ Hop]. exact Hop.
+  - destruct Hws as [W1 _]. apply IHHpure. exact W1.
+  - destruct Hws as [_ W2]. apply IHHpure. exact W2.
+  - apply IHHpure. exact Hws.
+  - apply IHHpure. exact Hws.
+  - rewrite well_scoped_ctor_eq in Hws.
+    apply IHHpure.
+    induction vs as [|u vs IHvs]; cbn [List.app] in Hws.
+    + destruct Hws as [Wfoc _]. exact Wfoc.
+    + destruct Hws as [_ Wrest]. apply IHvs. exact Wrest.
+  - destruct Hws as [Ws _]. apply IHHpure. exact Ws.
+  - specialize (IHHpure (m' :: ms) Hws).
+    rewrite scope_below_cons_neq in IHHpure; [exact IHHpure | auto].
+  - destruct Hws as [W1 _]. apply IHHpure. exact W1.
+  - destruct Hws as [_ W2]. apply IHHpure. exact W2.
+Qed.
+
+(* The H_Perform confinement: the op-body of the performing cap is      *)
+(* well-scoped at the scope outside the matching delimiter — exactly    *)
+(* where the reduct lands.                                              *)
+Lemma well_scoped_step_handler_confinement :
+  forall ms m T_B T_R E_tag nb Ts T_R' op_body Ss v P,
+  well_scoped ms (term_handler_m m T_B T_R
+    (plug P (term_perform (term_cap E_tag m nb Ts T_R' op_body) Ss v))) ->
+  pure_ectx_m m P ->
+  well_scoped ms op_body.
+Proof.
+  intros ms m T_B T_R E_tag nb Ts T_R' op_body Ss v P Hws Hpure.
+  pose proof (well_scoped_pure_cap_confined P m (m :: ms) E_tag nb Ts T_R' op_body Ss v
+    Hpure Hws) as Hc.
+  rewrite scope_below_cons_eq in Hc. exact Hc.
+Qed.
+
+(* Combined plug-replace: thread BOTH marker_ok and well_scoped        *)
+(* through an ectx down to the focus.                                   *)
+Lemma marker_ok_well_scoped_plug_replace : forall E r r' ms,
+  marker_ok ms (plug E r) ->
+  well_scoped ms (plug E r) ->
+  (forall ms', marker_ok ms' r -> well_scoped ms' r -> marker_ok ms' r') ->
+  marker_ok ms (plug E r').
+Proof.
+  induction E as
+    [ | E1 IHE ta | ta E1 IHE | E1 IHE Ty | E1 IHE lt
+    | tag dl lts Tys vs E1 IHE ts | E1 IHE K nlt ar yes no
+    | mk TB TR E1 IHE | E1 IHE Ss ar2 | rcv Ss E1 IHE ];
+    intros r r' ms Hok Hws Hrep; cbn [plug] in Hok, Hws |- *.
+  - apply Hrep; assumption.
+  - destruct Hok as [H1 H2]. destruct Hws as [W1 W2].
+    split; [eapply IHE; [exact H1|exact W1|exact Hrep] | exact H2].
+  - destruct Hok as [H1 H2]. destruct Hws as [W1 W2].
+    split; [exact H1 | eapply IHE; [exact H2|exact W2|exact Hrep]].
+  - eapply IHE; [exact Hok|exact Hws|exact Hrep].
+  - eapply IHE; [exact Hok|exact Hws|exact Hrep].
+  - rewrite marker_ok_ctor_eq in Hok |- *. rewrite well_scoped_ctor_eq in Hws.
+    revert Hok Hws.
+    induction vs as [|a vs' IHvs]; intros Hok Hws; cbn [List.app] in Hok, Hws |- *.
+    + destruct Hok as [Hfoc Hrest]. destruct Hws as [Wfoc Wrest].
+      split; [eapply IHE; [exact Hfoc|exact Wfoc|exact Hrep] | exact Hrest].
+    + destruct Hok as [Ha Hrest]. destruct Hws as [Wa Wrest].
+      split; [exact Ha | apply IHvs; [exact Hrest|exact Wrest]].
+  - destruct Hok as [Hs [Hy Hn]]. destruct Hws as [Ws [Wy Wn]].
+    repeat split; [eapply IHE; [exact Hs|exact Ws|exact Hrep] | exact Hy | exact Hn].
+  - eapply IHE; [exact Hok|exact Hws|exact Hrep].
+  - destruct Hok as [H1 H2]. destruct Hws as [W1 W2].
+    split; [eapply IHE; [exact H1|exact W1|exact Hrep] | exact H2].
+  - destruct Hok as [H1 H2]. destruct Hws as [W1 W2].
+    split; [exact H1 | eapply IHE; [exact H2|exact W2|exact Hrep]].
+Qed.
+
+(* ==================================================================== *)
+(* Stage-5 support: list bridges, closed-substitution fv laws, plug     *)
+(* decompositions, and the reified-resume-body facts.                   *)
+(* ==================================================================== *)
+
+Lemma Forall_of_concat_map_nil :
+  forall (A B : Type) (f : A -> list B) (xs : list A),
+  List.concat (List.map f xs) = [] -> Forall (fun x => f x = []) xs.
+Proof.
+  intros A B f xs H. induction xs as [|x xs IH]; [constructor|].
+  simpl in H. apply app_eq_nil in H as [H1 H2].
+  constructor; [exact H1 | apply IH; exact H2].
+Qed.
+
+Lemma well_scoped_list_Forall : forall ms ts,
+  well_scoped_list ms ts -> Forall (well_scoped ms) ts.
+Proof.
+  intros ms ts H. induction ts as [|u ts IH]; [constructor|].
+  destruct H as [Hu Hts]. constructor; [exact Hu | apply IH; exact Hts].
+Qed.
+
+Lemma Forall_well_scoped_list : forall ms ts,
+  Forall (well_scoped ms) ts -> well_scoped_list ms ts.
+Proof.
+  intros ms ts H. induction H as [|u ts Hu Hts IH]; [exact I|].
+  split; [exact Hu | exact IH].
+Qed.
+
+Lemma rt_closed_list_Forall : forall ts,
+  rt_closed_list ts -> Forall rt_closed ts.
+Proof.
+  intros ts H. induction ts as [|u ts IH]; [constructor|].
+  destruct H as [Hu Hts]. constructor; [exact Hu | apply IH; exact Hts].
+Qed.
+
+Lemma Forall_rt_closed_list : forall ts,
+  Forall rt_closed ts -> rt_closed_list ts.
+Proof.
+  intros ts H. induction H as [|u ts Hu Hts IH]; [exact I|].
+  split; [exact Hu | exact IH].
+Qed.
+
+Lemma well_scoped_subst_list_ty_in_tm : forall Ss t ms,
+  well_scoped ms t -> well_scoped ms (subst_list_ty_in_tm Ss t).
+Proof.
+  induction Ss as [|S0 Ss IH]; intros t ms H; simpl; [exact H|].
+  apply IH. apply well_scoped_subst_ty_in_tm. exact H.
+Qed.
+
+Lemma well_scoped_subst_list_lt_in_tm : forall lts t ms,
+  well_scoped ms t -> well_scoped ms (subst_list_lt_in_tm lts t).
+Proof.
+  induction lts as [|l lts IH]; intros t ms H; simpl; [exact H|].
+  apply IH. apply well_scoped_subst_lt_in_tm. exact H.
+Qed.
+
+Lemma rt_closed_subst_list_ty_in_tm : forall Ss t,
+  rt_closed t -> rt_closed (subst_list_ty_in_tm Ss t).
+Proof.
+  induction Ss as [|S0 Ss IH]; intros t H; simpl; [exact H|].
+  apply IH. apply rt_closed_subst_ty_in_tm. exact H.
+Qed.
+
+Lemma rt_closed_subst_list_lt_in_tm : forall lts t,
+  rt_closed t -> rt_closed (subst_list_lt_in_tm lts t).
+Proof.
+  induction lts as [|l lts IH]; intros t H; simpl; [exact H|].
+  apply IH. apply rt_closed_subst_lt_in_tm. exact H.
+Qed.
+
+Lemma free_tm_vars_subst_list_ty_in_tm : forall Ss t c,
+  free_tm_vars c (subst_list_ty_in_tm Ss t) = free_tm_vars c t.
+Proof.
+  induction Ss as [|S0 Ss IH]; intros t c; simpl; [reflexivity|].
+  rewrite IH. apply free_tm_vars_subst_ty_in_tm.
+Qed.
+
+Lemma free_tm_vars_subst_list_lt_in_tm : forall lts t c,
+  free_tm_vars c (subst_list_lt_in_tm lts t) = free_tm_vars c t.
+Proof.
+  induction lts as [|l lts IH]; intros t c; simpl; [reflexivity|].
+  rewrite IH. apply free_tm_vars_subst_lt_in_tm.
+Qed.
+
+Lemma map_shift_tm_closed_id : forall vs a cutoff,
+  Forall (fun v => free_tm_vars 0 v = []) vs ->
+  List.map (shift_tm a cutoff) vs = vs.
+Proof.
+  intros vs a cutoff H. induction H as [|v vs Hv Hvs IH]; simpl; [reflexivity|].
+  rewrite (shift_tm_closed_id v 0 a cutoff Hv) by lia. rewrite IH. reflexivity.
+Qed.
+
+Lemma concat_map_fv_closed_cutoff : forall vs c,
+  Forall (fun v => free_tm_vars 0 v = []) vs ->
+  List.concat (List.map (free_tm_vars c) vs) = [].
+Proof.
+  intros vs c H. induction H as [|v vs Hv Hvs IH]; simpl; [reflexivity|].
+  rewrite (free_tm_vars_closed_cutoff v c Hv). rewrite IH. reflexivity.
+Qed.
+
+(* Substituting a closed value strictly below the free-variable bound   *)
+(* drops the bound by one.                                              *)
+Lemma free_tm_vars_subst_tm_drop : forall t j c w,
+  free_tm_vars (S c) t = [] -> j <= c -> free_tm_vars 0 w = [] ->
+  free_tm_vars c (subst_tm j w t) = [].
+Proof.
+  apply (term_list_ind
+    (fun t => forall j c w,
+       free_tm_vars (S c) t = [] -> j <= c -> free_tm_vars 0 w = [] ->
+       free_tm_vars c (subst_tm j w t) = [])
+    (fun ts => forall j c w,
+       List.concat (List.map (free_tm_vars (S c)) ts) = [] -> j <= c ->
+       free_tm_vars 0 w = [] ->
+       List.concat (List.map (free_tm_vars c) (List.map (subst_tm j w) ts)) = [])).
+  - intros n j c w Hfv Hle Hfw. simpl in Hfv.
+    destruct (Nat.ltb n (S c)) eqn:Hn; [|discriminate Hfv].
+    apply Nat.ltb_lt in Hn. cbn [subst_tm].
+    destruct (Nat.eqb n j) eqn:Heq.
+    + apply free_tm_vars_closed_cutoff. exact Hfw.
+    + apply Nat.eqb_neq in Heq.
+      destruct (Nat.ltb j n) eqn:Hjn.
+      * apply Nat.ltb_lt in Hjn. simpl.
+        destruct (Nat.ltb (pred n) c) eqn:Hp; [reflexivity|].
+        apply Nat.ltb_ge in Hp. lia.
+      * apply Nat.ltb_ge in Hjn. simpl.
+        destruct (Nat.ltb n c) eqn:Hp; [reflexivity|].
+        apply Nat.ltb_ge in Hp. lia.
+  - intros t1 t2 IH1 IH2 j c w Hfv Hle Hfw. simpl in Hfv.
+    apply app_eq_nil in Hfv as [H1 H2]. cbn [subst_tm]. simpl.
+    rewrite (IH1 j c w H1 Hle Hfw), (IH2 j c w H2 Hle Hfw). reflexivity.
+  - intros body T IH j c w Hfv Hle Hfw. simpl in Hfv. cbn [subst_tm].
+    rewrite (shift_tm_closed_id w 0 1 0 Hfw) by lia. simpl.
+    apply (IH (S j) (S c) w Hfv); [lia | exact Hfw].
+  - intros t T IH j c w Hfv Hle Hfw. simpl in Hfv. cbn [subst_tm]. simpl.
+    apply (IH j c w Hfv Hle Hfw).
+  - intros bound body IH j c w Hfv Hle Hfw. simpl in Hfv. cbn [subst_tm]. simpl.
+    apply IH; try assumption.
+    rewrite free_tm_vars_shift_ty_in_tm_any. exact Hfw.
+  - intros t l IH j c w Hfv Hle Hfw. simpl in Hfv. cbn [subst_tm]. simpl.
+    apply (IH j c w Hfv Hle Hfw).
+  - intros body IH j c w Hfv Hle Hfw. simpl in Hfv. cbn [subst_tm]. simpl.
+    apply IH; try assumption.
+    rewrite free_tm_vars_shift_lt_in_tm_any. exact Hfw.
+  - intros K l lts Ts ts IH j c w Hfv Hle Hfw.
+    simpl in Hfv. rewrite free_tm_vars_go_eq_concat in Hfv.
+    cbn [subst_tm]. rewrite subst_tm_go_eq_map. simpl.
+    rewrite free_tm_vars_go_eq_concat.
+    apply (IH j c w Hfv Hle Hfw).
+  - intros scrut tag nlt ar y n IHs IHy IHn j c w Hfv Hle Hfw. simpl in Hfv.
+    apply app_eq_nil in Hfv as [Hs Hyn]. apply app_eq_nil in Hyn as [Hy Hn].
+    replace (S c + ar) with (S (c + ar)) in Hy by lia.
+    cbn [subst_tm].
+    assert (Hfw' : free_tm_vars 0 (shift_lt_in_tm nlt 0 w) = []).
+    { rewrite free_tm_vars_shift_lt_in_tm_any. exact Hfw. }
+    rewrite (shift_tm_closed_id (shift_lt_in_tm nlt 0 w) 0 ar 0 Hfw') by lia.
+    simpl.
+    rewrite (IHs j c w Hs Hle Hfw).
+    rewrite (IHy (j + ar) (c + ar) (shift_lt_in_tm nlt 0 w) Hy) by (lia || exact Hfw').
+    rewrite (IHn j c w Hn Hle Hfw). reflexivity.
+  - intros E nb Ts T_B T_R op body IHop IHb j c w Hfv Hle Hfw. simpl in Hfv.
+    apply app_eq_nil in Hfv as [Hop Hb].
+    replace (S c + 2) with (S (c + 2)) in Hop by lia.
+    cbn [subst_tm].
+    rewrite (shift_tm_closed_id w 0 2 0 Hfw) by lia.
+    rewrite (shift_tm_closed_id w 0 1 0 Hfw) by lia.
+    simpl.
+    rewrite (IHop (j + 2) (c + 2) w Hop) by (lia || exact Hfw).
+    rewrite (IHb (S j) (S c) w Hb) by (lia || exact Hfw). reflexivity.
+  - intros t Ss arg IHt IHa j c w Hfv Hle Hfw. simpl in Hfv.
+    apply app_eq_nil in Hfv as [Ht Ha]. cbn [subst_tm]. simpl.
+    rewrite (IHt j c w Ht Hle Hfw), (IHa j c w Ha Hle Hfw). reflexivity.
+  - intros E_tag m nb Ts T_R op IHop j c w Hfv Hle Hfw. simpl in Hfv.
+    replace (S c + 2) with (S (c + 2)) in Hfv by lia.
+    cbn [subst_tm].
+    rewrite (shift_tm_closed_id w 0 2 0 Hfw) by lia.
+    simpl.
+    apply (IHop (j + 2) (c + 2) w Hfv); [lia | exact Hfw].
+  - intros m T_B T_R body IH j c w Hfv Hle Hfw. simpl in Hfv. cbn [subst_tm]. simpl.
+    apply (IH j c w Hfv Hle Hfw).
+  - intros m T_B T_R body IH j c w Hfv Hle Hfw. simpl in Hfv. cbn [subst_tm].
+    rewrite (shift_tm_closed_id w 0 1 0 Hfw) by lia. simpl.
+    apply (IH (S j) (S c) w Hfv); [lia | exact Hfw].
+  - intros j c w _ _ _. reflexivity.
+  - intros u ts IHu IHts j c w Hfv Hle Hfw. simpl in Hfv.
+    apply app_eq_nil in Hfv as [Hu Hts]. simpl.
+    rewrite (IHu j c w Hu Hle Hfw), (IHts j c w Hts Hle Hfw). reflexivity.
+Qed.
+
+(* A term with fvs below [length vs], fully substituted, is closed. *)
+Lemma free_tm_vars_subst_list_tm_closed : forall vs t,
+  Forall (fun v => free_tm_vars 0 v = []) vs ->
+  free_tm_vars (List.length vs) t = [] ->
+  free_tm_vars 0 (subst_list_tm vs t) = [].
+Proof.
+  induction vs as [|v rest IH]; intros t Hfv Hlen.
+  - exact Hlen.
+  - inversion Hfv as [|? ? Hv Hrest]; subst.
+    cbn [subst_list_tm].
+    rewrite (shift_tm_closed_id v 0 (List.length rest) 0 Hv) by lia.
+    apply IH; [exact Hrest|].
+    apply (free_tm_vars_subst_tm_drop t 0 (List.length rest) v);
+      [exact Hlen | lia | exact Hv].
+Qed.
+
+Lemma rt_closed_plug_inv : forall E r, rt_closed (plug E r) -> rt_closed r.
+Proof.
+  induction E as
+    [ | E1 IHE ta | ta E1 IHE | E1 IHE Ty | E1 IHE lt
+    | tag dl lts Tys vs E1 IHE ts | E1 IHE K nlt ar yes no
+    | mk TB TR E1 IHE | E1 IHE Ss ar2 | rcv Ss E1 IHE ];
+    intros r Hrt; cbn [plug] in Hrt.
+  - exact Hrt.
+  - destruct Hrt as [H _]. apply IHE; exact H.
+  - destruct Hrt as [_ H]. apply IHE; exact H.
+  - apply IHE; exact Hrt.
+  - apply IHE; exact Hrt.
+  - rewrite rt_closed_ctor_eq in Hrt.
+    induction vs as [|a vs' IHvs]; cbn [List.app] in Hrt.
+    + destruct Hrt as [H _]. apply IHE; exact H.
+    + destruct Hrt as [_ H]. apply IHvs; exact H.
+  - destruct Hrt as [H _]. apply IHE; exact H.
+  - apply IHE; exact Hrt.
+  - destruct Hrt as [H _]. apply IHE; exact H.
+  - destruct Hrt as [_ H]. apply IHE; exact H.
+Qed.
+
+(* The reified resumption body [plug (shift_ectx_tm 1 0 P) (term_var 0)] *)
+(* is closed above its one binder, and rt_closed, whenever the captured *)
+(* context came from a closed rt_closed spine.                           *)
+Lemma resume_body_closed_rt : forall P r,
+  free_tm_vars 0 (plug P r) = [] ->
+  rt_closed (plug P r) ->
+  free_tm_vars 1 (plug (shift_ectx_tm 1 0 P) (term_var 0)) = [] /\
+  rt_closed (plug (shift_ectx_tm 1 0 P) (term_var 0)).
+Proof.
+  induction P as
+    [ | E1 IHE ta | ta E1 IHE | E1 IHE Ty | E1 IHE lt
+    | tag dl lts Tys vs E1 IHE ts | E1 IHE K nlt ar yes no
+    | mk TB TR E1 IHE | E1 IHE Ss ar2 | rcv Ss E1 IHE ];
+    intros r Hfv Hrt; cbn [plug shift_ectx_tm] in Hfv, Hrt |- *.
+  - split; [reflexivity | exact I].
+  - simpl in Hfv. apply app_eq_nil in Hfv as [H1 H2].
+    destruct Hrt as [R1 R2].
+    destruct (IHE r H1 R1) as [IHfv IHrt].
+    rewrite (shift_tm_closed_id ta 0 1 0 H2) by lia.
+    split.
+    + simpl. rewrite IHfv, (free_tm_vars_closed_cutoff ta 1 H2). reflexivity.
+    + split; [exact IHrt | exact R2].
+  - simpl in Hfv. apply app_eq_nil in Hfv as [H1 H2].
+    destruct Hrt as [R1 R2].
+    destruct (IHE r H2 R2) as [IHfv IHrt].
+    rewrite (shift_tm_closed_id ta 0 1 0 H1) by lia.
+    split.
+    + simpl. rewrite IHfv, (free_tm_vars_closed_cutoff ta 1 H1). reflexivity.
+    + split; [exact R1 | exact IHrt].
+  - simpl in Hfv. destruct (IHE r Hfv Hrt) as [IHfv IHrt].
+    split; [simpl; exact IHfv | exact IHrt].
+  - simpl in Hfv. destruct (IHE r Hfv Hrt) as [IHfv IHrt].
+    split; [simpl; exact IHfv | exact IHrt].
+  - simpl in Hfv. rewrite free_tm_vars_go_eq_concat in Hfv.
+    rewrite map_app in Hfv. rewrite concat_app in Hfv.
+    apply app_eq_nil in Hfv as [Hvs Hfoc_ts]. simpl in Hfoc_ts.
+    apply app_eq_nil in Hfoc_ts as [Hfoc Hts].
+    apply Forall_of_concat_map_nil in Hvs.
+    apply Forall_of_concat_map_nil in Hts.
+    rewrite rt_closed_ctor_eq in Hrt.
+    apply rt_closed_list_Forall in Hrt.
+    apply Forall_app in Hrt as [Rvs Rfoc_ts].
+    inversion Rfoc_ts as [|? ? Rfoc Rts]; subst.
+    destruct (IHE r Hfoc Rfoc) as [IHfv IHrt].
+    rewrite (map_shift_tm_closed_id vs 1 0 Hvs).
+    rewrite (map_shift_tm_closed_id ts 1 0 Hts).
+    split.
+    + simpl. rewrite free_tm_vars_go_eq_concat.
+      rewrite map_app. rewrite concat_app. simpl.
+      rewrite (concat_map_fv_closed_cutoff vs 1 Hvs).
+      rewrite IHfv.
+      rewrite (concat_map_fv_closed_cutoff ts 1 Hts). reflexivity.
+    + rewrite rt_closed_ctor_eq. apply Forall_rt_closed_list.
+      apply Forall_app. split; [exact Rvs|].
+      constructor; [exact IHrt | exact Rts].
+  - simpl in Hfv. apply app_eq_nil in Hfv as [Hs Hyn].
+    apply app_eq_nil in Hyn as [Hy Hn].
+    destruct Hrt as [Rs [Ry Rn]].
+    destruct (IHE r Hs Rs) as [IHfv IHrt].
+    rewrite (shift_tm_closed_id yes ar 1 (0 + ar) Hy) by lia.
+    rewrite (shift_tm_closed_id no 0 1 0 Hn) by lia.
+    split.
+    + simpl. rewrite IHfv.
+      rewrite (free_tm_vars_cutoff_mono_empty yes ar (S ar)) by (lia || exact Hy).
+      rewrite (free_tm_vars_closed_cutoff no 1 Hn). reflexivity.
+    + split; [exact IHrt | split; [exact Ry | exact Rn]].
+  - simpl in Hfv. destruct (IHE r Hfv Hrt) as [IHfv IHrt].
+    split; [simpl; exact IHfv | exact IHrt].
+  - simpl in Hfv. apply app_eq_nil in Hfv as [H1 H2].
+    destruct Hrt as [R1 R2].
+    destruct (IHE r H1 R1) as [IHfv IHrt].
+    rewrite (shift_tm_closed_id ar2 0 1 0 H2) by lia.
+    split.
+    + simpl. rewrite IHfv, (free_tm_vars_closed_cutoff ar2 1 H2). reflexivity.
+    + split; [exact IHrt | exact R2].
+  - simpl in Hfv. apply app_eq_nil in Hfv as [H1 H2].
+    destruct Hrt as [R1 R2].
+    destruct (IHE r H2 R2) as [IHfv IHrt].
+    rewrite (shift_tm_closed_id rcv 0 1 0 H1) by lia.
+    split.
+    + simpl. rewrite IHfv, (free_tm_vars_closed_cutoff rcv 1 H1). reflexivity.
+    + split; [exact R1 | exact IHrt].
+Qed.
+
+(* Shifting the captured context's frame terms preserves well_scoped:  *)
+(* term shifts never move markers, and the frame skeleton (hence the    *)
+(* scope threading) is unchanged.                                       *)
+Lemma well_scoped_plug_shift_ectx_tm : forall P t ms a cutoff,
+  well_scoped ms (plug P t) ->
+  well_scoped ms (plug (shift_ectx_tm a cutoff P) t).
+Proof.
+  induction P as
+    [ | E1 IHE ta | ta E1 IHE | E1 IHE Ty | E1 IHE lt
+    | tag dl lts Tys vs E1 IHE ts | E1 IHE K nlt ar yes no
+    | mk TB TR E1 IHE | E1 IHE Ss ar2 | rcv Ss E1 IHE ];
+    intros t ms a cutoff Hws; cbn [plug shift_ectx_tm] in Hws |- *.
+  - exact Hws.
+  - destruct Hws as [H1 H2].
+    split; [apply IHE; exact H1 | apply well_scoped_shift_tm; exact H2].
+  - destruct Hws as [H1 H2].
+    split; [apply well_scoped_shift_tm; exact H1 | apply IHE; exact H2].
+  - apply IHE; exact Hws.
+  - apply IHE; exact Hws.
+  - rewrite well_scoped_ctor_eq in Hws |- *.
+    apply well_scoped_list_Forall in Hws.
+    apply Forall_app in Hws as [Wvs Wfoc_ts].
+    inversion Wfoc_ts as [|? ? Wfoc Wts]; subst.
+    apply Forall_well_scoped_list.
+    apply Forall_app. split.
+    + apply Forall_map. eapply Forall_impl; [|exact Wvs].
+      intros v Hv. apply well_scoped_shift_tm. exact Hv.
+    + constructor; [apply IHE; exact Wfoc|].
+      apply Forall_map. eapply Forall_impl; [|exact Wts].
+      intros v Hv. apply well_scoped_shift_tm. exact Hv.
+  - destruct Hws as [Hs [Hy Hn]].
+    split; [apply IHE; exact Hs|].
+    split; [apply well_scoped_shift_tm; exact Hy
+           |apply well_scoped_shift_tm; exact Hn].
+  - apply IHE; exact Hws.
+  - destruct Hws as [H1 H2].
+    split; [apply IHE; exact H1 | apply well_scoped_shift_tm; exact H2].
+  - destruct Hws as [H1 H2].
+    split; [apply well_scoped_shift_tm; exact H1 | apply IHE; exact H2].
 Qed.
