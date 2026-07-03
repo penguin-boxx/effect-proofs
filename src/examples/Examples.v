@@ -149,13 +149,17 @@ Definition endoi_sig : binding :=
 Definition endo_sig : binding :=
   bind_ctor endo_tag 0 1 [`T 0 -{ `Lf }-> `T 0] (T_Endo `Lf (`T 0)).
 
-(* data Trash = Trash[l](Endo<Nat'l>) *)
+(* data Trash = Trash[l](Endo<Nat'l>) — the field is the subject of    *)
+(* the [rejected_crashEndo] variance witness below.                     *)
+Definition trash_field : type := T_Endo (`L 0) (T_Nat (`L 0)).
 Definition trash_sig : binding :=
-  bind_ctor trash_tag 1 0 [T_Endo (`L 0) (T_Nat (`L 0))] (T_Trash (`L 0)).
+  bind_ctor trash_tag 1 0 [trash_field] (T_Trash (`L 0)).
 
-(* data Box = Box[l](Option<Nat'l>) *)
+(* data Box = Box[l](Option<Nat'l>) — the field is the subject of the   *)
+(* [rejected_crashBox] no-local witness below.                          *)
+Definition box_field : type := T_Option (`L 0) (T_Nat (`L 0)).
 Definition box_sig : binding :=
-  bind_ctor box_tag 1 0 [T_Option (`L 0) (T_Nat (`L 0))] (T_Box (`L 0)).
+  bind_ctor box_tag 1 0 [box_field] (T_Box (`L 0)).
 
 (* [data_ctx]: the typing context holding every data-constructor signature    *)
 (* above (the program's data declarations).  Used to type the pure examples.  *)
@@ -492,13 +496,15 @@ Definition endoi_v : term := term_ctor endoi_tag `Lf [`Lf] [] [succ_fn].
 Definition foldEndo_example : term :=
   (foldEndo @lt[ `Lf ]) @· two_v @· endoi_v.
 
-(* error: crashEndo uses an existentially forgotten local Nat lifetime contravariantly. *)
+(* error: crashEndo tries to existentially forget Trash's local Nat    *)
+(* lifetime, which occurs contravariantly in [trash_field] (Endo).      *)
 Definition crashEndo_variance_witness : Prop :=
-  elim_ty_n 1 `Ll var_pos (T_Endo (`L 0) (T_Nat (`L 0))) = None.
+  elim_ty_n 1 `Ll var_pos trash_field = None.
 
-(* error: crashBox tries to expose Option<Nat'local> as Option<Nat'*>. *)
+(* error: crashBox tries to expose Box's field Option<Nat'local>        *)
+(* (= [box_field] at a local lifetime) as escapable.                     *)
 Definition crashBox_local_witness : Prop :=
-  no_local_ty (T_Option `Ll (T_Nat `Ll)) = false.
+  no_local_ty (subst_lt_in_ty 0 `Ll box_field) = false.
 
 (* context(x: Nat'free, y: Nat'local) fun clash(): Unit = Unit() *)
 Definition clash_ignored_local_witness : Prop :=
