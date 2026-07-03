@@ -227,6 +227,7 @@ Definition zero_v : term := term_ctor zero_tag `Lf [] [] [].
 Definition suc_v (n : term) : term := term_ctor suc_tag `Lf [] [] [n].
 Definition two_v : term := suc_v (suc_v zero_v).
 Definition three_v : term := suc_v (suc_v (suc_v zero_v)).
+Definition four_v : term := suc_v three_v.
 
 (* fun succ(n: Nat'free): Nat'free = Suc(n)
    The successor; the calculus has no fixpoint, so "+k" is the k-fold
@@ -250,6 +251,10 @@ Definition ok_v (E A : type) (a : term) : term :=
 Definition nil_v (A : type) : term := term_ctor nil_tag `Lf [] [A] [].
 Definition cons_v (A : type) (x xs : term) : term :=
   term_ctor cons_tag `Lf [] [A] [x; xs].
+
+(* Pair<a,b>(x, y) *)
+Definition pair_v (A B : type) (x y : term) : term :=
+  term_ctor pair_tag `Lf [] [A; B] [x; y].
 
 (* fun withFile<r>(f: (File'local) -> r): r = f(File()) *)
 Definition withFile : term :=
@@ -441,9 +446,13 @@ Definition lazyMap_body : term :=
        (term_ctor lnil_tag `Lf [] [`T 0] [])).
 
 (* fun mapFirst[la, lb, lc]<a <: Any'la, b <: Any'lb, c <: Any'lc>(
-       p: Pair<a, b>, f: (a)'local -> c
+       dflt: Pair<c, b>, p: Pair<a, b>, f: (a)'local -> c
    ): Pair<c, b> =
-       match p { case Pair(x, y) -> Pair<c, b>(f(x), y) } *)
+       match p { case Pair(x, y) -> Pair<c, b>(f(x), y); _ -> dflt }
+   A match must carry a well-typed no-branch even when the scrutinee's
+   datatype has a single constructor (the calculus has no exhaustiveness
+   analysis), and Pair<c, b> is not constructible from p and f alone —
+   hence the explicit default.  *)
 Definition mapFirst : term :=
   Λl \\
   Λl \\
@@ -451,13 +460,13 @@ Definition mapFirst : term :=
   Λt: T_Any (`L 2) \\
   Λt: T_Any (`L 1) \\
   Λt: T_Any (`L 0) \\
+    λ: T_Pair `Lf (`T 0) (`T 1) \\
     λ: T_Pair `Lf (`T 2) (`T 1) \\
     λ: (`T 2 -{ `Ll }-> `T 0) \\
       term_match ($$ 1) pair_tag 0 2
         (term_ctor pair_tag `Lf [] [`T 0; `T 1]
-           [($$ 3) @· ($$ 1); $$ 0])
-        (term_ctor pair_tag `Lf [] [`T 0; `T 1]
-           [($$ 0) @· ($$ 0); $$ 0]).
+           [($$ 2) @· ($$ 0); $$ 1])
+        ($$ 2).
 
 (* fun foldEndo[l0](_: Nat'l0, endo: EndoI'l0): Nat'l0 =
      match endo { case EndoI(f) -> f(3) } *)
@@ -466,6 +475,22 @@ Definition foldEndo : term :=
     λ: T_Nat (`L 0) \\
     λ: T_EndoI (`L 0) \\
       term_match ($$ 0) endoi_tag 1 1 (($$ 0) @· three_v) ($$ 1).
+
+(* let mapFirstExample = mapFirst[free,free,free]<Nat,Nat,Nat>(
+       Pair(0, 0), Pair(2, 3), succ)          -- = Pair(3, 3) *)
+Definition mapFirst_example : term :=
+  ((mapFirst @lt[ `Lf ] @lt[ `Lf ] @lt[ `Lf ]
+      @ty[ T_Nat `Lf ] @ty[ T_Nat `Lf ] @ty[ T_Nat `Lf ])
+    @· pair_v (T_Nat `Lf) (T_Nat `Lf) zero_v zero_v
+    @· pair_v (T_Nat `Lf) (T_Nat `Lf) two_v three_v)
+    @· succ_fn.
+
+(* EndoI[free](succ) *)
+Definition endoi_v : term := term_ctor endoi_tag `Lf [`Lf] [] [succ_fn].
+
+(* let foldEndoExample = foldEndo[free](2, EndoI(succ))   -- = succ(3) = 4 *)
+Definition foldEndo_example : term :=
+  (foldEndo @lt[ `Lf ]) @· two_v @· endoi_v.
 
 (* error: crashEndo uses an existentially forgotten local Nat lifetime contravariantly. *)
 Definition crashEndo_variance_witness : Prop :=
@@ -605,10 +630,32 @@ Definition typed_withId : Prop :=
 Definition typed_exampleOptionality : Prop :=
   full_ctx ⊢ₜ exampleOptionality : T_Option `Lf (T_Nat `Lf).
 
-(* Recursive/open bodies: statements keep the intended typing surface visible. *)
+(* Open recursive body; typed under its explicit binder context below. *)
 Definition typed_lazyMap_body : Prop := True.
-Definition typed_mapFirst : Prop := True.
-Definition typed_foldEndo : Prop := True.
+
+(*   mapFirst : [la,lb,lc]<a,b,c>.                              *)
+(*     Pair<c,b> -> Pair<a,b> -> ((a)'local -> c) -> Pair<c,b>  *)
+Definition typed_mapFirst : Prop :=
+  data_ctx ⊢ₜ mapFirst
+    : type_lt_all (type_lt_all (type_lt_all
+        (type_ty_all (T_Any (`L 2)) (type_ty_all (T_Any (`L 1)) (type_ty_all (T_Any (`L 0))
+          (T_Pair `Lf (`T 0) (`T 1) -{ `Lf }->
+           T_Pair `Lf (`T 2) (`T 1) -{ `Ll }->
+           (`T 2 -{ `Ll }-> `T 0) -{ `Ll }->
+           T_Pair `Lf (`T 0) (`T 1))))))).
+
+(*   foldEndo : [l]. Nat'l -> EndoI'l -l-> Nat'l                *)
+Definition typed_foldEndo : Prop :=
+  data_ctx ⊢ₜ foldEndo
+    : type_lt_all (T_Nat (`L 0) -{ `Lf }-> (T_EndoI (`L 0) -{ `L 0 }-> T_Nat (`L 0))).
+
+(*   mapFirst_example : Pair<Nat, Nat>                          *)
+Definition typed_mapFirst_example : Prop :=
+  data_ctx ⊢ₜ mapFirst_example : T_Pair `Lf (T_Nat `Lf) (T_Nat `Lf).
+
+(*   foldEndo_example : Nat                                     *)
+Definition typed_foldEndo_example : Prop :=
+  data_ctx ⊢ₜ foldEndo_example : T_Nat `Lf.
 
 (* Negative statements from the commented error examples. *)
 Definition rejected_testWithState : Prop := testWithState_escape_witness.
@@ -637,6 +684,13 @@ Definition red_withFile_example : Prop := withFile_example ==>> unit_v.
 
 (*   withState(get; put(3); get)(2)  ~~>*  3   (the 2nd get)     *)
 Definition red_withState_example : Prop := withState_example ==>> three_v.
+
+(*   mapFirst(Pair(0,0), Pair(2,3), succ)  ~~>*  Pair(3, 3)     *)
+Definition red_mapFirst_example : Prop :=
+  mapFirst_example ==>> pair_v (T_Nat `Lf) (T_Nat `Lf) three_v three_v.
+
+(*   foldEndo[free](2, EndoI(succ))  ~~>*  4                    *)
+Definition red_foldEndo_example : Prop := foldEndo_example ==>> four_v.
 
 (*   withException<Nat,File>(fun() throw 3)  ~~>*  Error(3)      *)
 (* The abortive handler: the captured continuation (the Ok frame) *)

@@ -665,10 +665,52 @@ Theorem typed_lazyMap_body_proof : typed_lazyMap_body.
 Proof. exact I. Qed.
 
 Theorem typed_mapFirst_proof : typed_mapFirst.
-Proof. exact I. Qed.
+Proof.
+  unfold typed_mapFirst, mapFirst.
+  apply T_LtLam; [ solve_wf | reflexivity |].
+  apply T_LtLam; [ solve_wf | reflexivity |].
+  apply T_LtLam; [ solve_wf | reflexivity |].
+  apply T_TyLam; [ solve_wf | solve_wf | reflexivity |].
+  apply T_TyLam; [ solve_wf | solve_wf | reflexivity |].
+  apply T_TyLam; [ solve_wf | solve_wf | reflexivity |].
+  apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
+  apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt_sub ].
+  apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt_sub ].
+  eapply T_Match with
+    (Ts := [`T 2; `T 1]) (Delta := `Lf) (arity := 2) (lts := [])
+    (rho_fields := [`T 2; `T 1])
+    (scrut_result_ty := T_Pair `Lf (`T 2) (`T 1))
+    (result_tag := pair_tag) (result_l := `Lf)
+    (eta := T_Pair `Lf (`T 0) (`T 1))
+    (elim_result := T_Pair `Lf (`T 0) (`T 1));
+    cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt | solve_var ].
+  eapply T_Ctor with
+    (n_lt := 0) (n_ty := 2) (lts := []) (Ts := [`T 0; `T 1])
+    (sigma_fields := [`T 0; `T 1])
+    (result_ty_schema := T_Pair `Lf (`T 0) (`T 1));
+    cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt ].
+  - constructor.
+  - constructor; [ eapply T_App; [ solve_var | solve_var ] |].
+    constructor; [ solve_var | constructor ].
+Qed.
 
 Theorem typed_foldEndo_proof : typed_foldEndo.
-Proof. exact I. Qed.
+Proof.
+  unfold typed_foldEndo, foldEndo.
+  apply T_LtLam; [ solve_wf | reflexivity |].
+  apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
+  apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
+  eapply T_Match with
+    (Ts := []) (Delta := `L 0) (arity := 1) (lts := [`L 0])
+    (rho_fields := [T_Nat (`L 0) -{ `Lf }-> T_Nat (`L 0)])
+    (scrut_result_ty := T_EndoI (`L 0))
+    (result_tag := endoi_tag) (result_l := `L 0)
+    (eta := T_Nat (`L 0)) (elim_result := T_Nat (`L 0));
+    cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt | solve_var ].
+  eapply T_App; [ solve_var |].
+  eapply T_Sub; [ solve_nat |].
+  apply SA_Data; [ solve_lt | solve_wf ].
+Qed.
 
 (* ================================================================== *)
 (* Negative/error witnesses                                           *)
@@ -943,5 +985,178 @@ Proof.
   { apply (S_step EC_hole).
     - constructor.
     - apply H_Beta. apply three_v_value. }
+  cbn. apply MS_Refl.
+Qed.
+
+Lemma four_v_value : value four_v.
+Proof. unfold four_v, three_v, suc_v, zero_v. repeat constructor. Qed.
+
+Lemma endoi_v_value : value endoi_v.
+Proof. unfold endoi_v. constructor. constructor; [ constructor | constructor ]. Qed.
+
+(* Pair<Nat,Nat>(x, y) typing helper. *)
+Lemma typed_pair_nat : forall x y,
+  data_ctx ⊢ₜ x : T_Nat `Lf ->
+  data_ctx ⊢ₜ y : T_Nat `Lf ->
+  data_ctx ⊢ₜ pair_v (T_Nat `Lf) (T_Nat `Lf) x y
+    : T_Pair `Lf (T_Nat `Lf) (T_Nat `Lf).
+Proof.
+  intros x y Hx Hy.
+  eapply T_Ctor with
+    (n_lt := 0) (n_ty := 2) (lts := []) (Ts := [T_Nat `Lf; T_Nat `Lf])
+    (sigma_fields := [`T 0; `T 1])
+    (result_ty_schema := T_Pair `Lf (`T 0) (`T 1));
+    cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt ].
+  - constructor.
+  - constructor; [ exact Hx |].
+    constructor; [ exact Hy | constructor ].
+Qed.
+
+(* EndoI[free](succ) : EndoI'free typing helper. *)
+Lemma typed_endoi_v : data_ctx ⊢ₜ endoi_v : T_EndoI `Lf.
+Proof.
+  unfold endoi_v.
+  eapply T_Ctor with
+    (n_lt := 1) (n_ty := 0) (lts := [`Lf]) (Ts := [])
+    (sigma_fields := [T_Nat (`L 0) -{ `Lf }-> T_Nat (`L 0)])
+    (result_ty_schema := T_EndoI (`L 0));
+    cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt ].
+  - constructor; [ solve_lt | constructor ].
+  - constructor; [ | constructor ].
+    pose proof typed_succ_proof as Hs. unfold typed_succ in Hs. exact Hs.
+Qed.
+
+Theorem typed_foldEndo_example_proof : typed_foldEndo_example.
+Proof.
+  unfold typed_foldEndo_example, foldEndo_example.
+  pose proof typed_foldEndo_proof as H. unfold typed_foldEndo in H.
+  eapply T_LtApp with (l := `Lf) in H; [ | solve_wf ]. cbn in H.
+  eapply T_App; [ | exact typed_endoi_v ].
+  eapply T_App; [ exact H | solve_nat ].
+Qed.
+
+Theorem typed_mapFirst_example_proof : typed_mapFirst_example.
+Proof.
+  unfold typed_mapFirst_example, mapFirst_example.
+  pose proof typed_mapFirst_proof as H. unfold typed_mapFirst in H.
+  eapply T_LtApp with (l := `Lf) in H; [ | solve_wf ]. cbn in H.
+  eapply T_LtApp with (l := `Lf) in H; [ | solve_wf ]. cbn in H.
+  eapply T_LtApp with (l := `Lf) in H; [ | solve_wf ]. cbn in H.
+  eapply T_TyApp with (S := T_Nat `Lf) in H;
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; solve_lt ] ]. cbn in H.
+  eapply T_TyApp with (S := T_Nat `Lf) in H;
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; solve_lt ] ]. cbn in H.
+  eapply T_TyApp with (S := T_Nat `Lf) in H;
+    [ | solve_wf | apply SA_Any; [ solve_wf | solve_wf | cbn; solve_lt ] ]. cbn in H.
+  eapply T_App.
+  - eapply T_App.
+    + eapply T_App; [ exact H |].
+      apply typed_pair_nat; solve_nat.
+    + apply typed_pair_nat; solve_nat.
+  - pose proof typed_succ_proof as Hs. unfold typed_succ in Hs.
+    eapply T_Sub; [ exact Hs |].
+    eapply SA_Fun;
+      [ apply SA_Refl; solve_wf | solve_lt_sub | apply SA_Refl; solve_wf ].
+Qed.
+
+Theorem red_foldEndo_example_proof : red_foldEndo_example.
+Proof.
+  unfold red_foldEndo_example, foldEndo_example, foldEndo, endoi_v.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_app1 EC_hole two_v)
+                     (term_ctor endoi_tag `Lf [`Lf] [] [succ_fn]))).
+    - repeat constructor.
+    - apply H_LtBeta. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole (term_ctor endoi_tag `Lf [`Lf] [] [succ_fn]))).
+    - repeat constructor.
+    - apply H_Beta. apply two_v_value. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Beta. repeat constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply (H_MatchYes endoi_tag `Lf [`Lf] [] [succ_fn]). repeat constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Beta. apply three_v_value. }
+  cbn. apply MS_Refl.
+Qed.
+
+Theorem red_mapFirst_example_proof : red_mapFirst_example.
+Proof.
+  unfold red_mapFirst_example, mapFirst_example, mapFirst, pair_v.
+  set (p00 := term_ctor pair_tag `Lf [] [T_Nat `Lf; T_Nat `Lf] [zero_v; zero_v]).
+  set (p23 := term_ctor pair_tag `Lf [] [T_Nat `Lf; T_Nat `Lf] [two_v; three_v]).
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_app1 (EC_app1 (EC_ty_app (EC_ty_app (EC_ty_app
+      (EC_lt_app (EC_lt_app EC_hole `Lf) `Lf)
+      (T_Nat `Lf)) (T_Nat `Lf)) (T_Nat `Lf)) p00) p23) succ_fn)).
+    - unfold p00, p23; repeat constructor.
+    - apply H_LtBeta. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_app1 (EC_app1 (EC_ty_app (EC_ty_app (EC_ty_app
+      (EC_lt_app EC_hole `Lf)
+      (T_Nat `Lf)) (T_Nat `Lf)) (T_Nat `Lf)) p00) p23) succ_fn)).
+    - unfold p00, p23; repeat constructor.
+    - apply H_LtBeta. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_app1 (EC_app1 (EC_ty_app (EC_ty_app (EC_ty_app
+      EC_hole
+      (T_Nat `Lf)) (T_Nat `Lf)) (T_Nat `Lf)) p00) p23) succ_fn)).
+    - unfold p00, p23; repeat constructor.
+    - apply H_LtBeta. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_app1 (EC_app1 (EC_ty_app (EC_ty_app
+      EC_hole (T_Nat `Lf)) (T_Nat `Lf)) p00) p23) succ_fn)).
+    - unfold p00, p23; repeat constructor.
+    - apply H_TyBeta. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_app1 (EC_app1 (EC_ty_app
+      EC_hole (T_Nat `Lf)) p00) p23) succ_fn)).
+    - unfold p00, p23; repeat constructor.
+    - apply H_TyBeta. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_app1 (EC_app1 EC_hole p00) p23) succ_fn)).
+    - unfold p00, p23; repeat constructor.
+    - apply H_TyBeta. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_app1 EC_hole p23) succ_fn)).
+    - unfold p23; repeat constructor.
+    - apply H_Beta. unfold p00; repeat constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole succ_fn)).
+    - repeat constructor.
+    - apply H_Beta. unfold p23; repeat constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Beta. constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply (H_MatchYes pair_tag `Lf [] [T_Nat `Lf; T_Nat `Lf] [two_v; three_v]).
+      repeat constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_ctor pair_tag `Lf [] [T_Nat `Lf; T_Nat `Lf] [] EC_hole [three_v])).
+    - repeat constructor.
+    - apply H_Beta. apply two_v_value. }
   cbn. apply MS_Refl.
 Qed.
