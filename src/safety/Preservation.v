@@ -124,11 +124,6 @@ Lemma subst_tm_preserves : forall Γ A t B v,
   Γ ⊢ₜ subst_tm 0 v t : B.
 Proof. exact typing_SubstTm_eval_ctx. Qed.
 
-Lemma subst_nl_here_from_ty_app_arg : forall Γ bound S,
-  ty_app_arg_no_local Γ bound S = true ->
-  subst_nl S 0 (bind_ty bound :: Γ) Γ.
-Proof. intros; exact I. Qed.
-
 Lemma tybeta_preserves_with_subst_nl : forall Γ bound body S T,
   eval_ctx Γ ->
   subst_nl S 0 (bind_ty bound :: Γ) Γ ->
@@ -155,17 +150,6 @@ Proof.
   - eapply SA_Trans.
     + apply (sub_subst_ty Γ B U0 U S HUsub HSB).
     + exact Hres.
-Qed.
-
-Lemma tybeta_preserves_declared_bound : forall Γ bound body S T,
-  eval_ctx Γ ->
-  ty_app_arg_no_local Γ bound S = true ->
-  Γ ⊢ₜ term_ty_app (term_ty_lam bound body) S : T ->
-  Γ ⊢ₜ subst_ty_in_tm 0 S body : T.
-Proof.
-  intros Γ bound body S T Hec Harg Hty.
-  eapply tybeta_preserves_with_subst_nl; [exact Hec| |exact Hty].
-  apply subst_nl_here_from_ty_app_arg. exact Harg.
 Qed.
 
 Lemma tybeta_preserves : forall Γ bound body S T,

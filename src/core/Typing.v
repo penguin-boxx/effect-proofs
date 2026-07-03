@@ -353,9 +353,9 @@ Fixpoint no_local_ty (T : type) : bool :=
 
 (* [is_any_at_free_bound B] holds when [B] is syntactically [Any]'free   *)
 (* ([type_ctor any_tag lt_free []]).  A type variable bounded by such a  *)
-(* [B] can only ever be instantiated with a no-local type (enforced by   *)
-(* [ty_app_arg_no_local] at [T_TyApp]), so it is safe to treat the       *)
-(* variable itself as no-local.                                          *)
+(* [B] can only be inhabited at no-local types (the bound's lifetime is  *)
+(* free), so [no_local_ty_G] below treats the variable itself as         *)
+(* no-local.                                                             *)
 Definition is_any_at_free_bound (T : type) : bool :=
   match T with
   | type_ctor K lt_free [] => Nat.eqb K any_tag
@@ -389,11 +389,13 @@ Fixpoint no_local_ty_G (Γ : ctx) (T : type) : bool :=
   | type_ty_all B A => andb (no_local_ty_G Γ B) (no_local_ty_G (bind_ty B :: Γ) A)
   end.
 
-(* [ty_app_arg_no_local Γ B S]: side condition of [T_TyApp].  When the     *)
-(* formal parameter's bound [B] is [Any]'free, the supplied argument [S]   *)
-(* must itself be no-local; otherwise instantiating an [Any]'free variable *)
-(* with a local type would unsoundly make [no_local_ty_G] lie.  For any    *)
-(* other bound there is no extra obligation.                               *)
+(* [ty_app_arg_no_local Γ B S]: NOT a premise of [T_TyApp] — it is the     *)
+(* obligation shape consumed by the type-substitution metatheory (the      *)
+(* [subst_nl] hypothesis of [typing_SubstTy], subst/TypingSubstTy.v).      *)
+(* When a substituted variable's bound [B] is [Any]'free, the replacement  *)
+(* [S] must itself be no-local for [no_local_ty_G] to be preserved; for    *)
+(* any other bound there is no obligation.  Under an [eval_ctx] the        *)
+(* condition is discharged trivially at the preservation call sites.       *)
 Definition ty_app_arg_no_local (Γ : ctx) (B S : type) : bool :=
   if is_any_at_free_bound B then no_local_ty_G Γ S else true.
 
