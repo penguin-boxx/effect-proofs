@@ -11,6 +11,7 @@ Require Import Markers.
 Require Import Progress.
 Require Import Variance.
 Require Import Inversions.
+Require Import Soundness.
 
 (* ================================================================== *)
 (*                                                                    *)
@@ -91,6 +92,32 @@ Proof.
   reflexivity.
 Qed.
 
+(* Source-facing form: for a program with no runtime marker constructs *)
+(* the typing-along-the-trace premise is discharged by the             *)
+(* step-preserved runtime invariants (subject reduction), so the       *)
+(* guarantee needs only the initial typing.                            *)
+Corollary source_local_value_does_not_escape : forall Γ t K Ts v,
+  eval_ctx Γ ->
+  ctx_lookup_eff Γ K = None ->
+  K <> any_tag ->
+  has_rt_cap t = false ->
+  Γ ⊢ₜ t : type_ctor K lt_free Ts ->
+  multi_step t v ->
+  value v ->
+  exists K' l' lts' vs,
+    v = term_ctor K' l' lts' Ts vs /\
+    no_local_lt l' = true.
+Proof.
+  intros Γ t K Ts v Hec Hdata HK Hsrc Hty Hms Hval.
+  eapply local_value_does_not_escape;
+    [exact Hec | exact Hdata | exact HK | | exact Hms | exact Hval].
+  intros u Hms'.
+  destruct (multi_step_preserves_safety_invariants _ _ _ _ Hec
+              (source_safety_invariants _ _ _ Hsrc Hty) Hms')
+    as [_ [_ [_ [_ [_ Htyu]]]]].
+  exact Htyu.
+Qed.
+
 (* ================================================================== *)
 (*                                                                    *)
 (*                   CAPABILITY CONFINEMENT                           *)
@@ -157,4 +184,24 @@ Corollary capability_under_handler : forall Γ t E E_tag m n_beta Ts T_R op_body
 Proof.
   intros Γ t E E_tag m n_beta Ts T_R op_body T Hec Hmok Hty Hms Hpure.
   eapply capability_never_exposed; eauto.
+Qed.
+
+(* Source-facing form: for a program with no runtime marker constructs *)
+(* the marker_ok trace premise is discharged by the step-preserved     *)
+(* runtime invariants, so confinement needs only the initial typing.   *)
+Corollary source_capability_never_exposed :
+  forall Γ t E E_tag m n_beta Ts T_R op_body T,
+  eval_ctx Γ ->
+  has_rt_cap t = false ->
+  Γ ⊢ₜ t : T ->
+  multi_step t (plug E (term_cap E_tag m n_beta Ts T_R op_body)) ->
+  ~ pure_ectx_m m E.
+Proof.
+  intros Γ t E E_tag m n_beta Ts T_R op_body T Hec Hsrc Hty Hms.
+  eapply capability_never_exposed; [exact Hec | | exact Hty | exact Hms].
+  intros u Hms'.
+  destruct (multi_step_preserves_safety_invariants _ _ _ _ Hec
+              (source_safety_invariants _ _ _ Hsrc Hty) Hms')
+    as [Hmok _].
+  exact Hmok.
 Qed.

@@ -80,6 +80,35 @@ Proof.
   eapply preservation; eauto.
 Qed.
 
+(* The runtime invariants persist along any reduction sequence.        *)
+Lemma multi_step_preserves_safety_invariants : forall Γ t u T,
+  eval_ctx Γ ->
+  safety_invariants Γ T t ->
+  multi_step t u ->
+  safety_invariants Γ T u.
+Proof.
+  intros Γ t u T Hec Hinv Hms. revert Hinv.
+  induction Hms as [w | w1 w2 w3 Hstep Hms IH]; intros Hinv.
+  - exact Hinv.
+  - apply IH. eapply step_preserves_safety_invariants; eauto.
+Qed.
+
+(* All runtime invariants hold vacuously on a source term (one with    *)
+(* no runtime marker constructs).                                      *)
+Lemma source_safety_invariants : forall Γ t T,
+  has_rt_cap t = false ->
+  Γ ⊢ₜ t : T ->
+  safety_invariants Γ T t.
+Proof.
+  intros Γ t T Hsrc Hty.
+  split; [apply marker_ok_no_rt_cap; exact Hsrc|].
+  split; [apply marker_annots_closed_no_rt_cap; exact Hsrc|].
+  split; [apply marker_types_safe_no_rt_cap; exact Hsrc|].
+  split; [apply well_scoped_no_rt_cap; exact Hsrc|].
+  split; [apply rt_closed_no_rt_cap; exact Hsrc|].
+  exact Hty.
+Qed.
+
 (* ================================================================== *)
 (*                      TYPE SOUNDNESS (capstone)                     *)
 (*                                                                    *)
@@ -97,11 +126,8 @@ Theorem type_soundness :
     ~ stuck t'.
 Proof.
   intros Γ t t' T Hec Hinv Hms.
-  assert (Hreach : safety_invariants Γ T t').
-  { revert Hinv. induction Hms as [u | u1 u2 u3 Hstep Hms IH]; intros Hinv.
-    - exact Hinv.
-    - apply IH. eapply step_preserves_safety_invariants; eauto. }
-  destruct Hreach as [Hmok [_ [Hmsafe [_ [_ Hty]]]]].
+  destruct (multi_step_preserves_safety_invariants _ _ _ _ Hec Hinv Hms)
+    as [Hmok [_ [Hmsafe [_ [_ Hty]]]]].
   eapply safe_state_not_stuck; eauto.
 Qed.
 
@@ -116,13 +142,8 @@ Corollary source_type_soundness : forall Γ t t' T,
   ~ stuck t'.
 Proof.
   intros Γ t t' T Hec Hsrc Hty Hms.
-  eapply type_soundness; [exact Hec | | exact Hms].
-  split; [apply marker_ok_no_rt_cap; exact Hsrc|].
-  split; [apply marker_annots_closed_no_rt_cap; exact Hsrc|].
-  split; [apply marker_types_safe_no_rt_cap; exact Hsrc|].
-  split; [apply well_scoped_no_rt_cap; exact Hsrc|].
-  split; [apply rt_closed_no_rt_cap; exact Hsrc|].
-  exact Hty.
+  eapply type_soundness;
+    [exact Hec | apply source_safety_invariants; eassumption | exact Hms].
 Qed.
 
 (* End-to-end safety from a state satisfying the runtime invariant.    *)
