@@ -749,3 +749,199 @@ Proof.
     apply H_Return. repeat constructor. }
   cbn. apply MS_Refl.
 Qed.
+
+Theorem red_exampleException_proof : red_exampleException.
+Proof.
+  unfold red_exampleException, exampleException, withException,
+         withException_op_body, exampleException_body, ok_v, error_v.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_ty_app EC_hole (T_File `Lf))
+                     (λ: T_Exception `Ll (T_Nat `Lf) \\
+                        term_perform ($$ 0) [T_File `Lf] three_v))).
+    - repeat constructor.
+    - apply H_TyBeta. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole
+                     (λ: T_Exception `Ll (T_Nat `Lf) \\
+                        term_perform ($$ 0) [T_File `Lf] three_v))).
+    - repeat constructor.
+    - apply H_TyBeta. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Beta. constructor. }
+  cbn.
+  eapply MS_Step.
+  { eapply (S_Handle _ _ _ _ _ _ _ 0).
+    cbn. intros H. inversion H. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_handler_m 0 (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
+                     (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
+                     (EC_ctor ok_tag `Lf [] [T_Nat `Lf; T_File `Lf] [] EC_hole []))).
+    - repeat constructor.
+    - apply H_Beta. constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _
+                (EC_ctor ok_tag `Lf [] [T_Nat `Lf; T_File `Lf] [] EC_hole [])).
+      + apply three_v_value.
+      + repeat constructor. }
+  cbn. apply MS_Refl.
+Qed.
+
+Theorem red_withState_example_proof : red_withState_example.
+Proof.
+  unfold red_withState_example, withState_example, withState, withState_prog,
+         state_op_body.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_app1 (EC_ty_app (EC_ty_app EC_hole (T_Nat `Lf))
+                                       (T_Nat `Lf)) withState_prog) two_v)).
+    - unfold withState_prog. repeat constructor.
+    - apply H_LtBeta. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_app1 (EC_ty_app EC_hole (T_Nat `Lf)) withState_prog) two_v)).
+    - unfold withState_prog. repeat constructor.
+    - apply H_TyBeta. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_app1 EC_hole withState_prog) two_v)).
+    - unfold withState_prog. repeat constructor.
+    - apply H_TyBeta. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole two_v)).
+    - repeat constructor.
+    - apply H_Beta. unfold withState_prog. constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_HandleCtx (EC_app1 EC_hole two_v) State_tag 0 [T_Nat `Lf] _ _ _ _ 0).
+    - repeat constructor.
+    - cbn. intros H. inversion H. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_handler_m 0 _ _ (EC_app2 _ EC_hole)) two_v)).
+    - repeat constructor.
+    - apply H_Beta. constructor. }
+  cbn.
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole two_v)).
+    - repeat constructor.
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ (EC_app2 _ (EC_app2 _ EC_hole))).
+      + repeat constructor.
+      + repeat constructor. }
+  cbn.
+  (* reduct-λ applied to the initial state 2 *)
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Beta. apply two_v_value. }
+  cbn.
+  (* match get_cmd against get_tag: yes branch *)
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply (H_MatchYes get_tag `Lf [] [T_Nat `Lf] []). constructor. }
+  cbn.
+  (* k(2): resume re-installs the delimiter *)
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole two_v)).
+    - repeat constructor.
+    - apply H_Resume. apply two_v_value. }
+  cbn.
+  (* inner beta: continue the program with the get result *)
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_handler_m 0 _ _ (EC_app2 _ EC_hole)) two_v)).
+    - repeat constructor.
+    - apply H_Beta. apply two_v_value. }
+  cbn.
+  (* perform put(3) *)
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole two_v)).
+    - repeat constructor.
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ (EC_app2 _ (EC_app2 _ EC_hole))).
+      + repeat constructor.
+      + repeat constructor. }
+  cbn.
+  (* reduct-λ applied to the current state 2 *)
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Beta. apply two_v_value. }
+  cbn.
+  (* match put_cmd against get_tag: NO branch *)
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_MatchNo.
+      + repeat constructor.
+      + unfold get_tag, put_tag. congruence. }
+  cbn.
+  (* match put_cmd against put_tag: yes branch (binds the new state 3) *)
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply (H_MatchYes put_tag `Lf [] [T_Nat `Lf] [three_v]). repeat constructor. }
+  cbn.
+  (* k(3) *)
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole three_v)).
+    - repeat constructor.
+    - apply H_Resume. apply three_v_value. }
+  cbn.
+  (* inner beta *)
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_handler_m 0 _ _ (EC_app2 _ EC_hole)) three_v)).
+    - repeat constructor.
+    - apply H_Beta. apply three_v_value. }
+  cbn.
+  (* perform get *)
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole three_v)).
+    - repeat constructor.
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
+      + repeat constructor.
+      + repeat constructor. }
+  cbn.
+  (* reduct-λ applied to the current state 3 *)
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Beta. apply three_v_value. }
+  cbn.
+  (* match get_cmd against get_tag: yes branch *)
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply (H_MatchYes get_tag `Lf [] [T_Nat `Lf] []). constructor. }
+  cbn.
+  (* k(3) *)
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole three_v)).
+    - repeat constructor.
+    - apply H_Resume. apply three_v_value. }
+  cbn.
+  (* inner beta: the body is exhausted, produce the post-handler λ *)
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_handler_m 0 _ _ EC_hole) three_v)).
+    - repeat constructor.
+    - apply H_Beta. apply three_v_value. }
+  cbn.
+  (* the delimiter's body is a value: H_Return drops the delimiter *)
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole three_v)).
+    - repeat constructor.
+    - apply H_Return. constructor. }
+  cbn.
+  (* final application: (λs. 3) 3 *)
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Beta. apply three_v_value. }
+  cbn. apply MS_Refl.
+Qed.

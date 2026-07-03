@@ -638,6 +638,12 @@ Definition red_withFile_example : Prop := withFile_example ==>> unit_v.
 (*   withState(get; put(3); get)(2)  ~~>*  3   (the 2nd get)     *)
 Definition red_withState_example : Prop := withState_example ==>> three_v.
 
+(*   withException<Nat,File>(fun() throw 3)  ~~>*  Error(3)      *)
+(* The abortive handler: the captured continuation (the Ok frame) *)
+(* is discarded — the op clause never resumes.                    *)
+Definition red_exampleException : Prop :=
+  exampleException ==>> error_v (T_Nat `Lf) (T_File `Lf) three_v.
+
 (*   handle { ask() resume(2) } perform ask()  ~~>*  2          *)
 Definition red_readerExample : Prop := readerExample ==>> two_v.
 
