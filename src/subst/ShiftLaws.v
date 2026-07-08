@@ -150,10 +150,9 @@ Section TermListInd.
     P (term_match scrut tag n_lt arity yes_body no_body).
   Hypothesis Hhandle     : forall E n_beta Ts T_B T_R op_body body,
     P op_body -> P body -> P (term_handle E n_beta Ts T_B T_R op_body body).
-  Hypothesis Hperform    : forall t Ss arg, P t -> P arg -> P (term_perform t Ss arg).
+  Hypothesis Hperform    : forall t Ss A arg, P t -> P arg -> P (term_perform t Ss A arg).
   Hypothesis Hcap        : forall E m n_beta Ts T_R op_body, P op_body -> P (term_cap E m n_beta Ts T_R op_body).
   Hypothesis Hhandler_m  : forall m T_B T_R t, P t -> P (term_handler_m m T_B T_R t).
-  Hypothesis Hresume     : forall m T_B T_R b, P b -> P (term_resume m T_B T_R b).
   Hypothesis Hnil        : Q [].
   Hypothesis Hcons       : forall t ts, P t -> Q ts -> Q (t :: ts).
   Fixpoint term_list_ind (t : term) : P t :=
@@ -177,10 +176,9 @@ Section TermListInd.
           (term_list_ind scrut) (term_list_ind yes_body) (term_list_ind no_body)
     | term_handle E n_beta Ts T_B T_R op_body body =>
       Hhandle E n_beta Ts T_B T_R op_body body (term_list_ind op_body) (term_list_ind body)
-    | term_perform t Ss arg => Hperform t Ss arg (term_list_ind t) (term_list_ind arg)
+    | term_perform t Ss A arg => Hperform t Ss A arg (term_list_ind t) (term_list_ind arg)
     | term_cap E m n_beta Ts T_R op_body => Hcap E m n_beta Ts T_R op_body (term_list_ind op_body)
     | term_handler_m m T_B T_R t => Hhandler_m m T_B T_R t (term_list_ind t)
-    | term_resume m T_B T_R b => Hresume m T_B T_R b (term_list_ind b)
     end.
 End TermListInd.
 
@@ -279,10 +277,9 @@ Proof.
     rewrite Hs, Hy, Hn; reflexivity.
   - intros E n_beta Ts T_B T_R op_body body Hop Hb c; simpl;
     rewrite Hop, Hb; reflexivity.
-  - intros t Ss arg Ht Ha c; simpl; rewrite Ht, Ha; reflexivity.
+  - intros t Ss A_ret arg Ht Ha c; simpl; rewrite Ht, Ha; reflexivity.
   - intros E m n_beta Ts T_R op_body Hop c; simpl; rewrite Hop; reflexivity.
   - intros m T_B T_R t H c; simpl; rewrite H; reflexivity.
-  - intros m T_B T_R b H c; simpl; rewrite H; reflexivity.
   - intro c; reflexivity.
   - intros t ts Ht Hts c; simpl; rewrite Ht; f_equal; apply Hts.
 Qed.
@@ -312,16 +309,15 @@ Proof.
     unfold shift_ty_list. rewrite List.map_ext with (g := id).
     + rewrite List.map_id, !shift_ty_zero, Hop, Hb; reflexivity.
     + intro T; apply shift_ty_zero.
-  - intros t Ss arg Ht Ha c; simpl.
+  - intros t Ss A_ret arg Ht Ha c; simpl.
     unfold shift_ty_list. rewrite List.map_ext with (g := id).
-    + rewrite List.map_id, Ht, Ha; reflexivity.
+    + rewrite List.map_id, shift_ty_zero, Ht, Ha; reflexivity.
     + intro T; apply shift_ty_zero.
   - intros E m n_beta Ts T_R op_body Hop c; simpl.
     unfold shift_ty_list. rewrite List.map_ext with (g := id).
     + rewrite List.map_id, shift_ty_zero, Hop; reflexivity.
     + intro T; apply shift_ty_zero.
   - intros m T_B T_R t H c; simpl; rewrite !shift_ty_zero, H; reflexivity.
-  - intros m T_B T_R b H c; simpl; rewrite !shift_ty_zero, H; reflexivity.
   - intro c; reflexivity.
   - intros t ts Ht Hts c; simpl; rewrite Ht; f_equal; apply Hts.
 Qed.
@@ -355,16 +351,15 @@ Proof.
     unfold shift_lt_in_ty_list. rewrite List.map_ext with (g := id).
     + rewrite List.map_id, !shift_lt_in_ty_zero, Hop, Hb; reflexivity.
     + intro T; apply shift_lt_in_ty_zero.
-  - intros t Ss arg Ht Ha c; simpl.
+  - intros t Ss A_ret arg Ht Ha c; simpl.
     unfold shift_lt_in_ty_list. rewrite List.map_ext with (g := id).
-    + rewrite List.map_id, Ht, Ha; reflexivity.
+    + rewrite List.map_id, shift_lt_in_ty_zero, Ht, Ha; reflexivity.
     + intro T; apply shift_lt_in_ty_zero.
   - intros E m n_beta Ts T_R op_body Hop c; simpl.
     unfold shift_lt_in_ty_list. rewrite List.map_ext with (g := id).
     + rewrite List.map_id, shift_lt_in_ty_zero, Hop; reflexivity.
     + intro T; apply shift_lt_in_ty_zero.
   - intros m T_B T_R t H c; simpl; rewrite !shift_lt_in_ty_zero, H; reflexivity.
-  - intros m T_B T_R b H c; simpl; rewrite !shift_lt_in_ty_zero, H; reflexivity.
   - intro c; reflexivity.
   - intros t ts Ht Hts c; simpl; rewrite Ht; f_equal; apply Hts.
 Qed.
@@ -469,10 +464,9 @@ Proof.
   - intros scrut tag n_lt arity yes_body no_body Hs Hy Hn a b c; simpl;
     rewrite Hs, Hy, Hn; reflexivity.
   - intros E n_beta Ts T_B T_R op_body body Hop Hb a b c; simpl; rewrite Hop, Hb; reflexivity.
-  - intros t Ss arg Ht Ha a b c; simpl; rewrite Ht, Ha; reflexivity.
+  - intros t Ss A_ret arg Ht Ha a b c; simpl; rewrite Ht, Ha; reflexivity.
   - intros E m n_beta Ts T_R op_body Hop a b c; simpl; rewrite Hop; reflexivity.
   - intros m T_B T_R t H a b c; simpl; rewrite H; reflexivity.
-  - intros m T_B T_R bdy H a b c; simpl; rewrite H; reflexivity.
   - intros a b c; reflexivity.
   - intros t ts Ht Hts a b c; simpl; rewrite Ht; f_equal; apply Hts.
 Qed.
@@ -508,18 +502,17 @@ Proof.
     rewrite List.map_map.
     rewrite List.map_ext with (g := shift_ty (a + b) c) by (intro T; apply shift_ty_fuse).
     rewrite !shift_ty_fuse, Hop, Hb; reflexivity.
-  - intros t Ss arg Ht Ha a b c; simpl.
+  - intros t Ss A_ret arg Ht Ha a b c; simpl.
     unfold shift_ty_list.
     rewrite List.map_map.
     rewrite List.map_ext with (g := shift_ty (a + b) c) by (intro T; apply shift_ty_fuse).
-    rewrite Ht, Ha; reflexivity.
+    rewrite shift_ty_fuse, Ht, Ha; reflexivity.
   - intros E m n_beta Ts T_R op_body Hop a b c; simpl.
     unfold shift_ty_list.
     rewrite List.map_map.
     rewrite List.map_ext with (g := shift_ty (a + b) c) by (intro T; apply shift_ty_fuse).
     rewrite shift_ty_fuse, Hop; reflexivity.
   - intros m T_B T_R t H a b c; simpl; rewrite !shift_ty_fuse, H; reflexivity.
-  - intros m T_B T_R bdy H a b c; simpl; rewrite !shift_ty_fuse, H; reflexivity.
   - intros a b c; reflexivity.
   - intros t ts Ht Hts a b c; simpl; rewrite Ht; f_equal; apply Hts.
 Qed.
@@ -558,18 +551,17 @@ Proof.
     rewrite List.map_map.
     rewrite List.map_ext with (g := shift_lt_in_ty (a + b) c) by (intro T; apply shift_lt_in_ty_fuse).
     rewrite !shift_lt_in_ty_fuse, Hop, Hb; reflexivity.
-  - intros t Ss arg Ht Ha a b c; simpl.
+  - intros t Ss A_ret arg Ht Ha a b c; simpl.
     unfold shift_lt_in_ty_list.
     rewrite List.map_map.
     rewrite List.map_ext with (g := shift_lt_in_ty (a + b) c) by (intro T; apply shift_lt_in_ty_fuse).
-    rewrite Ht, Ha; reflexivity.
+    rewrite shift_lt_in_ty_fuse, Ht, Ha; reflexivity.
   - intros E m n_beta Ts T_R op_body Hop a b c; simpl.
     unfold shift_lt_in_ty_list.
     rewrite List.map_map.
     rewrite List.map_ext with (g := shift_lt_in_ty (a + b) c) by (intro T; apply shift_lt_in_ty_fuse).
     rewrite shift_lt_in_ty_fuse, Hop; reflexivity.
   - intros m T_B T_R t H a b c; simpl; rewrite !shift_lt_in_ty_fuse, H; reflexivity.
-  - intros m T_B T_R bdy H a b c; simpl; rewrite !shift_lt_in_ty_fuse, H; reflexivity.
   - intros a b c; reflexivity.
   - intros t ts Ht Hts a b c; simpl; rewrite Ht; f_equal; apply Hts.
 Qed.
@@ -609,10 +601,9 @@ Proof.
   - intros scrut tag n_lt arity yes_body no_body Hs Hy Hn a1 c1 a2 c2; simpl;
     rewrite Hs, Hy, Hn; reflexivity.
   - intros E n_beta Ts T_B T_R op_body body Hop Hb a1 c1 a2 c2; simpl; rewrite Hop, Hb; reflexivity.
-  - intros t Ss arg Ht Ha a1 c1 a2 c2; simpl; rewrite Ht, Ha; reflexivity.
+  - intros t Ss A_ret arg Ht Ha a1 c1 a2 c2; simpl; rewrite Ht, Ha; reflexivity.
   - intros E m n_beta Ts T_R op_body Hop a1 c1 a2 c2; simpl; rewrite Hop; reflexivity.
   - intros m T_B T_R t H a1 c1 a2 c2; simpl; rewrite H; reflexivity.
-  - intros m T_B T_R bdy H a1 c1 a2 c2; simpl; rewrite H; reflexivity.
   - intros a1 c1 a2 c2; reflexivity.
   - intros t ts Ht Hts a1 c1 a2 c2; simpl; rewrite Ht; f_equal; apply Hts.
 Qed.
@@ -643,10 +634,9 @@ Proof.
   - intros scrut tag n_lt arity yes_body no_body Hs Hy Hn a1 c1 a2 c2; simpl;
     rewrite Hs, Hy, Hn; reflexivity.
   - intros E n_beta Ts T_B T_R op_body body Hop Hb a1 c1 a2 c2; simpl; rewrite Hop, Hb; reflexivity.
-  - intros t Ss arg Ht Ha a1 c1 a2 c2; simpl; rewrite Ht, Ha; reflexivity.
+  - intros t Ss A_ret arg Ht Ha a1 c1 a2 c2; simpl; rewrite Ht, Ha; reflexivity.
   - intros E m n_beta Ts T_R op_body Hop a1 c1 a2 c2; simpl; rewrite Hop; reflexivity.
   - intros m T_B T_R t H a1 c1 a2 c2; simpl; rewrite H; reflexivity.
-  - intros m T_B T_R bdy H a1 c1 a2 c2; simpl; rewrite H; reflexivity.
   - intros a1 c1 a2 c2; reflexivity.
   - intros t ts Ht Hts a1 c1 a2 c2; simpl; rewrite Ht; f_equal; apply Hts.
 Qed.
@@ -676,107 +666,6 @@ Proof.
   - intros A Ts HA HTs a1 c1 a2 c2; simpl; rewrite HA; f_equal; apply HTs.
 Qed.
 
-Lemma shift_ty_list_shift_lt_in_ty_list_commute : forall a1 c1 a2 c2 Ts,
-  shift_ty_list a1 c1 (shift_lt_in_ty_list a2 c2 Ts) =
-  shift_lt_in_ty_list a2 c2 (shift_ty_list a1 c1 Ts).
-Proof.
-  intros a1 c1 a2 c2 Ts. unfold shift_ty_list, shift_lt_in_ty_list.
-  rewrite List.map_map, List.map_map.
-  apply List.map_ext. intro T. apply shift_ty_shift_lt_in_ty_commute.
-Qed.
-
-Lemma shift_ty_in_tm_shift_lt_in_tm_commute : forall a1 c1 a2 c2 t,
-  shift_ty_in_tm a1 c1 (shift_lt_in_tm a2 c2 t)
-    = shift_lt_in_tm a2 c2 (shift_ty_in_tm a1 c1 t).
-Proof.
-  enough (H : forall t, forall a1 c1 a2 c2,
-    shift_ty_in_tm a1 c1 (shift_lt_in_tm a2 c2 t)
-      = shift_lt_in_tm a2 c2 (shift_ty_in_tm a1 c1 t)).
-  { intros; apply H. }
-  apply (term_list_ind
-    (fun t => forall a1 c1 a2 c2,
-      shift_ty_in_tm a1 c1 (shift_lt_in_tm a2 c2 t)
-        = shift_lt_in_tm a2 c2 (shift_ty_in_tm a1 c1 t))
-    (fun ts => forall a1 c1 a2 c2,
-      List.map (shift_ty_in_tm a1 c1) (List.map (shift_lt_in_tm a2 c2) ts) =
-      List.map (shift_lt_in_tm a2 c2) (List.map (shift_ty_in_tm a1 c1) ts))).
-  - intros n a1 c1 a2 c2; reflexivity.
-  - intros t1 t2 H1 H2 a1 c1 a2 c2; simpl; rewrite H1, H2; reflexivity.
-  - intros body T H a1 c1 a2 c2; simpl; rewrite H, shift_ty_shift_lt_in_ty_commute; reflexivity.
-  - intros t T H a1 c1 a2 c2; simpl; rewrite H, shift_ty_shift_lt_in_ty_commute; reflexivity.
-  - intros bound body H a1 c1 a2 c2; simpl; rewrite H, shift_ty_shift_lt_in_ty_commute; reflexivity.
-  - intros t l H a1 c1 a2 c2; simpl; rewrite H; reflexivity.
-  - intros body H a1 c1 a2 c2; simpl; rewrite H; reflexivity.
-  - intros K l lts Ts ts Hts a1 c1 a2 c2; simpl.
-    rewrite shift_ty_list_shift_lt_in_ty_list_commute.
-    rewrite (shift_lt_in_tm_go_eq_map a2 c2 ts).
-    rewrite shift_ty_in_tm_go_eq_map.
-    rewrite shift_lt_in_tm_go_eq_map.
-    rewrite Hts. reflexivity.
-  - intros scrut tag n_lt arity yes_body no_body Hs Hy Hn a1 c1 a2 c2; simpl;
-      rewrite Hs, Hy, Hn; reflexivity.
-  - intros E n_beta Ts T_B T_R op_body body Hop Hb a1 c1 a2 c2; simpl.
-    rewrite shift_ty_list_shift_lt_in_ty_list_commute.
-    rewrite !shift_ty_shift_lt_in_ty_commute, Hop, Hb. reflexivity.
-  - intros t Ss arg Ht Ha a1 c1 a2 c2; simpl.
-    rewrite shift_ty_list_shift_lt_in_ty_list_commute.
-    rewrite Ht, Ha. reflexivity.
-  - intros E m n_beta Ts T_R op_body Hop a1 c1 a2 c2; simpl.
-    rewrite shift_ty_list_shift_lt_in_ty_list_commute.
-    rewrite shift_ty_shift_lt_in_ty_commute, Hop. reflexivity.
-  - intros m T_B T_R t H a1 c1 a2 c2; simpl; rewrite !shift_ty_shift_lt_in_ty_commute, H; reflexivity.
-  - intros m T_B T_R bdy H a1 c1 a2 c2; simpl; rewrite !shift_ty_shift_lt_in_ty_commute, H; reflexivity.
-  - intros a1 c1 a2 c2; reflexivity.
-  - intros t ts Ht Hts a1 c1 a2 c2; simpl; rewrite Ht; f_equal; apply Hts.
-Qed.
-
-Definition tm_ty_stable (t : term) : Prop :=
-  forall k, shift_ty_in_tm k 0 t = t.
-
-Definition tm_lt_stable (t : term) : Prop :=
-  forall k, shift_lt_in_tm k 0 t = t.
-
-Lemma tm_ty_stable_shift_tm : forall t a,
-  tm_ty_stable t -> tm_ty_stable (shift_tm a 0 t).
-Proof.
-  unfold tm_ty_stable. intros t a Hstable k.
-  rewrite <- shift_tm_shift_ty_in_tm_commute. rewrite Hstable. reflexivity.
-Qed.
-
-Lemma tm_lt_stable_shift_tm : forall t a,
-  tm_lt_stable t -> tm_lt_stable (shift_tm a 0 t).
-Proof.
-  unfold tm_lt_stable. intros t a Hstable k.
-  rewrite <- shift_tm_shift_lt_in_tm_commute. rewrite Hstable. reflexivity.
-Qed.
-
-Lemma tm_ty_stable_shift_ty : forall t a,
-  tm_ty_stable t -> tm_ty_stable (shift_ty_in_tm a 0 t).
-Proof.
-  unfold tm_ty_stable. intros t a Hstable k.
-  rewrite shift_ty_in_tm_fuse. rewrite Hstable, Hstable. reflexivity.
-Qed.
-
-Lemma tm_lt_stable_shift_ty : forall t a,
-  tm_lt_stable t -> tm_lt_stable (shift_ty_in_tm a 0 t).
-Proof.
-  unfold tm_lt_stable. intros t a Hstable k.
-  rewrite <- shift_ty_in_tm_shift_lt_in_tm_commute. rewrite Hstable. reflexivity.
-Qed.
-
-Lemma tm_ty_stable_shift_lt : forall t a,
-  tm_ty_stable t -> tm_ty_stable (shift_lt_in_tm a 0 t).
-Proof.
-  unfold tm_ty_stable. intros t a Hstable k.
-  rewrite shift_ty_in_tm_shift_lt_in_tm_commute. rewrite Hstable. reflexivity.
-Qed.
-
-Lemma tm_lt_stable_shift_lt : forall t a,
-  tm_lt_stable t -> tm_lt_stable (shift_lt_in_tm a 0 t).
-Proof.
-  unfold tm_lt_stable. intros t a Hstable k.
-  rewrite shift_lt_in_tm_fuse. rewrite Hstable, Hstable. reflexivity.
-Qed.
 
 Fixpoint ty_ty_closed (c : nat) (T : type) : Prop :=
   match T with
@@ -830,17 +719,14 @@ Fixpoint tm_ty_closed (c : nat) (t : term) : Prop :=
   | term_handle _ n_beta Ts T_B T_R op_body body =>
       tys_ty_closed c Ts /\ ty_ty_closed c T_B /\ ty_ty_closed c T_R /\
       tm_ty_closed (c + n_beta) op_body /\ tm_ty_closed c body
-  | term_perform t Ss arg => tm_ty_closed c t /\ tys_ty_closed c Ss /\ tm_ty_closed c arg
+  | term_perform t Ss A arg =>
+      tm_ty_closed c t /\ tys_ty_closed c Ss /\ ty_ty_closed c A /\ tm_ty_closed c arg
   | term_cap _ _ n_beta Ts T_R op_body =>
       tys_ty_closed c Ts /\ ty_ty_closed c T_R /\ tm_ty_closed (c + n_beta) op_body
   | term_handler_m _ T_B T_R t =>
       ty_ty_closed c T_B /\ ty_ty_closed c T_R /\ tm_ty_closed c t
-  | term_resume _ T_B T_R b =>
-      ty_ty_closed c T_B /\ ty_ty_closed c T_R /\ tm_ty_closed c b
   end.
 
-Definition tms_ty_closed (c : nat) (ts : list term) : Prop :=
-  fold_right (fun t acc => tm_ty_closed c t /\ acc) True ts.
 
 Fixpoint lts_lt_closed (c : nat) (lts : list lifetime) : Prop :=
   match lts with
@@ -869,17 +755,14 @@ Fixpoint tm_lt_closed (c : nat) (t : term) : Prop :=
   | term_handle _ _ Ts T_B T_R op_body body =>
       tys_lt_closed c Ts /\ ty_lt_closed c T_B /\ ty_lt_closed c T_R /\
       tm_lt_closed c op_body /\ tm_lt_closed c body
-  | term_perform t Ss arg => tm_lt_closed c t /\ tys_lt_closed c Ss /\ tm_lt_closed c arg
+  | term_perform t Ss A arg =>
+      tm_lt_closed c t /\ tys_lt_closed c Ss /\ ty_lt_closed c A /\ tm_lt_closed c arg
   | term_cap _ _ _ Ts T_R op_body =>
       tys_lt_closed c Ts /\ ty_lt_closed c T_R /\ tm_lt_closed c op_body
   | term_handler_m _ T_B T_R t =>
       ty_lt_closed c T_B /\ ty_lt_closed c T_R /\ tm_lt_closed c t
-  | term_resume _ T_B T_R b =>
-      ty_lt_closed c T_B /\ ty_lt_closed c T_R /\ tm_lt_closed c b
   end.
 
-Definition tms_lt_closed (c : nat) (ts : list term) : Prop :=
-  fold_right (fun t acc => tm_lt_closed c t /\ acc) True ts.
 
 Lemma shift_ty_in_ty_closed : forall T c a,
   ty_ty_closed c T -> shift_ty a c T = T.
@@ -962,15 +845,6 @@ Proof.
   - destruct Hclosed as [H1 H2]. split; [eapply IHl1|eapply IHl2]; eauto.
 Qed.
 
-Lemma lts_lt_closed_mono : forall lts c d,
-  c <= d -> lts_lt_closed c lts -> lts_lt_closed d lts.
-Proof.
-  induction lts as [|l lts IH]; intros c d Hle Hclosed; simpl in *.
-  - exact I.
-  - destruct Hclosed as [Hl Hlts]. split.
-    + eapply lt_lt_closed_mono; eauto.
-    + apply IH with (c := c); assumption.
-Qed.
 
 Lemma ty_lt_closed_mono : forall T c d,
   c <= d -> ty_lt_closed c T -> ty_lt_closed d T.
@@ -1001,15 +875,6 @@ Proof.
     + apply IHTs with (c := c); assumption.
 Qed.
 
-Lemma tys_lt_closed_mono : forall Ts c d,
-  c <= d -> tys_lt_closed c Ts -> tys_lt_closed d Ts.
-Proof.
-  induction Ts as [|T Ts IH]; intros c d Hle Hclosed; simpl in *.
-  - exact I.
-  - destruct Hclosed as [HT HTs]. split.
-    + eapply ty_lt_closed_mono; eauto.
-    + apply IH with (c := c); assumption.
-Qed.
 
 Lemma ty_ty_closed_mono : forall T c d,
   c <= d -> ty_ty_closed c T -> ty_ty_closed d T.
@@ -1037,160 +902,6 @@ Proof.
     + apply IHTs with (c := c); assumption.
 Qed.
 
-Lemma tys_ty_closed_mono : forall Ts c d,
-  c <= d -> tys_ty_closed c Ts -> tys_ty_closed d Ts.
-Proof.
-  induction Ts as [|T Ts IH]; intros c d Hle Hclosed; simpl in *.
-  - exact I.
-  - destruct Hclosed as [HT HTs]. split.
-    + eapply ty_ty_closed_mono; eauto.
-    + apply IH with (c := c); assumption.
-Qed.
-
-Lemma tm_ty_closed_mono : forall t c d,
-  c <= d -> tm_ty_closed c t -> tm_ty_closed d t.
-Proof.
-  apply (term_list_ind
-    (fun t => forall c d, c <= d -> tm_ty_closed c t -> tm_ty_closed d t)
-    (fun ts => forall c d, c <= d ->
-       fold_right (fun t acc => tm_ty_closed c t /\ acc) True ts ->
-       fold_right (fun t acc => tm_ty_closed d t /\ acc) True ts)).
-  - intros n c d Hle Hclosed. exact I.
-  - intros t1 t2 IH1 IH2 c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [Ht1 Ht2]. split; [eapply IH1|eapply IH2]; eauto.
-  - intros body T IH c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [Hbody HT]. split.
-    + eapply IH; eauto.
-    + eapply ty_ty_closed_mono; eauto.
-  - intros t T IH c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [Ht HT]. split.
-    + eapply IH; eauto.
-    + eapply ty_ty_closed_mono; eauto.
-  - intros bound body IH c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [Hbound Hbody]. split.
-    + eapply ty_ty_closed_mono; eauto.
-    + apply IH with (c := S c); [lia|exact Hbody].
-  - intros t l IH c d Hle Hclosed. simpl in *.
-    eapply IH; eauto.
-  - intros body IH c d Hle Hclosed. simpl in *.
-    eapply IH; eauto.
-  - intros K l lts Ts ts IHts c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [HTs Hvs]. split.
-    + eapply tys_ty_closed_mono; eauto.
-    + eapply IHts; eauto.
-  - intros scrut tag n_lt arity yes_body no_body IHscrut IHyes IHno c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [Hscrut [Hyes Hno]]. repeat split.
-    + eapply IHscrut; eauto.
-    + eapply IHyes; eauto.
-    + eapply IHno; eauto.
-  - intros E n_beta Ts T_B T_R op_body body IHop IHbody c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [HTs [HTB [HTR [Hop Hbody]]]]. repeat split.
-    + eapply tys_ty_closed_mono; eauto.
-    + eapply ty_ty_closed_mono; eauto.
-    + eapply ty_ty_closed_mono; eauto.
-    + apply IHop with (c := c + n_beta); [lia|exact Hop].
-    + eapply IHbody; eauto.
-  - intros t Ss arg IHt IHarg c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [Ht [HSs Harg]]. repeat split.
-    + eapply IHt; eauto.
-    + eapply tys_ty_closed_mono; eauto.
-    + eapply IHarg; eauto.
-  - intros E m n_beta Ts T_R op_body IHop c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [HTs [HTR Hop]]. repeat split.
-    + eapply tys_ty_closed_mono; eauto.
-    + eapply ty_ty_closed_mono; eauto.
-    + apply IHop with (c := c + n_beta); [lia|exact Hop].
-  - intros m T_B T_R t IH c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [HTB [HTR Ht]]. repeat split.
-    + eapply ty_ty_closed_mono; eauto.
-    + eapply ty_ty_closed_mono; eauto.
-    + eapply IH; eauto.
-  - intros m T_B T_R b IH c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [HTB [HTR Hb]]. repeat split.
-    + eapply ty_ty_closed_mono; eauto.
-    + eapply ty_ty_closed_mono; eauto.
-    + eapply IH; eauto.
-  - intros c d Hle Hclosed. exact I.
-  - intros t ts IHt IHts c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [Ht Hts]. split.
-    + eapply IHt; eauto.
-    + eapply IHts; eauto.
-Qed.
-
-Lemma tm_lt_closed_mono : forall t c d,
-  c <= d -> tm_lt_closed c t -> tm_lt_closed d t.
-Proof.
-  apply (term_list_ind
-    (fun t => forall c d, c <= d -> tm_lt_closed c t -> tm_lt_closed d t)
-    (fun ts => forall c d, c <= d ->
-       fold_right (fun t acc => tm_lt_closed c t /\ acc) True ts ->
-       fold_right (fun t acc => tm_lt_closed d t /\ acc) True ts)).
-  - intros n c d Hle Hclosed. exact I.
-  - intros t1 t2 IH1 IH2 c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [Ht1 Ht2]. split; [eapply IH1|eapply IH2]; eauto.
-  - intros body T IH c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [Hbody HT]. split.
-    + eapply IH; eauto.
-    + eapply ty_lt_closed_mono; eauto.
-  - intros t T IH c d Hle Hclosed. simpl in *.
-
-    destruct Hclosed as [Ht HT]. split.
-    + eapply IH; eauto.
-    + eapply ty_lt_closed_mono; eauto.
-  - intros bound body IH c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [Hbound Hbody]. split.
-    + eapply ty_lt_closed_mono; eauto.
-    + eapply IH; eauto.
-  - intros t l IH c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [Ht Hl]. split.
-    + eapply IH; eauto.
-    + eapply lt_lt_closed_mono; eauto.
-  - intros body IH c d Hle Hclosed. simpl in *.
-    apply IH with (c := S c); [lia|exact Hclosed].
-  - intros K l lts Ts ts IHts c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [Hl [Hlts [HTs Hvs]]]. repeat split.
-    + eapply lt_lt_closed_mono; eauto.
-    + eapply lts_lt_closed_mono; eauto.
-    + eapply tys_lt_closed_mono; eauto.
-    + eapply IHts; eauto.
-  - intros scrut tag n_lt arity yes_body no_body IHscrut IHyes IHno c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [Hscrut [Hyes Hno]]. repeat split.
-    + eapply IHscrut; eauto.
-    + apply IHyes with (c := c + n_lt); [lia|exact Hyes].
-    + eapply IHno; eauto.
-  - intros E n_beta Ts T_B T_R op_body body IHop IHbody c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [HTs [HTB [HTR [Hop Hbody]]]]. repeat split.
-    + eapply tys_lt_closed_mono; eauto.
-    + eapply ty_lt_closed_mono; eauto.
-    + eapply ty_lt_closed_mono; eauto.
-    + eapply IHop; eauto.
-    + eapply IHbody; eauto.
-  - intros t Ss arg IHt IHarg c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [Ht [HSs Harg]]. repeat split.
-    + eapply IHt; eauto.
-    + eapply tys_lt_closed_mono; eauto.
-    + eapply IHarg; eauto.
-  - intros E m n_beta Ts T_R op_body IHop c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [HTs [HTR Hop]]. repeat split.
-    + eapply tys_lt_closed_mono; eauto.
-    + eapply ty_lt_closed_mono; eauto.
-    + eapply IHop; eauto.
-  - intros m T_B T_R t IH c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [HTB [HTR Ht]]. repeat split.
-    + eapply ty_lt_closed_mono; eauto.
-    + eapply ty_lt_closed_mono; eauto.
-    + eapply IH; eauto.
-  - intros m T_B T_R b IH c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [HTB [HTR Hb]]. repeat split.
-    + eapply ty_lt_closed_mono; eauto.
-    + eapply ty_lt_closed_mono; eauto.
-    + eapply IH; eauto.
-  - intros c d Hle Hclosed. exact I.
-  - intros t ts IHt IHts c d Hle Hclosed. simpl in *.
-    destruct Hclosed as [Ht Hts]. split.
-    + eapply IHt; eauto.
-    + eapply IHts; eauto.
-Qed.
 
 Lemma tm_ty_closed_shift_tm : forall t c amount cutoff,
   tm_ty_closed c t -> tm_ty_closed c (shift_tm amount cutoff t).
@@ -1225,8 +936,8 @@ Proof.
     destruct Hclosed as [HTs [HTB [HTR [Hop Hbody]]]]. repeat split; try assumption.
     + apply IHop. exact Hop.
     + apply IHbody. exact Hbody.
-  - intros t Ss arg IHt IHarg c amount cutoff Hclosed. simpl in *.
-    destruct Hclosed as [Ht [HSs Harg]]. repeat split; try assumption.
+  - intros t Ss A_ret arg IHt IHarg c amount cutoff Hclosed. simpl in *.
+    destruct Hclosed as [Ht [HSs [HA Harg]]]. repeat split; try assumption.
     + apply IHt. exact Ht.
     + apply IHarg. exact Harg.
   - intros E m n_beta Ts T_R op_body IHop c amount cutoff Hclosed. simpl in *.
@@ -1235,9 +946,6 @@ Proof.
   - intros m T_B T_R t IH c amount cutoff Hclosed. simpl in *.
     destruct Hclosed as [HTB [HTR Ht]]. repeat split; try assumption.
     apply IH. exact Ht.
-  - intros m T_B T_R b IH c amount cutoff Hclosed. simpl in *.
-    destruct Hclosed as [HTB [HTR Hb]]. repeat split; try assumption.
-    apply IH. exact Hb.
   - intros c amount cutoff Hclosed. exact I.
   - intros t ts IHt IHts c amount cutoff Hclosed. simpl in *.
     destruct Hclosed as [Ht Hts]. split.
@@ -1279,8 +987,8 @@ Proof.
     destruct Hclosed as [HTs [HTB [HTR [Hop Hbody]]]]. repeat split; try assumption.
     + apply IHop. exact Hop.
     + apply IHbody. exact Hbody.
-  - intros t Ss arg IHt IHarg c amount cutoff Hclosed. simpl in *.
-    destruct Hclosed as [Ht [HSs Harg]]. repeat split; try assumption.
+  - intros t Ss A_ret arg IHt IHarg c amount cutoff Hclosed. simpl in *.
+    destruct Hclosed as [Ht [HSs [HA Harg]]]. repeat split; try assumption.
     + apply IHt. exact Ht.
     + apply IHarg. exact Harg.
   - intros E m n_beta Ts T_R op_body IHop c amount cutoff Hclosed. simpl in *.
@@ -1289,9 +997,6 @@ Proof.
   - intros m T_B T_R t IH c amount cutoff Hclosed. simpl in *.
     destruct Hclosed as [HTB [HTR Ht]]. repeat split; try assumption.
     apply IH. exact Ht.
-  - intros m T_B T_R b IH c amount cutoff Hclosed. simpl in *.
-    destruct Hclosed as [HTB [HTR Hb]]. repeat split; try assumption.
-    apply IH. exact Hb.
   - intros c amount cutoff Hclosed. exact I.
   - intros t ts IHt IHts c amount cutoff Hclosed. simpl in *.
     destruct Hclosed as [Ht Hts]. split.
@@ -1334,40 +1039,6 @@ Proof.
     + apply IH. exact HTs.
 Qed.
 
-Lemma ty_lt_closed_shift_ty_inv : forall T c_lt a c_ty,
-  ty_lt_closed c_lt (shift_ty a c_ty T) -> ty_lt_closed c_lt T.
-Proof.
-  apply (type_list_ind
-    (fun T => forall c_lt a c_ty,
-       ty_lt_closed c_lt (shift_ty a c_ty T) -> ty_lt_closed c_lt T)
-    (fun Ts => forall c_lt a c_ty,
-       tys_lt_closed c_lt (List.map (shift_ty a c_ty) Ts) -> tys_lt_closed c_lt Ts));
-    simpl; intros; try exact I.
-  - destruct H1 as [HA [Hl HB]]. repeat split.
-    + apply (H c_lt a c_ty). exact HA.
-    + exact Hl.
-    + apply (H0 c_lt a c_ty). exact HB.
-  - rewrite shift_ty_go_eq_map in H0. destruct H0 as [Hl HTs]. split.
-    + exact Hl.
-    + apply (H c_lt a c_ty). exact HTs.
-  - apply (H (S c_lt) a c_ty). exact H0.
-  - destruct H1 as [HB HA]. split.
-    + apply (H c_lt a c_ty). exact HB.
-    + apply (H0 c_lt a (S c_ty)). exact HA.
-  - destruct H1 as [HA HTs]. split.
-    + apply (H c_lt a c_ty). exact HA.
-    + apply (H0 c_lt a c_ty). exact HTs.
-Qed.
-
-Lemma tys_lt_closed_shift_ty_inv : forall Ts c_lt a c_ty,
-  tys_lt_closed c_lt (List.map (shift_ty a c_ty) Ts) -> tys_lt_closed c_lt Ts.
-Proof.
-  induction Ts as [|T Ts IH]; intros c_lt a c_ty Hclosed; simpl in *.
-  - exact I.
-  - destruct Hclosed as [HT HTs]. split.
-    + apply ty_lt_closed_shift_ty_inv with (a := a) (c_ty := c_ty). exact HT.
-    + apply (IH c_lt a c_ty). exact HTs.
-Qed.
 
 Lemma lt_lt_closed_shift_lt_below : forall l cutoff c a,
   cutoff <= c -> lt_lt_closed c l -> lt_lt_closed (a + c) (shift_lt a cutoff l).
@@ -1425,217 +1096,6 @@ Proof.
     + eapply IH; eauto.
 Qed.
 
-Lemma lts_lt_closed_shift_lt_below : forall lts cutoff c a,
-  cutoff <= c -> lts_lt_closed c lts ->
-  lts_lt_closed (a + c) (List.map (shift_lt a cutoff) lts).
-Proof.
-  induction lts as [|l lts IH]; intros cutoff c a Hle Hclosed; simpl in *.
-  - exact I.
-  - destruct Hclosed as [Hl Hlts]. split.
-    + eapply lt_lt_closed_shift_lt_below; eauto.
-    + eapply IH; eauto.
-Qed.
-
-Lemma tm_lt_closed_shift_lt_below : forall t cutoff c a,
-  cutoff <= c -> tm_lt_closed c t -> tm_lt_closed (a + c) (shift_lt_in_tm a cutoff t).
-Proof.
-  apply (term_list_ind
-    (fun t => forall cutoff c a,
-      cutoff <= c -> tm_lt_closed c t -> tm_lt_closed (a + c) (shift_lt_in_tm a cutoff t))
-    (fun ts => forall cutoff c a,
-      cutoff <= c ->
-      fold_right (fun t acc => tm_lt_closed c t /\ acc) True ts ->
-      fold_right (fun t acc => tm_lt_closed (a + c) t /\ acc) True
-        (List.map (shift_lt_in_tm a cutoff) ts))).
-  - intros n cutoff c a Hle Hclosed. exact I.
-  - intros t1 t2 IH1 IH2 cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [Ht1 Ht2]. split.
-    + eapply IH1; eauto.
-    + eapply IH2; eauto.
-  - intros body T IH cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [Hbody HT]. split.
-    + eapply IH; eauto.
-    + eapply ty_lt_closed_shift_lt_below; eauto.
-  - intros t T IH cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [Ht HT]. split.
-    + eapply IH; eauto.
-    + eapply ty_lt_closed_shift_lt_below; eauto.
-  - intros bound body IH cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [Hbound Hbody]. split.
-    + eapply ty_lt_closed_shift_lt_below; eauto.
-    + eapply IH; eauto.
-  - intros t l IH cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [Ht Hl]. split.
-    + eapply IH; eauto.
-    + eapply lt_lt_closed_shift_lt_below; eauto.
-  - intros body IH cutoff c a Hle Hclosed. simpl in *.
-    replace (S (a + c)) with (a + S c) by lia.
-    eapply IH; [lia|exact Hclosed].
-  - intros K l lts Ts ts IHts cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [Hl [Hlts [HTs Hts]]]. repeat split.
-    + eapply lt_lt_closed_shift_lt_below; eauto.
-    + eapply lts_lt_closed_shift_lt_below; eauto.
-    + eapply tys_lt_closed_shift_lt_below; eauto.
-    + rewrite shift_lt_in_tm_go_eq_map. eapply IHts; eauto.
-  - intros scrut tag n_lt arity yes_body no_body IHs IHy IHn cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [Hs [Hy Hn]]. repeat split.
-    + eapply IHs; eauto.
-    + replace (a + c + n_lt) with (a + (c + n_lt)) by lia.
-      apply (IHy (cutoff + n_lt) (c + n_lt) a); [lia|exact Hy].
-    + eapply IHn; eauto.
-  - intros E n_beta Ts T_B T_R op_body body IHop IHbody cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [HTs [HTB [HTR [Hop Hbody]]]]. repeat split.
-    + eapply tys_lt_closed_shift_lt_below; eauto.
-    + eapply ty_lt_closed_shift_lt_below; eauto.
-    + eapply ty_lt_closed_shift_lt_below; eauto.
-    + eapply IHop; eauto.
-    + eapply IHbody; eauto.
-  - intros t Ss arg IHt IHarg cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [Ht [HSs Harg]]. repeat split.
-    + eapply IHt; eauto.
-    + eapply tys_lt_closed_shift_lt_below; eauto.
-    + eapply IHarg; eauto.
-  - intros E m n_beta Ts T_R op_body IHop cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [HTs [HTR Hop]]. repeat split.
-    + eapply tys_lt_closed_shift_lt_below; eauto.
-    + eapply ty_lt_closed_shift_lt_below; eauto.
-    + eapply IHop; eauto.
-  - intros m T_B T_R t IH cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [HTB [HTR Ht]]. repeat split.
-    + eapply ty_lt_closed_shift_lt_below; eauto.
-    + eapply ty_lt_closed_shift_lt_below; eauto.
-    + eapply IH; eauto.
-  - intros m T_B T_R b IH cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [HTB [HTR Hb]]. repeat split.
-    + eapply ty_lt_closed_shift_lt_below; eauto.
-    + eapply ty_lt_closed_shift_lt_below; eauto.
-    + eapply IH; eauto.
-  - intros cutoff c a Hle Hclosed. exact I.
-  - intros t ts IHt IHts cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [Ht Hts]. split.
-    + eapply IHt; eauto.
-    + eapply IHts; eauto.
-Qed.
-
-Lemma ty_ty_closed_shift_ty_below : forall T cutoff c a,
-  cutoff <= c -> ty_ty_closed c T -> ty_ty_closed (a + c) (shift_ty a cutoff T).
-Proof.
-  apply (type_list_ind
-    (fun T => forall cutoff c a,
-      cutoff <= c -> ty_ty_closed c T -> ty_ty_closed (a + c) (shift_ty a cutoff T))
-    (fun Ts => forall cutoff c a,
-      cutoff <= c -> tys_ty_closed c Ts -> tys_ty_closed (a + c) (List.map (shift_ty a cutoff) Ts))).
-  - intros n cutoff c a Hle Hclosed. simpl in *.
-    destruct (Nat.leb cutoff n) eqn:Hcut.
-    + apply Nat.leb_le in Hcut. lia.
-    + apply Nat.leb_gt in Hcut. lia.
-  - intros A l B IHA IHB cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [HA HB]. split.
-    + apply IHA; assumption.
-    + apply IHB; assumption.
-  - intros K l Ts IHTs cutoff c a Hle Hclosed. simpl in *.
-    apply IHTs; assumption.
-  - intros A IHA cutoff c a Hle Hclosed. simpl in *.
-    apply IHA; assumption.
-  - intros B A IHB IHA cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [HB HA]. split.
-    + apply IHB; assumption.
-    + replace (S (a + c)) with (a + S c) by lia.
-      apply IHA; [lia|exact HA].
-  - intros cutoff c a Hle Hclosed. exact I.
-  - intros A Ts IHA IHTs cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [HA HTs]. split.
-    + apply IHA; assumption.
-    + apply IHTs; assumption.
-Qed.
-
-Lemma tys_ty_closed_shift_ty_below : forall Ts cutoff c a,
-  cutoff <= c -> tys_ty_closed c Ts -> tys_ty_closed (a + c) (List.map (shift_ty a cutoff) Ts).
-Proof.
-  induction Ts as [|T Ts IH]; intros cutoff c a Hle Hclosed; simpl in *.
-  - exact I.
-  - destruct Hclosed as [HT HTs]. split.
-    + eapply ty_ty_closed_shift_ty_below; eauto.
-    + eapply IH; eauto.
-Qed.
-
-Lemma tm_ty_closed_shift_ty_below : forall t cutoff c a,
-  cutoff <= c -> tm_ty_closed c t -> tm_ty_closed (a + c) (shift_ty_in_tm a cutoff t).
-Proof.
-  apply (term_list_ind
-    (fun t => forall cutoff c a,
-      cutoff <= c -> tm_ty_closed c t -> tm_ty_closed (a + c) (shift_ty_in_tm a cutoff t))
-    (fun ts => forall cutoff c a,
-      cutoff <= c ->
-      fold_right (fun t acc => tm_ty_closed c t /\ acc) True ts ->
-      fold_right (fun t acc => tm_ty_closed (a + c) t /\ acc) True
-        (List.map (shift_ty_in_tm a cutoff) ts))).
-  - intros n cutoff c a Hle Hclosed. exact I.
-  - intros t1 t2 IH1 IH2 cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [Ht1 Ht2]. split.
-    + eapply IH1; eauto.
-    + eapply IH2; eauto.
-  - intros body T IH cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [Hbody HT]. split.
-    + eapply IH; eauto.
-    + eapply ty_ty_closed_shift_ty_below; eauto.
-  - intros t T IH cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [Ht HT]. split.
-    + eapply IH; eauto.
-    + eapply ty_ty_closed_shift_ty_below; eauto.
-  - intros bound body IH cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [Hbound Hbody]. split.
-    + eapply ty_ty_closed_shift_ty_below; eauto.
-    + replace (S (a + c)) with (a + S c) by lia.
-      apply IH; [lia|exact Hbody].
-  - intros t l IH cutoff c a Hle Hclosed. simpl in *.
-    eapply IH; eauto.
-  - intros body IH cutoff c a Hle Hclosed. simpl in *.
-    eapply IH; eauto.
-  - intros K l lts Ts ts IHts cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [HTs Hts]. split.
-    + eapply tys_ty_closed_shift_ty_below; eauto.
-    + rewrite shift_ty_in_tm_go_eq_map. eapply IHts; eauto.
-  - intros scrut tag n_lt arity yes_body no_body IHs IHy IHn cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [Hs [Hy Hn]]. repeat split.
-    + eapply IHs; eauto.
-    + eapply IHy; eauto.
-    + eapply IHn; eauto.
-  - intros E n_beta Ts T_B T_R op_body body IHop IHbody cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [HTs [HTB [HTR [Hop Hbody]]]]. repeat split.
-    + eapply tys_ty_closed_shift_ty_below; eauto.
-    + eapply ty_ty_closed_shift_ty_below; eauto.
-    + eapply ty_ty_closed_shift_ty_below; eauto.
-    + replace (a + c + n_beta) with (a + (c + n_beta)) by lia.
-      apply (IHop (cutoff + n_beta) (c + n_beta) a); [lia|exact Hop].
-    + eapply IHbody; eauto.
-  - intros t Ss arg IHt IHarg cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [Ht [HSs Harg]]. repeat split.
-    + eapply IHt; eauto.
-    + eapply tys_ty_closed_shift_ty_below; eauto.
-    + eapply IHarg; eauto.
-  - intros E m n_beta Ts T_R op_body IHop cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [HTs [HTR Hop]]. repeat split.
-    + eapply tys_ty_closed_shift_ty_below; eauto.
-    + eapply ty_ty_closed_shift_ty_below; eauto.
-    + replace (a + c + n_beta) with (a + (c + n_beta)) by lia.
-      apply (IHop (cutoff + n_beta) (c + n_beta) a); [lia|exact Hop].
-  - intros m T_B T_R t IH cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [HTB [HTR Ht]]. repeat split.
-    + eapply ty_ty_closed_shift_ty_below; eauto.
-    + eapply ty_ty_closed_shift_ty_below; eauto.
-    + eapply IH; eauto.
-  - intros m T_B T_R b IH cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [HTB [HTR Hb]]. repeat split.
-    + eapply ty_ty_closed_shift_ty_below; eauto.
-    + eapply ty_ty_closed_shift_ty_below; eauto.
-    + eapply IH; eauto.
-  - intros cutoff c a Hle Hclosed. exact I.
-  - intros t ts IHt IHts cutoff c a Hle Hclosed. simpl in *.
-    destruct Hclosed as [Ht Hts]. split.
-    + eapply IHt; eauto.
-    + eapply IHts; eauto.
-Qed.
 
 Lemma ty_ty_closed_shift_lt : forall T c amount cutoff,
   ty_ty_closed c T -> ty_ty_closed c (shift_lt_in_ty amount cutoff T).
@@ -1714,10 +1174,11 @@ Proof.
     + apply ty_ty_closed_shift_lt. exact HTR.
     + apply IHop. exact Hop.
     + apply IHbody. exact Hbody.
-  - intros t Ss arg IHt IHarg c amount cutoff Hclosed. simpl in *.
-    destruct Hclosed as [Ht [HSs Harg]]. repeat split.
+  - intros t Ss A_ret arg IHt IHarg c amount cutoff Hclosed. simpl in *.
+    destruct Hclosed as [Ht [HSs [HA Harg]]]. repeat split.
     + apply IHt. exact Ht.
     + apply tys_ty_closed_shift_lt. exact HSs.
+    + apply ty_ty_closed_shift_lt. exact HA.
     + apply IHarg. exact Harg.
   - intros E m n_beta Ts T_R op_body IHop c amount cutoff Hclosed. simpl in *.
     destruct Hclosed as [HTs [HTR Hop]]. repeat split.
@@ -1729,11 +1190,6 @@ Proof.
     + apply ty_ty_closed_shift_lt. exact HTB.
     + apply ty_ty_closed_shift_lt. exact HTR.
     + apply IH. exact Ht.
-  - intros m T_B T_R b IH c amount cutoff Hclosed. simpl in *.
-    destruct Hclosed as [HTB [HTR Hb]]. repeat split.
-    + apply ty_ty_closed_shift_lt. exact HTB.
-    + apply ty_ty_closed_shift_lt. exact HTR.
-    + apply IH. exact Hb.
   - intros c amount cutoff Hclosed. exact I.
   - intros t ts IHt IHts c amount cutoff Hclosed. simpl in *.
     destruct Hclosed as [Ht Hts]. split.
@@ -1785,10 +1241,11 @@ Proof.
     + apply ty_lt_closed_shift_ty. exact HTR.
     + apply IHop. exact Hop.
     + apply IHbody. exact Hbody.
-  - intros t Ss arg IHt IHarg c amount cutoff Hclosed. simpl in *.
-    destruct Hclosed as [Ht [HSs Harg]]. repeat split.
+  - intros t Ss A_ret arg IHt IHarg c amount cutoff Hclosed. simpl in *.
+    destruct Hclosed as [Ht [HSs [HA Harg]]]. repeat split.
     + apply IHt. exact Ht.
     + apply tys_lt_closed_shift_ty. exact HSs.
+    + apply ty_lt_closed_shift_ty. exact HA.
     + apply IHarg. exact Harg.
   - intros E m n_beta Ts T_R op_body IHop c amount cutoff Hclosed. simpl in *.
     destruct Hclosed as [HTs [HTR Hop]]. repeat split.
@@ -1800,11 +1257,6 @@ Proof.
     + apply ty_lt_closed_shift_ty. exact HTB.
     + apply ty_lt_closed_shift_ty. exact HTR.
     + apply IH. exact Ht.
-  - intros m T_B T_R b IH c amount cutoff Hclosed. simpl in *.
-    destruct Hclosed as [HTB [HTR Hb]]. repeat split.
-    + apply ty_lt_closed_shift_ty. exact HTB.
-    + apply ty_lt_closed_shift_ty. exact HTR.
-    + apply IH. exact Hb.
   - intros c amount cutoff Hclosed. exact I.
   - intros t ts IHt IHts c amount cutoff Hclosed. simpl in *.
     destruct Hclosed as [Ht Hts]. split.
@@ -1812,57 +1264,6 @@ Proof.
     + apply IHts. exact Hts.
 Qed.
 
-Lemma shift_lt_ctor_sig_closed : forall n_lt n_ty fields result c,
-  tys_lt_closed n_lt fields ->
-  ty_lt_closed n_lt result ->
-  shift_lt_ctor_sig 1 c (n_lt, n_ty, fields, result) = (n_lt, n_ty, fields, result).
-Proof.
-  intros n_lt n_ty fields result c Hfields Hresult.
-  unfold shift_lt_ctor_sig. simpl. repeat f_equal.
-  - change (List.map (shift_lt_in_ty 1 (n_lt + c)) fields)
-      with (shift_lt_in_ty_list 1 (n_lt + c) fields).
-    apply shift_lt_in_ty_list_closed.
-    eapply tys_lt_closed_mono; [|exact Hfields]. lia.
-  - apply shift_lt_in_type_closed.
-    eapply ty_lt_closed_mono; [|exact Hresult]. lia.
-Qed.
-
-Lemma shift_lt_ctor_sig_closed_from : forall n_lt n_ty fields result c,
-  tys_lt_closed (n_lt + c) fields ->
-  ty_lt_closed (n_lt + c) result ->
-  shift_lt_ctor_sig 1 c (n_lt, n_ty, fields, result) = (n_lt, n_ty, fields, result).
-Proof.
-  intros n_lt n_ty fields result c Hfields Hresult.
-  unfold shift_lt_ctor_sig. simpl. repeat f_equal.
-  - change (List.map (shift_lt_in_ty 1 (n_lt + c)) fields)
-      with (shift_lt_in_ty_list 1 (n_lt + c) fields).
-    apply shift_lt_in_ty_list_closed. exact Hfields.
-  - apply shift_lt_in_type_closed. exact Hresult.
-Qed.
-
-Lemma shift_lt_eff_sig_closed : forall n_α n_β sig ret c,
-  ty_lt_closed 0 sig ->
-  ty_lt_closed 0 ret ->
-  shift_lt_eff_sig 1 c (n_α, n_β, sig, ret) = (n_α, n_β, sig, ret).
-Proof.
-  intros n_α n_β sig ret c Hsig Hret.
-  unfold shift_lt_eff_sig. simpl. repeat f_equal.
-  - apply shift_lt_in_type_closed.
-    eapply ty_lt_closed_mono; [|exact Hsig]. lia.
-  - apply shift_lt_in_type_closed.
-    eapply ty_lt_closed_mono; [|exact Hret]. lia.
-Qed.
-
-Lemma shift_lt_eff_sig_closed_from : forall n_α n_β sig ret c,
-  ty_lt_closed c sig ->
-  ty_lt_closed c ret ->
-  shift_lt_eff_sig 1 c (n_α, n_β, sig, ret) = (n_α, n_β, sig, ret).
-Proof.
-  intros n_α n_β sig ret c Hsig Hret.
-  unfold shift_lt_eff_sig. simpl. repeat f_equal.
-  - apply shift_lt_in_type_closed. exact Hsig.
-  - apply shift_lt_in_type_closed. exact Hret.
-Qed.
 
 Lemma shift_lt_list_closed : forall lts c a,
   lts_lt_closed c lts -> List.map (shift_lt a c) lts = lts.
@@ -1891,22 +1292,17 @@ Proof.
   - destruct H1 as [HTs [HTB [HTR [Hop Hb]]]]. rewrite shift_ty_list_closed by exact HTs.
     rewrite shift_ty_in_ty_closed by exact HTB. rewrite shift_ty_in_ty_closed by exact HTR.
     rewrite H by exact Hop. rewrite H0 by exact Hb. reflexivity.
-  - destruct H1 as [Ht [HSs Ha]]. rewrite H by exact Ht. rewrite shift_ty_list_closed by exact HSs.
+  - destruct H1 as [Ht [HSs [HA Ha]]]. rewrite H by exact Ht.
+    rewrite shift_ty_list_closed by exact HSs.
+    rewrite shift_ty_in_ty_closed by exact HA.
     rewrite H0 by exact Ha. reflexivity.
   - destruct H0 as [HTs [HTR Hop]]. rewrite shift_ty_list_closed by exact HTs.
     rewrite shift_ty_in_ty_closed by exact HTR. rewrite H by exact Hop. reflexivity.
   - destruct H0 as [HTB [HTR Ht]]. rewrite shift_ty_in_ty_closed by exact HTB.
     rewrite shift_ty_in_ty_closed by exact HTR. rewrite H by exact Ht. reflexivity.
-  - destruct H0 as [HTB [HTR Hb]]. rewrite shift_ty_in_ty_closed by exact HTB.
-    rewrite shift_ty_in_ty_closed by exact HTR. rewrite H by exact Hb. reflexivity.
   - destruct H1 as [Ht Hts]. rewrite H by exact Ht. rewrite H0 by exact Hts. reflexivity.
 Qed.
 
-Lemma tm_ty_closed_stable : forall t,
-  tm_ty_closed 0 t -> tm_ty_stable t.
-Proof.
-  unfold tm_ty_stable. intros t Hclosed k. apply shift_ty_in_tm_closed. exact Hclosed.
-Qed.
 
 Lemma tm_ty_closed_shift_ty_closed0 : forall t amount,
   tm_ty_closed 0 t -> tm_ty_closed 0 (shift_ty_in_tm amount 0 t).
@@ -1915,12 +1311,6 @@ Proof.
   rewrite shift_ty_in_tm_closed by exact Hclosed. exact Hclosed.
 Qed.
 
-Lemma ty_ty_closed_shift_ty_closed0 : forall T amount,
-  ty_ty_closed 0 T -> ty_ty_closed 0 (shift_ty amount 0 T).
-Proof.
-  intros T amount Hclosed.
-  rewrite shift_ty_in_ty_closed by exact Hclosed. exact Hclosed.
-Qed.
 
 Lemma shift_lt_in_tm_closed : forall t c a,
   tm_lt_closed c t -> shift_lt_in_tm a c t = t.
@@ -1943,35 +1333,23 @@ Proof.
   - destruct H1 as [HTs [HTB [HTR [Hop Hb]]]]. rewrite shift_lt_in_ty_list_closed by exact HTs.
     rewrite shift_lt_in_type_closed by exact HTB. rewrite shift_lt_in_type_closed by exact HTR.
     rewrite H by exact Hop. rewrite H0 by exact Hb. reflexivity.
-  - destruct H1 as [Ht [HSs Ha]]. rewrite H by exact Ht. rewrite shift_lt_in_ty_list_closed by exact HSs.
+  - destruct H1 as [Ht [HSs [HA Ha]]]. rewrite H by exact Ht.
+    rewrite shift_lt_in_ty_list_closed by exact HSs.
+    rewrite shift_lt_in_type_closed by exact HA.
     rewrite H0 by exact Ha. reflexivity.
   - destruct H0 as [HTs [HTR Hop]]. rewrite shift_lt_in_ty_list_closed by exact HTs.
     rewrite shift_lt_in_type_closed by exact HTR. rewrite H by exact Hop. reflexivity.
   - destruct H0 as [HTB [HTR Ht]]. rewrite shift_lt_in_type_closed by exact HTB.
     rewrite shift_lt_in_type_closed by exact HTR. rewrite H by exact Ht. reflexivity.
-  - destruct H0 as [HTB [HTR Hb]]. rewrite shift_lt_in_type_closed by exact HTB.
-    rewrite shift_lt_in_type_closed by exact HTR. rewrite H by exact Hb. reflexivity.
   - destruct H1 as [Ht Hts]. rewrite H by exact Ht. rewrite H0 by exact Hts. reflexivity.
 Qed.
 
-Lemma tm_lt_closed_stable : forall t,
-  tm_lt_closed 0 t -> tm_lt_stable t.
-Proof.
-  unfold tm_lt_stable. intros t Hclosed k. apply shift_lt_in_tm_closed. exact Hclosed.
-Qed.
 
 Lemma tm_lt_closed_shift_lt_closed0 : forall t amount,
   tm_lt_closed 0 t -> tm_lt_closed 0 (shift_lt_in_tm amount 0 t).
 Proof.
   intros t amount Hclosed.
   rewrite shift_lt_in_tm_closed by exact Hclosed. exact Hclosed.
-Qed.
-
-Lemma ty_lt_closed_shift_lt_closed0 : forall T amount,
-  ty_lt_closed 0 T -> ty_lt_closed 0 (shift_lt_in_ty amount 0 T).
-Proof.
-  intros T amount Hclosed.
-  rewrite shift_lt_in_type_closed by exact Hclosed. exact Hclosed.
 Qed.
 
 
@@ -1983,33 +1361,9 @@ Qed.
 (* lookup laws used in the match-yes preservation argument.           *)
 (* ================================================================== *)
 
-(* Empty-list neutrality (sanity). *)
-Lemma subst_list_tm_nil : forall t, subst_list_tm [] t = t.
-Proof. reflexivity. Qed.
-
-Lemma subst_list_lt_in_tm_nil : forall t, subst_list_lt_in_tm [] t = t.
-Proof. reflexivity. Qed.
-
-Lemma subst_list_ty_in_tm_nil : forall t, subst_list_ty_in_tm [] t = t.
-Proof. reflexivity. Qed.
 
 Lemma subst_list_lt_in_ty_nil : forall T, subst_list_lt_in_ty [] T = T.
 Proof. reflexivity. Qed.
-
-Lemma subst_list_ty_nil : forall T, subst_list_ty [] T = T.
-Proof. reflexivity. Qed.
-
-(* On a free variable above the substituted segment, list-subst       *)
-(* decrements the index by the list length.                           *)
-Lemma subst_list_tm_var_above : forall vs i,
-  subst_list_tm vs (term_var (i + List.length vs)) = term_var i.
-Proof.
-  induction vs as [| v rest IH]; intro i.
-  - simpl. rewrite Nat.add_0_r. reflexivity.
-  - simpl. rewrite Nat.add_succ_r.
-    simpl subst_tm.
-    apply IH.
-Qed.
 
 
 (* ================================================================== *)
@@ -2078,9 +1432,6 @@ Fixpoint iter_subst_lt_in_ty (ws : list lifetime) (T : type) : type :=
   | w :: rest => iter_subst_lt_in_ty rest (subst_lt_in_ty 0 w T)
   end.
 
-(* Apply `subst_list_lt_in_ty lts` pointwise to a list of types.       *)
-Definition subst_list_lt_in_ty_each (lts : list lifetime) (rhos : list type) : list type :=
-  List.map (subst_list_lt_in_ty lts) rhos.
 
 (* Bridge: parallel lt-substitution `subst_list_lt_in_ty` is exactly    *)
 (* the iterated single-var substitution `iter_subst_lt_in_ty` applied   *)
@@ -2094,12 +1445,6 @@ Fixpoint shift_each_lt (lts : list lifetime) : list lifetime :=
   | l :: rest => shift_lt (List.length rest) 0 l :: shift_each_lt rest
   end.
 
-Lemma shift_each_lt_length : forall lts,
-  List.length (shift_each_lt lts) = List.length lts.
-Proof.
-  induction lts as [|l rest IH]; simpl; [reflexivity|].
-  rewrite IH. reflexivity.
-Qed.
 
 Lemma subst_list_lt_in_ty_eq_iter : forall lts T,
   subst_list_lt_in_ty lts T = iter_subst_lt_in_ty (shift_each_lt lts) T.

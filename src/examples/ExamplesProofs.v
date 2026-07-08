@@ -823,16 +823,16 @@ Proof.
   unfold red_readerExample, readerExample, readerExample_op_body.
   eapply MS_Step.
   { apply (S_Handle Reader_tag 0 [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) (($$ 1) @· two_v)
-             (term_perform ($$ 0) [] unit_v) 0).
+             (term_perform ($$ 0) [] (T_Nat `Lf) unit_v) 0).
     cbn. intros H. inversion H. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole). constructor.
-    apply (H_Perform Reader_tag 0 0 [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) (($$ 1) @· two_v) [] unit_v EC_hole);
+    apply (H_Perform Reader_tag 0 0 [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) (($$ 1) @· two_v) [] (T_Nat `Lf) unit_v EC_hole);
       [apply unit_v_value | constructor]. }
   cbn.
   eapply MS_Step.
-  { apply (S_step EC_hole). constructor. apply H_Resume, two_v_value. }
+  { apply (S_step EC_hole). constructor. apply H_Beta, two_v_value. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole). constructor. apply H_Return, two_v_value. }
@@ -845,19 +845,19 @@ Proof.
   eapply MS_Step.
   { apply (S_Handle Optionality_tag 1 [] (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf (T_Nat `Lf))
              (($$ 1) @· term_ctor some_tag `Lf [] [`T 0] [$$ 0])
-             (term_perform ($$ 0) [T_Nat `Lf] three_v) 0).
+             (term_perform ($$ 0) [T_Nat `Lf] (T_Option `Lf (T_Nat `Lf)) three_v) 0).
     cbn. intros H. inversion H. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole). constructor.
     apply (H_Perform Optionality_tag 0 1 [] (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf (T_Nat `Lf))
              (($$ 1) @· term_ctor some_tag `Lf [] [`T 0] [$$ 0])
-             [T_Nat `Lf] three_v EC_hole);
+             [T_Nat `Lf] (T_Option `Lf (T_Nat `Lf)) three_v EC_hole);
       [apply three_v_value | constructor]. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole). constructor.
-    apply H_Resume. repeat constructor. }
+    apply H_Beta. repeat constructor. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole). constructor.
@@ -872,14 +872,14 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 (EC_ty_app EC_hole (T_File `Lf))
                      (λ: T_Exception `Ll (T_Nat `Lf) \\
-                        term_perform ($$ 0) [T_File `Lf] three_v))).
+                        term_perform ($$ 0) [T_File `Lf] (T_File `Lf) three_v))).
     - repeat constructor.
     - apply H_TyBeta. }
   cbn.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole
                      (λ: T_Exception `Ll (T_Nat `Lf) \\
-                        term_perform ($$ 0) [T_File `Lf] three_v))).
+                        term_perform ($$ 0) [T_File `Lf] (T_File `Lf) three_v))).
     - repeat constructor.
     - apply H_TyBeta. }
   cbn.
@@ -902,7 +902,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step EC_hole).
     - constructor.
-    - eapply (H_Perform _ _ _ _ _ _ _ _ _
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _
                 (EC_ctor ok_tag `Lf [] [T_Nat `Lf; T_File `Lf] [] EC_hole [])).
       + apply three_v_value.
       + repeat constructor. }
@@ -947,7 +947,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole two_v)).
     - repeat constructor.
-    - eapply (H_Perform _ _ _ _ _ _ _ _ _ (EC_app2 _ (EC_app2 _ EC_hole))).
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ (EC_app2 _ (EC_app2 _ EC_hole))).
       + repeat constructor.
       + repeat constructor. }
   cbn.
@@ -967,7 +967,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole two_v)).
     - repeat constructor.
-    - apply H_Resume. apply two_v_value. }
+    - apply H_Beta. apply two_v_value. }
   cbn.
   (* inner beta: continue the program with the get result *)
   eapply MS_Step.
@@ -979,7 +979,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole two_v)).
     - repeat constructor.
-    - eapply (H_Perform _ _ _ _ _ _ _ _ _ (EC_app2 _ (EC_app2 _ EC_hole))).
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ (EC_app2 _ (EC_app2 _ EC_hole))).
       + repeat constructor.
       + repeat constructor. }
   cbn.
@@ -1007,7 +1007,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole three_v)).
     - repeat constructor.
-    - apply H_Resume. apply three_v_value. }
+    - apply H_Beta. apply three_v_value. }
   cbn.
   (* inner beta *)
   eapply MS_Step.
@@ -1019,7 +1019,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole three_v)).
     - repeat constructor.
-    - eapply (H_Perform _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
       + repeat constructor.
       + repeat constructor. }
   cbn.
@@ -1039,7 +1039,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole three_v)).
     - repeat constructor.
-    - apply H_Resume. apply three_v_value. }
+    - apply H_Beta. apply three_v_value. }
   cbn.
   (* inner beta: the body is exhausted, produce the post-handler λ *)
   eapply MS_Step.
@@ -1288,21 +1288,21 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 (EC_app1 (EC_ty_app (EC_ty_app
       EC_hole (T_Nat `Lf)) (T_Nat `Lf))
-      (λ: T_Reader `Ll (T_Nat `Lf) \\ term_perform ($$ 0) [] unit_v)) two_v)).
+      (λ: T_Reader `Ll (T_Nat `Lf) \\ term_perform ($$ 0) [] (T_Nat `Lf) unit_v)) two_v)).
     - repeat constructor.
     - apply H_LtBeta. }
   cbn.
   eapply MS_Step.
   { apply (S_step (EC_app1 (EC_app1 (EC_ty_app
       EC_hole (T_Nat `Lf))
-      (λ: T_Reader `Ll (T_Nat `Lf) \\ term_perform ($$ 0) [] unit_v)) two_v)).
+      (λ: T_Reader `Ll (T_Nat `Lf) \\ term_perform ($$ 0) [] (T_Nat `Lf) unit_v)) two_v)).
     - repeat constructor.
     - apply H_TyBeta. }
   cbn.
   eapply MS_Step.
   { apply (S_step (EC_app1 (EC_app1
       EC_hole
-      (λ: T_Reader `Ll (T_Nat `Lf) \\ term_perform ($$ 0) [] unit_v)) two_v)).
+      (λ: T_Reader `Ll (T_Nat `Lf) \\ term_perform ($$ 0) [] (T_Nat `Lf) unit_v)) two_v)).
     - repeat constructor.
     - apply H_TyBeta. }
   cbn.
@@ -1324,7 +1324,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole two_v)).
     - repeat constructor.
-    - eapply (H_Perform _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
       + repeat constructor.
       + repeat constructor. }
   cbn.
@@ -1336,7 +1336,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole two_v)).
     - repeat constructor.
-    - apply H_Resume. apply two_v_value. }
+    - apply H_Beta. apply two_v_value. }
   cbn.
   eapply MS_Step.
   { apply (S_step (EC_app1 (EC_handler_m 0 _ _ EC_hole) two_v)).
@@ -1360,7 +1360,7 @@ Proof.
   unfold red_withId_example, withId_example, withId, withId_op_body.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole
-      (λ: T_Id `Ll \\ term_perform ($$ 0) [T_Nat `Lf] two_v))).
+      (λ: T_Id `Ll \\ term_perform ($$ 0) [T_Nat `Lf] (T_Nat `Lf) two_v))).
     - repeat constructor.
     - apply H_TyBeta. }
   cbn.
@@ -1381,14 +1381,14 @@ Proof.
   eapply MS_Step.
   { apply (S_step EC_hole).
     - constructor.
-    - eapply (H_Perform _ _ _ _ _ _ _ _ _ EC_hole).
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ EC_hole).
       + apply two_v_value.
       + constructor. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole).
     - constructor.
-    - apply H_Resume. apply two_v_value. }
+    - apply H_Beta. apply two_v_value. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole).
@@ -1616,14 +1616,14 @@ Proof.
   eapply MS_Step.
   { apply (S_step EC_hole).
     - constructor.
-    - eapply (H_Perform _ _ _ _ _ _ _ _ _ EC_hole).
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ EC_hole).
       + repeat constructor.
       + constructor. }
   cbn.
   eapply MS_Step.
   { apply (S_step (EC_app2 _ EC_hole)).
     - repeat constructor.
-    - apply H_Resume. apply two_v_value. }
+    - apply H_Beta. apply two_v_value. }
   cbn.
   eapply MS_Step.
   { apply (S_step (EC_app2 _ EC_hole)).
@@ -1638,7 +1638,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step EC_hole).
     - constructor.
-    - apply H_Resume. apply three_v_value. }
+    - apply H_Beta. apply three_v_value. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole).
@@ -1669,7 +1669,7 @@ Proof.
                       (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
         (EC_ctor ok_tag `Lf [] [T_Nat `Lf; T_File `Lf] [] EC_hole []))).
     - repeat constructor.
-    - eapply (H_Perform _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
       + repeat constructor.
       + repeat constructor. }
   cbn.
@@ -1678,7 +1678,7 @@ Proof.
                       (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
         (EC_ctor ok_tag `Lf [] [T_Nat `Lf; T_File `Lf] [] EC_hole []))).
     - repeat constructor.
-    - apply H_Resume. apply two_v_value. }
+    - apply H_Beta. apply two_v_value. }
   cbn.
   eapply MS_Step.
   { apply (S_step (EC_handler_m 0 (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
@@ -1691,7 +1691,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step EC_hole).
     - constructor.
-    - eapply (H_Perform _ _ _ _ _ _ _ _ _
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _
         (EC_ctor ok_tag `Lf [] [T_Nat `Lf; T_File `Lf] []
           (EC_handler_m 1 (T_File `Lf) (T_File `Lf) EC_hole) [])).
       + apply two_v_value.

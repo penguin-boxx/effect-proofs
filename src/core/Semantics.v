@@ -15,9 +15,14 @@ Require Import Substitution.
 (*      `r -->h r'` and `ectx_wf E`.                                  *)
 (*                                                                    *)
 (* The familiar structural rules (`S_Beta`, `S_App1`, `S_App2`, ...)  *)
-(* are then derived as lemmas, so existing client proofs that pattern *)
-(* on those names continue to work; structural-inversion lemmas       *)
-(* (`step_app_inv`, ...) recover the case-analysis principle.         *)
+(* are then derived as one-line lemmas over the single congruence     *)
+(* lemma `step_in_ctx` (context composition `comp_ectx`).             *)
+(*                                                                    *)
+(* Marker discipline: `S_HandleCtx` allocates the delimiter marker    *)
+(* for a reducing source `handle`, with a GLOBAL freshness side       *)
+(* condition (`~ In m (markers_in <whole term>)`).  Proofs that need  *)
+(* to exhibit a step pick the witness `marker_bound t` (one past the  *)
+(* largest marker in t), fresh by `marker_bound_fresh`.               *)
 (* ================================================================== *)
 
 (* ------------------------------------------------------------------- *)
@@ -35,8 +40,8 @@ Inductive ectx : Type :=
                     list term -> ectx -> list term -> ectx
   | EC_match      : ectx -> ctor_tag -> nat -> nat -> term -> term -> ectx
   | EC_handler_m  : marker -> type -> type -> ectx -> ectx
-  | EC_perform_r  : ectx -> list type -> term -> ectx
-  | EC_perform_a  : term -> list type -> ectx -> ectx.
+  | EC_perform_r  : ectx -> list type -> type -> term -> ectx
+  | EC_perform_a  : term -> list type -> type -> ectx -> ectx.
 
 Fixpoint plug (E : ectx) (t : term) : term :=
   match E with
@@ -48,8 +53,8 @@ Fixpoint plug (E : ectx) (t : term) : term :=
   | EC_ctor K l lts Ts vs E1 ts   => term_ctor K l lts Ts (vs ++ plug E1 t :: ts)
   | EC_match E1 K nlt ar y n      => term_match (plug E1 t) K nlt ar y n
   | EC_handler_m m T_B T_R E1     => term_handler_m m T_B T_R (plug E1 t)
-  | EC_perform_r E1 Ss arg        => term_perform (plug E1 t) Ss arg
-  | EC_perform_a v Ss E1          => term_perform v Ss (plug E1 t)
+  | EC_perform_r E1 Ss A arg      => term_perform (plug E1 t) Ss A arg
+  | EC_perform_a v Ss A E1        => term_perform v Ss A (plug E1 t)
   end.
 
 (* Marker-pure evaluation contexts for marker m:  all ectx shapes     *)
@@ -75,10 +80,10 @@ Inductive pure_ectx_m (m : marker) : ectx -> Prop :=
     | pem_handler_m : forall m' T_B T_R E,
       m <> m' ->
       pure_ectx_m m E -> pure_ectx_m m (EC_handler_m m' T_B T_R E)
-  | pem_perform_r : forall E Ss arg,
-      pure_ectx_m m E -> pure_ectx_m m (EC_perform_r E Ss arg)
-  | pem_perform_a : forall v Ss E,
-      pure_ectx_m m E -> pure_ectx_m m (EC_perform_a v Ss E).
+  | pem_perform_r : forall E Ss A arg,
+      pure_ectx_m m E -> pure_ectx_m m (EC_perform_r E Ss A arg)
+  | pem_perform_a : forall v Ss A E,
+      pure_ectx_m m E -> pure_ectx_m m (EC_perform_a v Ss A E).
 
 Hint Constructors pure_ectx_m : core.
 
@@ -102,11 +107,11 @@ Fixpoint shift_ectx_tm (amount cutoff : nat) (E : ectx) : ectx :=
                                     (shift_tm amount (cutoff + ar) y)
                                     (shift_tm amount cutoff n)
   | EC_handler_m m T_B T_R E1   => EC_handler_m m T_B T_R (shift_ectx_tm amount cutoff E1)
-  | EC_perform_r E1 Ss arg      => EC_perform_r (shift_ectx_tm amount cutoff E1)
-                                                 Ss
+  | EC_perform_r E1 Ss A arg    => EC_perform_r (shift_ectx_tm amount cutoff E1)
+                                                 Ss A
                                                  (shift_tm amount cutoff arg)
-  | EC_perform_a v Ss E1        => EC_perform_a (shift_tm amount cutoff v)
-                                                 Ss
+  | EC_perform_a v Ss A E1      => EC_perform_a (shift_tm amount cutoff v)
+                                                 Ss A
                                                  (shift_ectx_tm amount cutoff E1)
   end.
 
@@ -131,10 +136,9 @@ Fixpoint markers_in (t : term) : list marker :=
   | term_match scrut _ _ _ yes_body no_body =>
       markers_in scrut ++ markers_in yes_body ++ markers_in no_body
   | term_handle _ _ _ _ _ op_body body => markers_in op_body ++ markers_in body
-  | term_perform recv _ arg => markers_in recv ++ markers_in arg
+  | term_perform recv _ _ arg => markers_in recv ++ markers_in arg
   | term_cap _ m _ _ _ op_body => m :: markers_in op_body
   | term_handler_m m _ _ body => m :: markers_in body
-  | term_resume m _ _ body => m :: markers_in body
   end.
 
 Fixpoint markers_in_list (ts : list term) : list marker :=
@@ -143,13 +147,6 @@ Fixpoint markers_in_list (ts : list term) : list marker :=
   | u :: rest => markers_in u ++ markers_in_list rest
   end.
 
-Lemma markers_in_ctor : forall K l lts Ts ts,
-  markers_in (term_ctor K l lts Ts ts) = markers_in_list ts.
-Proof.
-  intros K l lts Ts ts. induction ts as [|t ts IH]; simpl.
-  - reflexivity.
-  - reflexivity.
-Qed.
 
 Definition marker_bound (t : term) : marker :=
   S (fold_right Nat.max 0 (markers_in t)).
@@ -179,22 +176,6 @@ Proof.
   apply (Nat.lt_irrefl (marker_bound t)); exact Hlt.
 Qed.
 
-Lemma markers_in_list_app : forall xs ys,
-  markers_in_list (xs ++ ys) = markers_in_list xs ++ markers_in_list ys.
-Proof.
-  intros xs ys. induction xs as [|x xs IH]; simpl.
-  - reflexivity.
-  - rewrite IH. rewrite List.app_assoc. reflexivity.
-Qed.
-
-Lemma markers_in_list_focus : forall vs t ts m,
-  In m (markers_in t) ->
-  In m (markers_in_list (vs ++ t :: ts)).
-Proof.
-  intros vs t ts m Hin.
-  rewrite markers_in_list_app. rewrite List.in_app_iff.
-  right. simpl. rewrite List.in_app_iff. left. exact Hin.
-Qed.
 
 (* ------------------------------------------------------------------ *)
 (* 1. Head reductions                                                 *)
@@ -229,30 +210,27 @@ Inductive head_step : term -> term -> Prop :=
       value v ->
       term_handler_m m T_B T_R v -->h v
 
-  (* (perform): a `perform (cap E_tag m Ts op_body) Ss v` inside a    *)
+  (* (perform): a `perform (cap E_tag m Ts op_body) Ss A v` inside a  *)
   (* matching handler delimiter `term_handler_m m _` reduces by       *)
   (*   1) capturing the surrounding pure (delimiter-free) ectx P;     *)
-  (*   2) reifying the resumption as `term_resume m _` re-installing  *)
-  (*      the delimiter around `plug P [hole]`;                       *)
+  (*   2) reifying the resumption as an ordinary lambda (annotated    *)
+  (*      with the perform's instantiated result type A) whose body   *)
+  (*      re-installs the delimiter around `plug P [hole]`;           *)
   (*   3) instantiating the op-body's β-type-binders with Ss, then    *)
   (*      substituting [arg, resumption] for its term-binders.        *)
   (* The shift on P accounts for the new term-binder introduced by    *)
-  (* the resumption.                                                  *)
-  | H_Perform : forall E_tag m n_beta Ts T_B T_R op_body Ss v P,
+  (* the resumption lambda.  Applying the resumption is ordinary      *)
+  (* H_Beta: it substitutes the value into the delimited body.        *)
+  | H_Perform : forall E_tag m n_beta Ts T_B T_R op_body Ss A v P,
       value v -> pure_ectx_m m P ->
       term_handler_m m T_B T_R
-        (plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss v))
+        (plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss A v))
         -->h
-          subst_list_tm [v; term_resume m T_B T_R (plug (shift_ectx_tm 1 0 P) (term_var 0))]
+          subst_list_tm
+            [v; term_lam (term_handler_m m T_B T_R
+                            (plug (shift_ectx_tm 1 0 P) (term_var 0))) A]
             (subst_list_ty_in_tm Ss
               op_body)
-
-  (* (resume): apply a reified resumption to a value. *)
-  | H_Resume : forall m T_B T_R b v,
-      value v ->
-      term_app (term_resume m T_B T_R b) v
-        -->h
-          term_handler_m m T_B T_R (subst_tm 0 v b)
 
 where "t '-->h' t'" := (head_step t t').
 
@@ -281,11 +259,11 @@ Inductive ectx_wf : ectx -> Prop :=
       ectx_wf E -> ectx_wf (EC_match E K nlt ar y n)
     | wf_handler_m  : forall m T_B T_R E,
       ectx_wf E -> ectx_wf (EC_handler_m m T_B T_R E)
-  | wf_perform_r  : forall E Ss arg,
-      ectx_wf E -> ectx_wf (EC_perform_r E Ss arg)
-  | wf_perform_a  : forall v Ss E,
+  | wf_perform_r  : forall E Ss A arg,
+      ectx_wf E -> ectx_wf (EC_perform_r E Ss A arg)
+  | wf_perform_a  : forall v Ss A E,
       value v -> ectx_wf E ->
-      ectx_wf (EC_perform_a v Ss E).
+      ectx_wf (EC_perform_a v Ss A E).
 
 Hint Constructors ectx_wf : core.
 
@@ -318,6 +296,53 @@ Hint Constructors step : core.
 (* S_App1`, ... without exposing the underlying ectx machinery.       *)
 (* ================================================================== *)
 
+(* Context composition: `comp_ectx E1 E2` plugs E2 into E1's hole,    *)
+(* so that `plug (comp_ectx E1 E2) u = plug E1 (plug E2 u)`.           *)
+Fixpoint comp_ectx (E1 E2 : ectx) : ectx :=
+  match E1 with
+  | EC_hole                     => E2
+  | EC_app1 E t                 => EC_app1 (comp_ectx E E2) t
+  | EC_app2 v E                 => EC_app2 v (comp_ectx E E2)
+  | EC_ty_app E T               => EC_ty_app (comp_ectx E E2) T
+  | EC_lt_app E l               => EC_lt_app (comp_ectx E E2) l
+  | EC_ctor K l lts Ts vs E ts  => EC_ctor K l lts Ts vs (comp_ectx E E2) ts
+  | EC_match E K nlt ar y n     => EC_match (comp_ectx E E2) K nlt ar y n
+  | EC_handler_m m T_B T_R E    => EC_handler_m m T_B T_R (comp_ectx E E2)
+  | EC_perform_r E Ss A arg     => EC_perform_r (comp_ectx E E2) Ss A arg
+  | EC_perform_a v Ss A E       => EC_perform_a v Ss A (comp_ectx E E2)
+  end.
+
+Lemma plug_comp_ectx : forall E1 E2 u,
+  plug (comp_ectx E1 E2) u = plug E1 (plug E2 u).
+Proof.
+  intros E1 E2; induction E1; intros u; simpl; try rewrite IHE1; reflexivity.
+Qed.
+
+Lemma ectx_wf_comp : forall E1 E2,
+  ectx_wf E1 -> ectx_wf E2 -> ectx_wf (comp_ectx E1 E2).
+Proof.
+  intros E1 E2 H1 H2; induction H1; simpl; try (constructor; auto); auto.
+Qed.
+
+(* The one congruence lemma behind every S_* structural rule below: a  *)
+(* step inside a well-formed frame is a step of the whole term.  For   *)
+(* the S_HandleCtx branch the fresh marker is re-chosen for the        *)
+(* composed term via `marker_bound_fresh`.                             *)
+Lemma step_in_ctx : forall F t,
+  ectx_wf F ->
+  (exists t', t ==> t') ->
+  exists u, plug F t ==> u.
+Proof.
+  intros F t HF [t' Hstep]. inversion Hstep; subst.
+  - exists (plug (comp_ectx F E) r').
+    rewrite <- !plug_comp_ectx.
+    apply S_step; [apply ectx_wf_comp; assumption | assumption].
+  - eexists.
+    rewrite <- !plug_comp_ectx.
+    eapply (S_HandleCtx (comp_ectx F E));
+      [apply ectx_wf_comp; assumption | apply marker_bound_fresh].
+Qed.
+
 Lemma S_Beta : forall body T v,
   value v ->
   term_app (term_lam body T) v ==> subst_tm 0 v body.
@@ -334,75 +359,31 @@ Proof. intros. apply (S_step EC_hole); auto. Qed.
 Lemma S_App1 : forall t1 t2,
   (exists t1', t1 ==> t1') ->
   exists t', term_app t1 t2 ==> t'.
-Proof.
-  intros t1 t2 [t1' H]. inversion H; subst.
-  - exists (term_app (plug E r') t2). apply (S_step (EC_app1 E t2)); auto.
-  - exists (term_app
-      (plug E (term_handler_m (marker_bound (term_app (plug E (term_handle E_tag n_beta Ts T_B T_R op_body body)) t2)) T_B T_R
-        (subst_tm 0 (term_cap E_tag (marker_bound (term_app (plug E (term_handle E_tag n_beta Ts T_B T_R op_body body)) t2)) n_beta Ts T_R op_body) body)))
-      t2).
-    apply (S_HandleCtx (EC_app1 E t2)); auto.
-    apply marker_bound_fresh.
-Qed.
+Proof. intros t1 t2. apply (step_in_ctx (EC_app1 EC_hole t2)); auto. Qed.
 
 Lemma S_App2 : forall v t2,
   value v ->
   (exists t2', t2 ==> t2') ->
   exists t', term_app v t2 ==> t'.
-Proof.
-  intros v t2 Hv [t2' H]. inversion H; subst.
-  - exists (term_app v (plug E r')). apply (S_step (EC_app2 v E)); auto.
-  - exists (term_app v
-      (plug E (term_handler_m (marker_bound (term_app v (plug E (term_handle E_tag n_beta Ts T_B T_R op_body body)))) T_B T_R
-        (subst_tm 0 (term_cap E_tag (marker_bound (term_app v (plug E (term_handle E_tag n_beta Ts T_B T_R op_body body)))) n_beta Ts T_R op_body) body)))).
-    apply (S_HandleCtx (EC_app2 v E)); auto.
-    apply marker_bound_fresh.
-Qed.
+Proof. intros v t2 Hv. apply (step_in_ctx (EC_app2 v EC_hole)); auto. Qed.
 
 Lemma S_TyApp : forall t T,
   (exists t', t ==> t') ->
   exists u, term_ty_app t T ==> u.
-Proof.
-  intros t T [t' H]. inversion H; subst.
-  - exists (term_ty_app (plug E r') T). apply (S_step (EC_ty_app E T)); auto.
-  - exists (term_ty_app
-      (plug E (term_handler_m (marker_bound (term_ty_app (plug E (term_handle E_tag n_beta Ts T_B T_R op_body body)) T)) T_B T_R
-        (subst_tm 0 (term_cap E_tag (marker_bound (term_ty_app (plug E (term_handle E_tag n_beta Ts T_B T_R op_body body)) T)) n_beta Ts T_R op_body) body)))
-      T).
-    apply (S_HandleCtx (EC_ty_app E T)); auto.
-    apply marker_bound_fresh.
-Qed.
+Proof. intros t T. apply (step_in_ctx (EC_ty_app EC_hole T)); auto. Qed.
 
 Lemma S_LtApp : forall t l,
   (exists t', t ==> t') ->
   exists u, term_lt_app t l ==> u.
-Proof.
-  intros t l [t' H]. inversion H; subst.
-  - exists (term_lt_app (plug E r') l). apply (S_step (EC_lt_app E l)); auto.
-  - exists (term_lt_app
-      (plug E (term_handler_m (marker_bound (term_lt_app (plug E (term_handle E_tag n_beta Ts T_B T_R op_body body)) l)) T_B T_R
-        (subst_tm 0 (term_cap E_tag (marker_bound (term_lt_app (plug E (term_handle E_tag n_beta Ts T_B T_R op_body body)) l)) n_beta Ts T_R op_body) body)))
-      l).
-    apply (S_HandleCtx (EC_lt_app E l)); auto.
-    apply marker_bound_fresh.
-Qed.
+Proof. intros t l. apply (step_in_ctx (EC_lt_app EC_hole l)); auto. Qed.
 
 Lemma S_Ctor : forall K l lts Ts vs t ts,
   Forall value vs ->
   (exists t', t ==> t') ->
   exists u, term_ctor K l lts Ts (vs ++ t :: ts) ==> u.
 Proof.
-  intros K l lts Ts vs t ts Hvs [t' H]. inversion H; subst.
-  - exists (term_ctor K l lts Ts (vs ++ plug E r' :: ts)).
-    apply (S_step (EC_ctor K l lts Ts vs E ts)); auto.
-  - exists (term_ctor K l lts Ts
-      (vs ++ plug E (term_handler_m
-        (marker_bound (term_ctor K l lts Ts (vs ++ plug E (term_handle E_tag n_beta Ts0 T_B T_R op_body body) :: ts))) T_B T_R
-        (subst_tm 0 (term_cap E_tag
-          (marker_bound (term_ctor K l lts Ts (vs ++ plug E (term_handle E_tag n_beta Ts0 T_B T_R op_body body) :: ts)))
-          n_beta Ts0 T_R op_body) body)) :: ts)).
-    apply (S_HandleCtx (EC_ctor K l lts Ts vs E ts)); auto.
-    apply marker_bound_fresh.
+  intros K l lts Ts vs t ts Hvs.
+  apply (step_in_ctx (EC_ctor K l lts Ts vs EC_hole ts)); auto.
 Qed.
 
 Lemma S_MatchYes : forall K l lts Ts vs n_lt yes_body no_body,
@@ -430,18 +411,8 @@ Lemma S_Match : forall scrutinee tag n_lt arity yes_body no_body,
   exists u,
     term_match scrutinee tag n_lt arity yes_body no_body ==> u.
 Proof.
-  intros s tag nlt ar y n [s' H]. inversion H; subst.
-  - exists (term_match (plug E r') tag nlt ar y n).
-    apply (S_step (EC_match E tag nlt ar y n)); auto.
-  - exists (term_match
-      (plug E (term_handler_m
-        (marker_bound (term_match (plug E (term_handle E_tag n_beta Ts T_B T_R op_body body)) tag nlt ar y n)) T_B T_R
-        (subst_tm 0 (term_cap E_tag
-          (marker_bound (term_match (plug E (term_handle E_tag n_beta Ts T_B T_R op_body body)) tag nlt ar y n))
-          n_beta Ts T_R op_body) body)))
-      tag nlt ar y n).
-    apply (S_HandleCtx (EC_match E tag nlt ar y n)); auto.
-    apply marker_bound_fresh.
+  intros s tag nlt ar y n.
+  apply (step_in_ctx (EC_match EC_hole tag nlt ar y n)); auto.
 Qed.
 
 Lemma S_Handle : forall E_tag n_beta Ts T_B T_R op_body body m,
@@ -460,466 +431,18 @@ Proof. intros. apply (S_step EC_hole); auto. Qed.
 Lemma S_HandlerM : forall m T_B T_R t,
   (exists t', t ==> t') ->
   exists u, term_handler_m m T_B T_R t ==> u.
-Proof.
-  intros m T_B T_R t [t' H]. inversion H; subst.
-  - exists (term_handler_m m T_B T_R (plug E r')). apply (S_step (EC_handler_m m T_B T_R E)); auto.
-  - exists (term_handler_m m T_B T_R
-      (plug E (term_handler_m
-        (marker_bound (term_handler_m m T_B T_R (plug E (term_handle E_tag n_beta Ts T_B0 T_R0 op_body body)))) T_B0 T_R0
-        (subst_tm 0 (term_cap E_tag
-          (marker_bound (term_handler_m m T_B T_R (plug E (term_handle E_tag n_beta Ts T_B0 T_R0 op_body body))))
-          n_beta Ts T_R0 op_body) body)))).
-    apply (S_HandleCtx (EC_handler_m m T_B T_R E)); auto.
-    apply marker_bound_fresh.
-Qed.
+Proof. intros m T_B T_R t. apply (step_in_ctx (EC_handler_m m T_B T_R EC_hole)); auto. Qed.
 
-Lemma S_PerformRecv : forall t Ss arg,
+Lemma S_PerformRecv : forall t Ss A arg,
   (exists t', t ==> t') ->
-  exists u, term_perform t Ss arg ==> u.
-Proof.
-  intros t Ss arg [t' H]. inversion H; subst.
-  - exists (term_perform (plug E r') Ss arg). apply (S_step (EC_perform_r E Ss arg)); auto.
-  - exists (term_perform
-      (plug E (term_handler_m
-        (marker_bound (term_perform (plug E (term_handle E_tag n_beta Ts T_B T_R op_body body)) Ss arg)) T_B T_R
-        (subst_tm 0 (term_cap E_tag
-          (marker_bound (term_perform (plug E (term_handle E_tag n_beta Ts T_B T_R op_body body)) Ss arg))
-          n_beta Ts T_R op_body) body)))
-      Ss arg).
-    apply (S_HandleCtx (EC_perform_r E Ss arg)); auto.
-    apply marker_bound_fresh.
-Qed.
+  exists u, term_perform t Ss A arg ==> u.
+Proof. intros t Ss A arg. apply (step_in_ctx (EC_perform_r EC_hole Ss A arg)); auto. Qed.
 
-Lemma S_PerformArg : forall v Ss t,
+Lemma S_PerformArg : forall v Ss A t,
   value v ->
   (exists t', t ==> t') ->
-  exists u, term_perform v Ss t ==> u.
-Proof.
-  intros v Ss t Hv [t' H]. inversion H; subst.
-  - exists (term_perform v Ss (plug E r')). apply (S_step (EC_perform_a v Ss E)); auto.
-  - exists (term_perform v Ss
-      (plug E (term_handler_m
-        (marker_bound (term_perform v Ss (plug E (term_handle E_tag n_beta Ts T_B T_R op_body body)))) T_B T_R
-        (subst_tm 0 (term_cap E_tag
-          (marker_bound (term_perform v Ss (plug E (term_handle E_tag n_beta Ts T_B T_R op_body body))))
-          n_beta Ts T_R op_body) body)))).
-    apply (S_HandleCtx (EC_perform_a v Ss E)); auto.
-    apply marker_bound_fresh.
-Qed.
-
-Lemma S_Resume : forall m T_B T_R b v,
-  value v ->
-  term_app (term_resume m T_B T_R b) v
-    ==> term_handler_m m T_B T_R (subst_tm 0 v b).
-Proof. intros. apply (S_step EC_hole); auto. Qed.
-
-(* ================================================================== *)
-(* Structural inversion                                               *)
-(*                                                                    *)
-(* Recover the case-analysis principle of the classical structural    *)
-(* small-step relation. Each lemma converts a step on a particular    *)
-(* term shape into the disjunction of the rules that could have       *)
-(* produced it, naming the resulting sub-derivations.                 *)
-(* ================================================================== *)
-
-(* No step from a value (or from a variable). *)
-
-Lemma no_step_var : forall x t', term_var x ==> t' -> False.
-Proof.
-  intros x t' H. remember (term_var x) as t eqn:Ht.
-  induction H; subst.
-  - destruct E; simpl in Ht; try discriminate.
-    subst. match goal with Hh : _ -->h _ |- _ => inversion Hh end.
-  - destruct E; simpl in Ht; discriminate.
-Qed.
-
-Lemma no_step_lam : forall body T t',
-  term_lam body T ==> t' -> False.
-Proof.
-  intros body T t' H. remember (term_lam body T) as t eqn:Ht.
-  induction H; subst.
-  - destruct E; simpl in Ht; try discriminate.
-    subst. match goal with Hh : _ -->h _ |- _ => inversion Hh end.
-  - destruct E; simpl in Ht; discriminate.
-Qed.
-
-Lemma no_step_ty_lam : forall bound body t',
-  term_ty_lam bound body ==> t' -> False.
-Proof.
-  intros bound body t' H. remember (term_ty_lam bound body) as t eqn:Ht.
-  induction H; subst.
-  - destruct E; simpl in Ht; try discriminate.
-    subst. match goal with Hh : _ -->h _ |- _ => inversion Hh end.
-  - destruct E; simpl in Ht; discriminate.
-Qed.
-
-Lemma no_step_lt_lam : forall body t',
-  term_lt_lam body ==> t' -> False.
-Proof.
-  intros body t' H. remember (term_lt_lam body) as t eqn:Ht.
-  induction H; subst.
-  - destruct E; simpl in Ht; try discriminate.
-    subst. match goal with Hh : _ -->h _ |- _ => inversion Hh end.
-  - destruct E; simpl in Ht; discriminate.
-Qed.
-
-Lemma no_step_cap : forall E_tag m n_beta Ts T_R op_body t',
-  term_cap E_tag m n_beta Ts T_R op_body ==> t' -> False.
-Proof.
-  intros Et m n_beta Ts T_R ob t' H. remember (term_cap Et m n_beta Ts T_R ob) as t eqn:Ht.
-  induction H; subst.
-  - destruct E; simpl in Ht; try discriminate.
-    subst. match goal with Hh : _ -->h _ |- _ => inversion Hh end.
-  - destruct E; simpl in Ht; discriminate.
-Qed.
-
-Lemma no_step_resume : forall m T_B T_R b t',
-  term_resume m T_B T_R b ==> t' -> False.
-Proof.
-  intros m T_B T_R b t' H. remember (term_resume m T_B T_R b) as t eqn:Ht.
-  induction H; subst.
-  - destruct E; simpl in Ht; try discriminate.
-    subst. match goal with Hh : _ -->h _ |- _ => inversion Hh end.
-  - destruct E; simpl in Ht; discriminate.
-Qed.
-
-Lemma Forall_value_focus : forall vs t ts,
-  Forall value (vs ++ t :: ts) -> value t.
-Proof.
-  induction vs as [|v vs IH]; intros t ts H; simpl in H.
-  - inversion H; subst. assumption.
-  - inversion H; subst.
-    match goal with
-    | Hrest : Forall value (vs ++ t :: ts) |- _ => exact (IH t ts Hrest)
-    end.
-Qed.
-
-Lemma plug_value_inv : forall E r,
-  ectx_wf E ->
-  value (plug E r) ->
-  value r.
-Proof.
-  induction E; simpl; intros r Hwf Hv; auto.
-  - inversion Hv.
-  - inversion Hv.
-  - inversion Hv.
-  - inversion Hv.
-  - inversion Hv; subst.
-    inversion Hwf; subst.
-    apply IHE; auto.
-    eapply Forall_value_focus; eauto.
-  - inversion Hv.
-  - inversion Hv.
-  - inversion Hv.
-  - inversion Hv.
-Qed.
-
-Lemma head_step_not_value : forall r r',
-  value r ->
-  r -->h r' ->
-  False.
-Proof.
-  intros r r' Hv Hh. inversion Hh; subst; inversion Hv.
-Qed.
-
-Lemma no_step_value : forall v t',
-  value v ->
-  v ==> t' ->
-  False.
-Proof.
-  intros v t' Hv Hs. inversion Hs; subst.
-  - eapply head_step_not_value; [|eauto].
-    eapply plug_value_inv; eauto.
-  - pose proof (plug_value_inv E (term_handle E_tag n_beta Ts T_B T_R op_body body) H Hv) as Hhandle.
-    inversion Hhandle.
-Qed.
-
-(* App-shape inversion: an `term_app t1 t2` step is exactly one of      *)
-(* - β-reduction (t1 a lambda, t2 a value);                             *)
-(* - resumption application (t1 = term_resume m T_B T_R b, t2 a value); *)
-(* - left-congruence (t1 stepped); or                                   *)
-(* - right-congruence (t1 a value, t2 stepped).                         *)
-Lemma step_app_inv : forall t1 t2 t',
-  term_app t1 t2 ==> t' ->
-    (exists body T v,
-        t1 = term_lam body T /\ t2 = v /\ value v
-        /\ t' = subst_tm 0 v body)
-    \/ (exists m T_B T_R b v,
-      t1 = term_resume m T_B T_R b /\ t2 = v /\ value v
-      /\ t' = term_handler_m m T_B T_R (subst_tm 0 v b))
-    \/ (exists t1', t1 ==> t1' /\ t' = term_app t1' t2)
-    \/ (exists t2', value t1 /\ t2 ==> t2' /\ t' = term_app t1 t2').
-Proof.
-  intros t1 t2 t' H.
-  inversion H as
-    [E r r' Hwf Hh Heq Heq'
-    | E Et n_beta Ts T_B T_R ob bd m Hwf Hfresh Heq Heq']; subst.
-  - destruct E; simpl in Heq; try discriminate.
-    + (* hole *) subst r. inversion Hh; subst.
-      * (* H_Beta *)
-        left. exists body, T, t2. repeat split; auto.
-      * (* H_Resume *)
-        right. left. exists m, T_B, T_R, b, t2. repeat split; auto.
-    + (* EC_app1 *)
-      inversion Heq; subst.
-      inversion Hwf; subst.
-      right. right. left. exists (plug E r').
-      split; [apply (S_step E); auto | reflexivity].
-    + (* EC_app2 *)
-      inversion Heq; subst.
-      inversion Hwf; subst.
-      right. right. right. exists (plug E r').
-      split; [auto | split; [apply (S_step E); auto | reflexivity]].
-  - destruct E; simpl in Heq; try discriminate.
-    + (* EC_app1 *)
-      inversion Heq; subst. inversion Hwf; subst.
-      right. right. left.
-      exists (plug E (term_handler_m m T_B T_R (subst_tm 0 (term_cap Et m n_beta Ts T_R ob) bd))).
-      split.
-      * apply (S_HandleCtx E Et n_beta Ts T_B T_R ob bd m); auto.
-        intro Hin. apply Hfresh. simpl. rewrite List.in_app_iff. left. exact Hin.
-      * reflexivity.
-    + (* EC_app2 *)
-      inversion Heq; subst. inversion Hwf; subst.
-      right. right. right.
-      exists (plug E (term_handler_m m T_B T_R (subst_tm 0 (term_cap Et m n_beta Ts T_R ob) bd))).
-      split; [auto | split; [|reflexivity]].
-      apply (S_HandleCtx E Et n_beta Ts T_B T_R ob bd m); auto.
-      intro Hin. apply Hfresh. simpl. rewrite List.in_app_iff. right. exact Hin.
-Qed.
-
-Lemma step_ty_app_inv : forall t T t',
-  term_ty_app t T ==> t' ->
-    (exists bound body, t = term_ty_lam bound body
-        /\ t' = subst_ty_in_tm 0 T body)
-    \/ (exists t'', t ==> t'' /\ t' = term_ty_app t'' T).
-Proof.
-  intros t T t' H.
-  inversion H as
-    [E r r' Hwf Hh Heq Heq'
-    | E Et n_beta Ts T_B T_R ob bd m Hwf Hfresh Heq Heq']; subst.
-  - destruct E; simpl in Heq; try discriminate.
-    + subst r. inversion Hh; subst.
-      left. exists bound, body. split; reflexivity.
-    + inversion Heq; subst. inversion Hwf; subst.
-      right. exists (plug E r').
-      split; [apply (S_step E); auto | reflexivity].
-  - destruct E; simpl in Heq; try discriminate.
-    inversion Heq; subst. inversion Hwf; subst.
-    right. exists (plug E (term_handler_m m T_B T_R (subst_tm 0 (term_cap Et m n_beta Ts T_R ob) bd))).
-    split.
-    + apply (S_HandleCtx E Et n_beta Ts T_B T_R ob bd m); auto.
-    + reflexivity.
-Qed.
-
-Lemma step_lt_app_inv : forall t l t',
-  term_lt_app t l ==> t' ->
-    (exists body, t = term_lt_lam body /\ t' = subst_lt_in_tm 0 l body)
-    \/ (exists t'', t ==> t'' /\ t' = term_lt_app t'' l).
-Proof.
-  intros t l t' H.
-  inversion H as
-    [E r r' Hwf Hh Heq Heq'
-    | E Et n_beta Ts T_B T_R ob bd m Hwf Hfresh Heq Heq']; subst.
-  - destruct E; simpl in Heq; try discriminate.
-    + subst r. inversion Hh; subst.
-      left. exists body. split; reflexivity.
-    + inversion Heq; subst. inversion Hwf; subst.
-      right. exists (plug E r').
-      split; [apply (S_step E); auto | reflexivity].
-  - destruct E; simpl in Heq; try discriminate.
-    inversion Heq; subst. inversion Hwf; subst.
-    right. exists (plug E (term_handler_m m T_B T_R (subst_tm 0 (term_cap Et m n_beta Ts T_R ob) bd))).
-    split.
-    + apply (S_HandleCtx E Et n_beta Ts T_B T_R ob bd m); auto.
-    + reflexivity.
-Qed.
-
-Lemma step_ctor_inv : forall K l lts Ts ts t',
-  term_ctor K l lts Ts ts ==> t' ->
-    exists vs t t'' tsr,
-      Forall value vs /\ ts = vs ++ t :: tsr /\ t ==> t''
-      /\ t' = term_ctor K l lts Ts (vs ++ t'' :: tsr).
-Proof.
-  intros K l lts Ts ts t' H.
-  inversion H as
-    [E r r' Hwf Hh Heq Heq'
-    | E Et n_beta TsH T_B T_R ob bd m Hwf Hfresh Heq Heq']; subst.
-  - destruct E as [ | | | | | K0 l0 lts0 Ts0 vs E0 tsr | | | | ]; simpl in Heq.
-    + (* EC_hole *) subst r. inversion Hh.
-    + discriminate.
-    + discriminate.
-    + discriminate.
-    + discriminate.
-    + (* EC_ctor *)
-      inversion Heq; subst. inversion Hwf; subst.
-      exists vs, (plug E0 r), (plug E0 r'), tsr. repeat split; auto.
-    + discriminate.
-    + discriminate.
-    + discriminate.
-    + discriminate.
-  - destruct E as [ | | | | | K0 l0 lts0 Ts0 vs E0 tsr | | | | ]; simpl in Heq; try discriminate.
-    inversion Heq; subst. inversion Hwf; subst.
-    exists vs,
-      (plug E0 (term_handle Et n_beta TsH T_B T_R ob bd)),
-      (plug E0 (term_handler_m m T_B T_R (subst_tm 0 (term_cap Et m n_beta TsH T_R ob) bd))),
-      tsr.
-    repeat split; auto.
-    apply (S_HandleCtx E0 Et n_beta TsH T_B T_R ob bd m); auto.
-    intro Hin. apply Hfresh.
-      change (In m (markers_in
-        (term_ctor K l lts Ts (vs ++ plug E0 (term_handle Et n_beta TsH T_B T_R ob bd) :: tsr)))).
-      rewrite markers_in_ctor. apply markers_in_list_focus. exact Hin.
-Qed.
-
-Lemma step_match_inv : forall scrut tag n_lt ar y n t',
-  term_match scrut tag n_lt ar y n ==> t' ->
-    (exists K l lts Ts vs,
-       scrut = term_ctor K l lts Ts vs
-       /\ Forall value vs
-       /\ ar = List.length vs
-       /\ K = tag
-       /\ t' = subst_list_tm vs (subst_list_lt_in_tm lts y))
-    \/ (exists K' l lts Ts vs,
-       scrut = term_ctor K' l lts Ts vs
-       /\ Forall value vs
-       /\ tag <> K'
-       /\ t' = n)
-    \/ (exists scrut',
-       scrut ==> scrut'
-       /\ t' = term_match scrut' tag n_lt ar y n).
-Proof.
-  intros scrut tag n_lt ar y n t' H.
-  inversion H as
-    [E r r' Hwf Hh Heq Heq'
-    | E Et n_beta Ts T_B T_R ob bd m Hwf Hfresh Heq Heq']; subst.
-  - destruct E as [ | | | | | | E0 K0 nlt0 ar0 y0 n0 | | | ]; simpl in Heq; try discriminate.
-    + (* EC_hole *) subst r. inversion Hh; subst.
-      * left. do 5 eexists. repeat split; eauto.
-      * right. left. do 5 eexists. repeat split; eauto.
-    + (* EC_match *)
-      inversion Heq; subst. inversion Hwf; subst.
-      right. right. exists (plug E0 r').
-      split; [apply (S_step E0); auto | reflexivity].
-  - destruct E as [ | | | | | | E0 K0 nlt0 ar0 y0 n0 | | | ]; simpl in Heq; try discriminate.
-    inversion Heq; subst. inversion Hwf; subst.
-    right. right.
-    exists (plug E0 (term_handler_m m T_B T_R (subst_tm 0 (term_cap Et m n_beta Ts T_R ob) bd))).
-    split.
-    + apply (S_HandleCtx E0 Et n_beta Ts T_B T_R ob bd m); auto.
-      intro Hin. apply Hfresh. simpl. rewrite !List.in_app_iff. left. exact Hin.
-    + reflexivity.
-Qed.
-
-(* Handler-marker delimiter inversion: a step on `term_handler_m m t` *)
-(* is exactly one of                                                  *)
-(*   - H_Return  (t already a value),                                 *)
-(*   - inside-step under EC_handler_m, or                             *)
-(*   - H_Perform on a matching cap inside a pure surrounding context. *)
-Lemma step_handler_m_inv : forall m T_B T_R t t'',
-  term_handler_m m T_B T_R t ==> t'' ->
-    (value t /\ t'' = t)
-    \/ (exists t', t ==> t' /\ t'' = term_handler_m m T_B T_R t')
-        \/ (exists E_tag n_beta Ts op_body Ss v P,
-          value v /\ pure_ectx_m m P /\
-          t = plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss v) /\
-          t'' = subst_list_tm
-                  [v;
-                   term_resume m T_B T_R
-                     (plug (shift_ectx_tm 1 0 P) (term_var 0))]
-                  (subst_list_ty_in_tm Ss op_body)).
-Proof.
-  intros m T_B T_R t t'' H.
-  inversion H as
-    [E r r' Hwf Hh Heq Heq'
-    | E Et n_beta Ts T_B0 T_R0 ob bd mh Hwf Hfresh Heq Heq']; subst.
-  - destruct E; simpl in Heq; try discriminate.
-    + (* EC_hole *) subst r. inversion Hh; subst.
-      * (* H_Return *) left; split; auto.
-      * (* H_Perform *)
-        right. right.
-        do 7 eexists. repeat split; eauto.
-    + (* EC_handler_m m0 E0 *)
-      inversion Heq; subst.
-      inversion Hwf; subst.
-      right. left. exists (plug E r').
-      split; [apply (S_step E); auto | reflexivity].
-  - destruct E; simpl in Heq; try discriminate.
-    inversion Heq; subst. inversion Hwf; subst.
-    right. left.
-    exists (plug E (term_handler_m mh T_B0 T_R0 (subst_tm 0 (term_cap Et mh n_beta Ts T_R0 ob) bd))).
-    split.
-    + apply (S_HandleCtx E Et n_beta Ts T_B0 T_R0 ob bd mh); auto.
-      intro Hin. apply Hfresh. simpl. right. exact Hin.
-    + reflexivity.
-Qed.
-
-(* Perform shape inversion. *)
-Lemma step_perform_inv : forall t Ss arg t',
-  term_perform t Ss arg ==> t' ->
-    (exists t1', t ==> t1' /\ t' = term_perform t1' Ss arg)
-    \/ (exists arg', value t /\ arg ==> arg' /\ t' = term_perform t Ss arg').
-Proof.
-  intros t Ss arg t' H.
-  inversion H as
-    [E r r' Hwf Hh Heq Heq'
-    | E Et n_beta Ts T_B T_R ob bd m Hwf Hfresh Heq Heq']; subst.
-  - destruct E; simpl in Heq; try discriminate.
-    + (* EC_hole *) subst r. inversion Hh.
-    + (* EC_perform_r *)
-      inversion Heq; subst. inversion Hwf; subst.
-      left. exists (plug E r'). split; [apply (S_step E); auto | reflexivity].
-    + (* EC_perform_a *)
-      inversion Heq; subst. inversion Hwf; subst.
-      right. exists (plug E r').
-      split; [auto |].
-      split; [apply (S_step E); auto | reflexivity].
-  - destruct E; simpl in Heq; try discriminate.
-    + (* EC_perform_r *)
-      inversion Heq; subst. inversion Hwf; subst.
-      left. exists (plug E (term_handler_m m T_B T_R (subst_tm 0 (term_cap Et m n_beta Ts T_R ob) bd))).
-      split.
-      * apply (S_HandleCtx E Et n_beta Ts T_B T_R ob bd m); auto.
-        intro Hin. apply Hfresh. simpl. rewrite List.in_app_iff. left. exact Hin.
-      * reflexivity.
-    + (* EC_perform_a *)
-      inversion Heq; subst. inversion Hwf; subst.
-      right. exists (plug E (term_handler_m m T_B T_R (subst_tm 0 (term_cap Et m n_beta Ts T_R ob) bd))).
-      split; [auto | split; [|reflexivity]].
-      apply (S_HandleCtx E Et n_beta Ts T_B T_R ob bd m); auto.
-      intro Hin. apply Hfresh. simpl. rewrite List.in_app_iff. right. exact Hin.
-Qed.
-
-(* Handle steps by allocating a fresh marker at the step level. *)
-Lemma step_handle_inv : forall E_tag n_beta Ts T_B T_R op_body body t',
-  term_handle E_tag n_beta Ts T_B T_R op_body body ==> t' ->
-  exists m, t' = term_handler_m m T_B T_R (subst_tm 0 (term_cap E_tag m n_beta Ts T_R op_body) body).
-Proof.
-  intros Et n_beta Ts T_B T_R ob bd t' H.
-  inversion H as
-    [E r r' Hwf Hh Heq Heq'
-    | E Et0 n_beta0 Ts0 T_B0 T_R0 ob0 bd0 m Hwf Hfresh Heq Heq']; subst.
-  - destruct E; simpl in Heq; try discriminate.
-    subst r. inversion Hh.
-  - destruct E; simpl in Heq; try discriminate.
-    inversion Heq; subst. exists m. reflexivity.
-Qed.
-
-(* ------------------------------------------------------------------ *)
-(* Tactic: close a typing branch when the head term is a value-shape  *)
-(* (lambda, ty-lam, lt-lam, cap) or a variable, by appealing to the   *)
-(* corresponding `no_step_*` lemma.                                   *)
-(* ------------------------------------------------------------------ *)
-
-Ltac no_step :=
-  match goal with
-  | H : term_var _       ==> _ |- _ => exfalso; eapply no_step_var; exact H
-  | H : term_lam _ _     ==> _ |- _ => exfalso; eapply no_step_lam; exact H
-  | H : term_ty_lam _ _  ==> _ |- _ => exfalso; eapply no_step_ty_lam; exact H
-  | H : term_lt_lam _    ==> _ |- _ => exfalso; eapply no_step_lt_lam; exact H
-  | H : term_cap _ _ _ _ _ _ ==> _ |- _ => exfalso; eapply no_step_cap; exact H
-  | H : term_resume _ _ _ _  ==> _ |- _ => exfalso; eapply no_step_resume; exact H
-  end.
+  exists u, term_perform v Ss A t ==> u.
+Proof. intros v Ss A t Hv. apply (step_in_ctx (EC_perform_a v Ss A EC_hole)); auto. Qed.
 
 (* ------------------------------------------------------------------ *)
 (* Reflexive-transitive closure of the step relation.                 *)

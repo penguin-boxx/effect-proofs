@@ -74,24 +74,6 @@ Proof.
     match goal with HwfT : ty_wf (bind_lt lt_local :: Γ) T |- _ => exact HwfT end.
 Qed.
 
-Lemma resume_typing_inv : forall Γ m T_B T_R b T,
-  Γ ⊢ₜ term_resume m T_B T_R b : T ->
-  exists A,
-    (bind_tm A :: Γ) ⊢ₜ b : T_B /\
-    Γ ⊢ type_fun A lt_local T_R <:: T.
-Proof.
-  intros Γ m T_B T_R b T Hty.
-  remember (term_resume m T_B T_R b) as t eqn:Ht.
-  induction Hty; try discriminate.
-  - subst. destruct (IHHty eq_refl) as [A0 [Hbody Hsub]].
-    exists A0; split; auto. eapply SA_Trans; eauto.
-  - injection Ht; intros; subst. exists A; split; [assumption|].
-    apply SA_Refl. constructor.
-    + match goal with HwfA : ty_wf Γ A |- _ => exact HwfA end.
-    + constructor.
-    + match goal with HwfTR : ty_wf Γ T_R |- _ => exact HwfTR end.
-Qed.
-
 
 (* Narrowing/body-subtyping witnesses extracted from sub_*_inv.       *)
 (* Under eval_ctx these follow structurally from the full             *)
@@ -138,18 +120,6 @@ Qed.
 (* `sub_weaken_ty_shift`); everything here is proved.                 *)
 (* ------------------------------------------------------------------ *)
 
-(* (a.0) `ctx_lookup_lt` ignores the narrowed `bind_ty` slot. *)
-Lemma ctx_lookup_lt_narrow : forall Δ Γ Bsup Bsub x,
-  ctx_lookup_lt (Δ ++ bind_ty Bsub :: Γ) x
-  = ctx_lookup_lt (Δ ++ bind_ty Bsup :: Γ) x.
-Proof.
-  induction Δ as [|b Δ' IH]; intros Γ Bsup Bsub x; simpl.
-  - reflexivity.
-  - destruct b; simpl.
-    all: try apply IH.
-    (* bind_lt remains *)
-    destruct x; [reflexivity | rewrite (IH Γ Bsup Bsub x); reflexivity].
-Qed.
 
 (* (a.1) Lifetime subtyping only depends on the lt-lookup function. *)
 Lemma lt_wf_lookup_eq : forall G1 l,
@@ -184,43 +154,6 @@ Proof.
   - apply LS_MinR2; eauto. eapply lt_wf_lookup_eq; eauto.
 Qed.
 
-(* (a) Lifetime subtyping is invariant under narrowing a `bind_ty`. *)
-Lemma lt_sub_narrow : forall Δ Γ Bsup Bsub l1 l2,
-  (Δ ++ bind_ty Bsup :: Γ) ⊢ₗ l1 <: l2 ->
-  (Δ ++ bind_ty Bsub :: Γ) ⊢ₗ l1 <: l2.
-Proof.
-  intros Δ Γ Bsup Bsub l1 l2 H.
-  eapply lt_sub_lookup_eq; [exact H |].
-  intros x. symmetry. apply ctx_lookup_lt_narrow.
-Qed.
-
-(* `ctx_lookup_ty` either is unchanged by narrowing or hits the slot.   *)
-(* When it hits the slot, both lookups return the *same* shift `s` of   *)
-(* the respective bound (the path to the binder is identical in both    *)
-(* contexts, so the accumulated shift is identical).                    *)
-Lemma ctx_lookup_ty_narrow : forall Δ Γ Bsup Bsub α,
-  (ctx_lookup_ty (Δ ++ bind_ty Bsub :: Γ) α
-     = ctx_lookup_ty (Δ ++ bind_ty Bsup :: Γ) α)
-  \/ (exists s, ctx_lookup_ty (Δ ++ bind_ty Bsup :: Γ) α = Some (s Bsup)
-             /\ ctx_lookup_ty (Δ ++ bind_ty Bsub :: Γ) α = Some (s Bsub)).
-Proof.
-  induction Δ as [|b Δ' IH]; intros Γ Bsup Bsub α; simpl.
-  - destruct α.
-    + right. exists (shift_ty 1 0). split; reflexivity.
-    + left. reflexivity.
-  - destruct b; simpl; try apply IH.
-    + (* bind_ty *)
-      destruct α; [left; reflexivity | ].
-      destruct (IH Γ Bsup Bsub α) as [Heq | [s [H1 H2]]].
-      * left. rewrite Heq. reflexivity.
-      * right. exists (fun T => shift_ty 1 0 (s T)).
-        rewrite H1, H2. split; reflexivity.
-    + (* bind_lt *)
-      destruct (IH Γ Bsup Bsub α) as [Heq | [s [H1 H2]]].
-      * left. rewrite Heq. reflexivity.
-      * right. exists (fun T => shift_lt_in_ty 1 0 (s T)).
-        rewrite H1, H2. split; reflexivity.
-Qed.
 
 (* ------------------------------------------------------------------ *)
 (* Lattice helper: `lt_min` is monotone in both arguments.            *)
@@ -482,23 +415,6 @@ Proof.
     + apply (sub_weaken_lt_shift G' D W' W HsubG').
 Qed.
 
-Lemma NT_lookup_None : forall Bsub Bsup G G',
-  NarrowTy Bsub Bsup G G' ->
-  forall α, ctx_lookup_ty G α = None -> ctx_lookup_ty G' α = None.
-Proof.
-  intros Bsub Bsup G G' H. induction H; intros α Hlk.
-  - destruct α as [|n]; simpl in *.
-    + discriminate.
-    + destruct (ctx_lookup_ty Γ n) as [W|] eqn:E; simpl in Hlk; [discriminate|].
-      reflexivity.
-  - destruct α as [|n]; simpl in *.
-    + discriminate.
-    + destruct (ctx_lookup_ty G n) as [W|] eqn:E; simpl in Hlk; [discriminate|].
-      rewrite (IHNarrowTy n E). reflexivity.
-  - simpl in *.
-    destruct (ctx_lookup_ty G α) as [W|] eqn:E; simpl in Hlk; [discriminate|].
-    rewrite (IHNarrowTy α E). reflexivity.
-Qed.
 
 Scheme ty_wf_mutind := Induction for ty_wf Sort Prop
 with types_wf_mutind := Induction for types_wf Sort Prop.
@@ -581,14 +497,6 @@ Proof.
   exact (proj1 (lt_of_ty_ctx_NT_all f) G T Hwf Bsub Bsup G' HN Hf).
 Qed.
 
-Lemma lt_of_ty_ctx_list_NT : forall Bsub Bsup G G',
-  NarrowTy Bsub Bsup G G' ->
-  forall f Ts, types_wf G Ts -> f <= List.length G ->
-    G' ⊢ₗ lt_of_ty_ctx_list f G' Ts <: lt_of_ty_ctx_list f G Ts.
-Proof.
-  intros Bsub Bsup G G' HN f Ts Hwf Hf.
-  exact (proj2 (lt_of_ty_ctx_NT_all f) G Ts Hwf Bsub Bsup G' HN Hf).
-Qed.
 
 Lemma lt_of_ty_G_NT : forall Bsub Bsup G G',
   NarrowTy Bsub Bsup G G' ->
@@ -778,12 +686,6 @@ Proof.
   exact (proj1 ty_wf_RT_all G T Hwf G' HRT).
 Qed.
 
-Lemma types_wf_RT : forall G G',
-  ReplaceTy G G' -> forall Ts, types_wf G Ts -> types_wf G' Ts.
-Proof.
-  intros G G' HRT Ts Hwf.
-  exact (proj2 ty_wf_RT_all G Ts Hwf G' HRT).
-Qed.
 
 Lemma sub_NT : forall G S T, G ⊢ S <:: T ->
   forall Bsub Bsup G', NarrowTy Bsub Bsup G G' -> G' ⊢ S <:: T.
@@ -874,39 +776,5 @@ Proof.
   - (* LtAll *) discriminate HU.
   - (* TyAll *) injection HU; intros; subst.
     eexists; eexists; repeat split; eauto.
-Qed.
-
-(* Replacing one stepping argument inside a well-typed constructor     *)
-(* argument list preserves the per-element typing.  The per-element    *)
-(* preservation comes from the `typing_ind2` IH packaged as the second *)
-(* `Forall2` hypothesis below; this lemma is consumed in the T_Ctor    *)
-(* case of `preservation`.                                             *)
-Lemma ctor_args_preserve :
-  forall Γ vsl t0 t0' tsr rho_fields,
-  Forall2 (fun v rho => Γ ⊢ₜ v : rho) (vsl ++ t0 :: tsr) rho_fields ->
-  Forall2 (fun v rho => eval_ctx Γ -> forall v', v ==> v' -> Γ ⊢ₜ v' : rho)
-          (vsl ++ t0 :: tsr) rho_fields ->
-  eval_ctx Γ ->
-  t0 ==> t0' ->
-  Forall2 (fun v rho => Γ ⊢ₜ v : rho) (vsl ++ t0' :: tsr) rho_fields.
-Proof.
-  intros Γ vsl. induction vsl as [| a vsl' IHvsl];
-    intros t0 t0' tsr rho_fields HF HFP Hec Hstep; simpl in *.
-  - apply f2_uncons_l in HF.
-    destruct HF as [rho0 [rest [Erf [Hhd Htl]]]]. subst rho_fields.
-    apply f2_uncons_l in HFP.
-    destruct HFP as [rho0' [rest' [Erf' [HPhd HPtl]]]].
-    injection Erf'; intros; subst rho0' rest'.
-    constructor.
-    + apply HPhd; assumption.
-    + exact Htl.
-  - apply f2_uncons_l in HF.
-    destruct HF as [rho0 [rest [Erf [Hhd Htl]]]]. subst rho_fields.
-    apply f2_uncons_l in HFP.
-    destruct HFP as [rho0' [rest' [Erf' [HPhd HPtl]]]].
-    injection Erf'; intros; subst rho0' rest'.
-    constructor.
-    + exact Hhd.
-    + eapply IHvsl with (t0 := t0); eassumption.
 Qed.
 

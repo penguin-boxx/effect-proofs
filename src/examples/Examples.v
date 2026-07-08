@@ -348,7 +348,7 @@ Definition withReader : term :=
 Definition readerExample_op_body : term := ($$ 1) @· two_v.
 Definition readerExample : term :=
   term_handle Reader_tag 0 [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) readerExample_op_body
-    (term_perform ($$ 0) [] unit_v).
+    (term_perform ($$ 0) [] (T_Nat `Lf) unit_v).
 
 (* fun withState[lr]<s <: Any'free, r <: Any'free>(
        f: context(State<s>) ()'local -> r
@@ -389,9 +389,9 @@ Definition withState : term :=
    The State op is encoded as [Cmd<Nat> -> Nat]: [get] reads, [put n] writes. *)
 Definition withState_prog : term :=
   λ: T_State `Ll (T_Nat `Lf) \\
-    let: T_Nat `Lf <- term_perform ($$ 0) [] (term_ctor get_tag `Lf [] [T_Nat `Lf] []) in
-    let: T_Nat `Lf <- term_perform ($$ 1) [] (term_ctor put_tag `Lf [] [T_Nat `Lf] [three_v]) in
-    term_perform ($$ 2) [] (term_ctor get_tag `Lf [] [T_Nat `Lf] []).
+    let: T_Nat `Lf <- term_perform ($$ 0) [] (T_Nat `Lf) (term_ctor get_tag `Lf [] [T_Nat `Lf] []) in
+    let: T_Nat `Lf <- term_perform ($$ 1) [] (T_Nat `Lf) (term_ctor put_tag `Lf [] [T_Nat `Lf] [three_v]) in
+    term_perform ($$ 2) [] (T_Nat `Lf) (term_ctor get_tag `Lf [] [T_Nat `Lf] []).
 
 Definition withState_example : term :=
   (withState @lt[ `Lf ] @ty[ T_Nat `Lf ] @ty[ T_Nat `Lf ]) @· withState_prog @· two_v.
@@ -418,7 +418,7 @@ Definition withException : term :=
 
 (* let exampleException = withException<Nat, File>(context(h) fun() perform h.throw<File>(3)) *)
 Definition exampleException_body : term :=
-  term_perform ($$ 0) [T_File `Lf] three_v.
+  term_perform ($$ 0) [T_File `Lf] (T_File `Lf) three_v.
 
 Definition exampleException : term :=
   (withException @ty[ T_Nat `Lf ] @ty[ T_File `Lf ]) @·
@@ -527,21 +527,21 @@ Definition optionality_op_body : term :=
 Definition exampleOptionality : term :=
   term_handle Optionality_tag 1 []
     (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf (T_Nat `Lf)) optionality_op_body
-    (term_perform ($$ 0) [T_Nat `Lf] three_v).
+    (term_perform ($$ 0) [T_Nat `Lf] (T_Option `Lf (T_Nat `Lf)) three_v).
 
 (* let withReaderExample = withReader[free]<Nat, Nat>(
        context(rd: Reader<Nat>'local) fun() perform rd.ask()
    )(2)                                              -- = 2 *)
 Definition withReader_example : term :=
   (withReader @lt[ `Lf ] @ty[ T_Nat `Lf ] @ty[ T_Nat `Lf ])
-    @· (λ: T_Reader `Ll (T_Nat `Lf) \\ term_perform ($$ 0) [] unit_v)
+    @· (λ: T_Reader `Ll (T_Nat `Lf) \\ term_perform ($$ 0) [] (T_Nat `Lf) unit_v)
     @· two_v.
 
 (* let withIdExample = withId<Nat>(context(h: Id'local) fun()
        perform h.id<Nat>(2))                         -- = 2 *)
 Definition withId_example : term :=
   (withId @ty[ T_Nat `Lf ])
-    @· (λ: T_Id `Ll \\ term_perform ($$ 0) [T_Nat `Lf] two_v).
+    @· (λ: T_Id `Ll \\ term_perform ($$ 0) [T_Nat `Lf] (T_Nat `Lf) two_v).
 
 (* let multishotExample =
      handle r: Reader<Nat> { op ask() let _ = resume(2) in resume(3) }
@@ -553,7 +553,7 @@ Definition multishot_op_body : term :=
 
 Definition multishotExample : term :=
   term_handle Reader_tag 0 [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) multishot_op_body
-    (term_perform ($$ 0) [] unit_v).
+    (term_perform ($$ 0) [] (T_Nat `Lf) unit_v).
 
 (* let forwardExample =
      handle h: Exception<Nat> { op throw<a>(e) Error<Nat,File>(e) }
@@ -566,8 +566,8 @@ Definition multishotExample : term :=
    the abortive clause discards both the Ok frame and the inner
    delimiter.                                    -- = Error(2) *)
 Definition forward_inner_body : term :=
-  let: T_Nat `Lf <- term_perform ($$ 0) [] unit_v in
-  term_perform ($$ 2) [T_File `Lf] ($$ 0).
+  let: T_Nat `Lf <- term_perform ($$ 0) [] (T_Nat `Lf) unit_v in
+  term_perform ($$ 2) [T_File `Lf] (T_File `Lf) ($$ 0).
 
 Definition forwardExample : term :=
   term_handle Exception_tag 1 [T_Nat `Lf]

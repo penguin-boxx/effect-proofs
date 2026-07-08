@@ -185,6 +185,8 @@ Proof.
   intros K l Ts. simpl. f_equal.
 Qed.
 
+
+
 (* Context-free escape lifetime is below the context-aware one          *)
 (* (a type variable contributes [free] context-free, its bound          *)
 (* context-aware).  Used to thread the (weaker) T_Ctor escape premise   *)
@@ -936,15 +938,6 @@ Proof.
            (SubstTy_here Γ B S HSsub)).
 Qed.
 
-Lemma sub_subst_lt : forall Γ Δ U0 U Δ',
-  (bind_lt Δ :: Γ) ⊢ U0 <:: U ->
-  Γ ⊢ₗ Δ' <: Δ ->
-  Γ ⊢ subst_lt_in_ty 0 Δ' U0 <:: subst_lt_in_ty 0 Δ' U.
-Proof.
-  intros Γ Δ U0 U Δ' Hsub HltΔ.
-  apply (sub_SubstLt (bind_lt Δ :: Γ) U0 U Hsub Δ' 0 Γ).
-  apply SubstLt_here. exact HltΔ.
-Qed.
 
 (* Narrowing a type-variable bound preserves type well-formedness.     *)
 (* This is the small F<: narrowing fragment needed by the unrestricted *)
@@ -1016,25 +1009,6 @@ Proof.
   - apply LWF_Min; [apply (IHHwf1 G' HN) | apply (IHHwf2 G' HN)].
 Qed.
 
-Lemma lt_sub_NarrowTyWf : forall Bsub Bsup G G',
-  NarrowTyWf Bsub Bsup G G' ->
-  forall l1 l2, G ⊢ₗ l1 <: l2 -> G' ⊢ₗ l1 <: l2.
-Proof.
-  intros Bsub Bsup G G' HN l1 l2 H.
-  revert G' HN.
-  induction H.
-  all: intros G' HN.
-  - apply LS_Free. eapply lt_wf_NarrowTyWf; eauto.
-  - apply LS_Local. eapply lt_wf_NarrowTyWf; eauto.
-  - apply LS_Var with (Δ := Δ);
-      [rewrite <- (NarrowTyWf_lookup_lt Bsub Bsup Γ G' HN x); exact H |
-       eapply lt_wf_NarrowTyWf; eauto].
-  - apply LS_Refl. eapply lt_wf_NarrowTyWf; eauto.
-  - eapply LS_Trans; eauto.
-  - apply LS_MinL; eauto.
-  - apply LS_MinR1; eauto. eapply lt_wf_NarrowTyWf; eauto.
-  - apply LS_MinR2; eauto. eapply lt_wf_NarrowTyWf; eauto.
-Qed.
 
 Lemma NarrowTyWf_lookup_sub : forall Bsub Bsup G G',
   NarrowTyWf Bsub Bsup G G' ->

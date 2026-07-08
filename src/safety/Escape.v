@@ -7,6 +7,7 @@ Require Import Substitution.
 Require Import Semantics.
 Require Import Typing.
 Require Import Subst.
+Require Import TypingInv.
 Require Import Markers.
 Require Import Progress.
 Require Import Variance.
@@ -114,7 +115,7 @@ Proof.
   intros u Hms'.
   destruct (multi_step_preserves_safety_invariants _ _ _ _ Hec
               (source_safety_invariants _ _ _ Hsrc Hty) Hms')
-    as [_ [_ [_ [_ Htyu]]]].
+    as [_ [_ Htyu]].
   exact Htyu.
 Qed.
 
@@ -131,9 +132,9 @@ Qed.
 (* capabilities; the runtime `marker_ok` invariant does.              *)
 (* ================================================================== *)
 
-Lemma marker_ok_plug_cap_pure_in : forall ms E E_tag m n_beta Ts T_R op_body,
+Lemma well_scoped_plug_cap_pure_in : forall ms E E_tag m n_beta Ts T_R op_body,
   pure_ectx_m m E ->
-  marker_ok ms (plug E (term_cap E_tag m n_beta Ts T_R op_body)) ->
+  well_scoped ms (plug E (term_cap E_tag m n_beta Ts T_R op_body)) ->
   In m ms.
 Proof.
   intros ms E E_tag m n_beta Ts T_R op_body Hpure.
@@ -155,17 +156,17 @@ Proof.
 Qed.
 
 Theorem capability_confined : forall E E_tag m n_beta Ts T_R op_body,
-  marker_ok [] (plug E (term_cap E_tag m n_beta Ts T_R op_body)) ->
+  well_scoped [] (plug E (term_cap E_tag m n_beta Ts T_R op_body)) ->
   ~ pure_ectx_m m E.
 Proof.
   intros E E_tag m n_beta Ts T_R op_body Hmok Hpure.
-  pose proof (marker_ok_plug_cap_pure_in [] E E_tag m n_beta Ts T_R op_body Hpure Hmok) as Hin.
+  pose proof (well_scoped_plug_cap_pure_in [] E E_tag m n_beta Ts T_R op_body Hpure Hmok) as Hin.
   inversion Hin.
 Qed.
 
 Theorem capability_never_exposed : forall Γ t E E_tag m n_beta Ts T_R op_body T,
   eval_ctx Γ ->
-  (forall u, multi_step t u -> marker_ok [] u) ->
+  (forall u, multi_step t u -> well_scoped [] u) ->
   Γ ⊢ₜ t : T ->
   multi_step t (plug E (term_cap E_tag m n_beta Ts T_R op_body)) ->
   ~ pure_ectx_m m E.
@@ -175,16 +176,6 @@ Proof.
   eapply capability_confined; eauto.
 Qed.
 
-Corollary capability_under_handler : forall Γ t E E_tag m n_beta Ts T_R op_body T,
-  eval_ctx Γ ->
-  (forall u, multi_step t u -> marker_ok [] u) ->
-  Γ ⊢ₜ t : T ->
-  multi_step t (plug E (term_cap E_tag m n_beta Ts T_R op_body)) ->
-  ~ pure_ectx_m m E.
-Proof.
-  intros Γ t E E_tag m n_beta Ts T_R op_body T Hec Hmok Hty Hms Hpure.
-  eapply capability_never_exposed; eauto.
-Qed.
 
 (* Source-facing form: for a program with no runtime marker constructs *)
 (* the marker_ok trace premise is discharged by the step-preserved     *)
@@ -202,6 +193,6 @@ Proof.
   intros u Hms'.
   destruct (multi_step_preserves_safety_invariants _ _ _ _ Hec
               (source_safety_invariants _ _ _ Hsrc Hty) Hms')
-    as [_ [_ [Hws _]]].
-  apply well_scoped_marker_ok. exact Hws.
+    as [_ [[Hws _] _]].
+  exact Hws.
 Qed.

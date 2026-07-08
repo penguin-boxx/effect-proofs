@@ -5,6 +5,24 @@ Require Import Syntax.
 
 (* ================================================================== *)
 (* Shifting and substitution of de Bruijn indices.                    *)
+(*                                                                    *)
+(* Three independent variable sorts in a strict dependency order      *)
+(*   lifetime < type < term                                           *)
+(* (lifetimes occur in types and terms, types occur in terms, never   *)
+(* the reverse), so the operation matrix is lower-triangular: six     *)
+(* shift/subst pairs, not nine.                                       *)
+(*                                                                    *)
+(*   sort \ carrier |  lifetime      type            term             *)
+(*   lifetime       |  shift/subst_lt shift/subst_lt_in_ty            *)
+(*                  |                                shift/subst_lt_in_tm *)
+(*   type           |      —          shift/subst_ty shift/subst_ty_in_tm *)
+(*   term           |      —              —          shift/subst_tm   *)
+(*                                                                    *)
+(* The sorts are NOT independent: substituting under a binder of a    *)
+(* lower sort shifts the replacement in that sort (e.g. `subst_ty`    *)
+(* under `type_lt_all` lifts the replacement's lifetime variables).   *)
+(* The `subst_list_*` family at the end telescopes a whole binder     *)
+(* block at once (constructor arguments, the two op-body binders).    *)
 (* ================================================================== *)
 
 (* ================================================================== *)
@@ -100,12 +118,11 @@ Fixpoint shift_tm (amount cutoff : nat) (t : term) : term :=
       term_handle E n_β Ts T_B T_R
                   (shift_tm amount (cutoff + 2) op_body)
                   (shift_tm amount (S cutoff) body)
-  | term_perform t Ss arg =>
-      term_perform (shift_tm amount cutoff t) Ss (shift_tm amount cutoff arg)
+  | term_perform t Ss A arg =>
+      term_perform (shift_tm amount cutoff t) Ss A (shift_tm amount cutoff arg)
     | term_cap E m n_β Ts T_R op_body =>
       term_cap E m n_β Ts T_R (shift_tm amount (cutoff + 2) op_body)
   | term_handler_m m T_B T_R t => term_handler_m m T_B T_R (shift_tm amount cutoff t)
-  | term_resume m T_B T_R b => term_resume m T_B T_R (shift_tm amount (S cutoff) b)
   end.
 
 (* --- Terms: shift type variables --- *)
@@ -145,9 +162,10 @@ Fixpoint shift_ty_in_tm (amount cutoff : nat) (t : term) : term :=
                   (shift_ty amount cutoff T_R)
                   (shift_ty_in_tm amount (cutoff + n_β) op_body)
                   (shift_ty_in_tm amount cutoff body)
-  | term_perform t Ss arg =>
+  | term_perform t Ss A arg =>
       term_perform (shift_ty_in_tm amount cutoff t)
                    (shift_ty_list amount cutoff Ss)
+                   (shift_ty amount cutoff A)
                    (shift_ty_in_tm amount cutoff arg)
   | term_cap E m n_β Ts T_R op_body =>
       term_cap E m n_β (shift_ty_list amount cutoff Ts)
@@ -156,9 +174,6 @@ Fixpoint shift_ty_in_tm (amount cutoff : nat) (t : term) : term :=
   | term_handler_m m T_B T_R t =>
       term_handler_m m (shift_ty amount cutoff T_B) (shift_ty amount cutoff T_R)
         (shift_ty_in_tm amount cutoff t)
-  | term_resume m T_B T_R b =>
-      term_resume m (shift_ty amount cutoff T_B) (shift_ty amount cutoff T_R)
-        (shift_ty_in_tm amount cutoff b)
   end.
 
 (* --- Terms: shift lifetime variables --- *)
@@ -199,9 +214,10 @@ Fixpoint shift_lt_in_tm (amount cutoff : nat) (t : term) : term :=
                   (shift_lt_in_ty amount cutoff T_R)
                   (shift_lt_in_tm amount cutoff op_body)
                   (shift_lt_in_tm amount cutoff body)
-  | term_perform t Ss arg =>
+  | term_perform t Ss A arg =>
       term_perform (shift_lt_in_tm amount cutoff t)
                    (shift_lt_in_ty_list amount cutoff Ss)
+                   (shift_lt_in_ty amount cutoff A)
                    (shift_lt_in_tm amount cutoff arg)
     | term_cap E m n_β Ts T_R op_body =>
       term_cap E m n_β (shift_lt_in_ty_list amount cutoff Ts)
@@ -210,9 +226,6 @@ Fixpoint shift_lt_in_tm (amount cutoff : nat) (t : term) : term :=
   | term_handler_m m T_B T_R t =>
       term_handler_m m (shift_lt_in_ty amount cutoff T_B) (shift_lt_in_ty amount cutoff T_R)
         (shift_lt_in_tm amount cutoff t)
-  | term_resume m T_B T_R b =>
-      term_resume m (shift_lt_in_ty amount cutoff T_B) (shift_lt_in_ty amount cutoff T_R)
-        (shift_lt_in_tm amount cutoff b)
   end.
 
 (* ================================================================== *)
@@ -329,15 +342,13 @@ Fixpoint subst_tm (var : nat) (replacement t : term) : term :=
       term_handle E n_β Ts T_B T_R
                   (subst_tm (var + 2) (shift_tm 2 0 replacement) op_body)
                   (subst_tm (S var) (shift_tm 1 0 replacement) body)
-  | term_perform t Ss arg =>
-      term_perform (subst_tm var replacement t) Ss
+  | term_perform t Ss A arg =>
+      term_perform (subst_tm var replacement t) Ss A
                    (subst_tm var replacement arg)
     | term_cap E m n_β Ts T_R op_body =>
       term_cap E m n_β Ts T_R
                (subst_tm (var + 2) (shift_tm 2 0 replacement) op_body)
   | term_handler_m m T_B T_R t => term_handler_m m T_B T_R (subst_tm var replacement t)
-    | term_resume m T_B T_R b =>
-      term_resume m T_B T_R (subst_tm (S var) (shift_tm 1 0 replacement) b)
   end.
 
 (* --- Type variable substitution in terms --- *)
@@ -377,9 +388,10 @@ Fixpoint subst_ty_in_tm (var : nat) (replacement : type) (t : term) : term :=
                   (subst_ty var replacement T_R)
                   (subst_ty_in_tm (var + n_β) (shift_ty n_β 0 replacement) op_body)
                   (subst_ty_in_tm var replacement body)
-  | term_perform t Ss arg =>
+  | term_perform t Ss A arg =>
       term_perform (subst_ty_in_tm var replacement t)
                    (subst_ty_list var replacement Ss)
+                   (subst_ty var replacement A)
                    (subst_ty_in_tm var replacement arg)
     | term_cap E m n_β Ts T_R op_body =>
       term_cap E m n_β (subst_ty_list var replacement Ts)
@@ -388,9 +400,6 @@ Fixpoint subst_ty_in_tm (var : nat) (replacement : type) (t : term) : term :=
     | term_handler_m m T_B T_R t =>
         term_handler_m m (subst_ty var replacement T_B) (subst_ty var replacement T_R)
           (subst_ty_in_tm var replacement t)
-    | term_resume m T_B T_R b =>
-        term_resume m (subst_ty var replacement T_B) (subst_ty var replacement T_R)
-          (subst_ty_in_tm var replacement b)
   end.
 
 (* --- Lifetime variable substitution in terms --- *)
@@ -433,9 +442,10 @@ Fixpoint subst_lt_in_tm (var : nat) (replacement : lifetime) (t : term) : term :
                   (subst_lt_in_ty var replacement T_R)
                   (subst_lt_in_tm var replacement op_body)
                   (subst_lt_in_tm var replacement body)
-  | term_perform t Ss arg =>
+  | term_perform t Ss A arg =>
       term_perform (subst_lt_in_tm var replacement t)
                    (subst_lt_in_ty_list var replacement Ss)
+                   (subst_lt_in_ty var replacement A)
                    (subst_lt_in_tm var replacement arg)
     | term_cap E m n_β Ts T_R op_body =>
       term_cap E m n_β (subst_lt_in_ty_list var replacement Ts)
@@ -444,9 +454,6 @@ Fixpoint subst_lt_in_tm (var : nat) (replacement : lifetime) (t : term) : term :
   | term_handler_m m T_B T_R t =>
       term_handler_m m (subst_lt_in_ty var replacement T_B) (subst_lt_in_ty var replacement T_R)
         (subst_lt_in_tm var replacement t)
-  | term_resume m T_B T_R b =>
-      term_resume m (subst_lt_in_ty var replacement T_B) (subst_lt_in_ty var replacement T_R)
-        (subst_lt_in_tm var replacement b)
   end.
 
 (* =================================================================== *)

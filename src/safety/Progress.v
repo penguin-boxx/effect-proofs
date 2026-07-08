@@ -7,12 +7,22 @@ Require Import Substitution.
 Require Import Semantics.
 Require Import Typing.
 Require Import Subst.
+Require Import TypingInv.
 Require Import Markers.
 
+(* The third disjunct of the open-scope progress result: [t] is a      *)
+(* perform of a live capability whose matching delimiter lies OUTSIDE  *)
+(* [t] (its marker is only promised to be in the ambient scope [ms]).  *)
+(* This is what makes the induction go through under a delimiter: the  *)
+(* T_HandlerM case either catches the escape (same marker — then       *)
+(* H_Perform fires, using [marker_types_safe] to reconcile the         *)
+(* delimiter's and the capability's answer-type annotations) or        *)
+(* forwards it one scope out.  At the closed top level ([ms] = []),    *)
+(* the escape disjunct is vacuous, giving the classical progress.      *)
 Definition perform_escape (ms : list marker) (t : term) : Prop :=
-  exists E_tag m n_beta Ts T_R op_body Ss v P,
+  exists E_tag m n_beta Ts T_R op_body Ss A v P,
     In m ms /\ pure_ectx_m m P /\ value v /\
-    t = plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss v).
+    t = plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss A v).
 
 Definition progress_result (ms : list marker) (t : term) : Prop :=
   value t \/ (exists t', t ==> t') \/ perform_escape ms t.
@@ -169,23 +179,6 @@ Proof.
     end.
 Qed.
 
-(* Helper: from Forall (value-or-step) deduce all-values or a step-in-list. *)
-Lemma split_values_or_step : forall vs,
-  Forall (fun v => value v \/ exists v', v ==> v') vs ->
-  Forall value vs \/
-  exists vsl t t' vsr,
-    Forall value vsl /\ vs = vsl ++ t :: vsr /\ t ==> t'.
-Proof.
-  induction vs as [| v vs' IH]; intros H.
-  { left; constructor. }
-  inversion H as [| x xs Hhead Hrest]; subst.
-  destruct Hhead as [Hv | [v' Hs]].
-  - destruct (IH Hrest) as [Hall | [vsl [t [t' [vsr [Hallvl [Heq Hst]]]]]]].
-    + left. constructor; auto.
-    + right. exists (v :: vsl), t, t', vsr.
-      repeat split; auto. simpl. f_equal; auto.
-  - right. exists (@nil term), v, v', vs'. repeat split; auto.
-Qed.
 
 Lemma split_values_or_step_or_escape : forall ms vs,
   Forall (progress_result ms) vs ->
@@ -214,7 +207,7 @@ Qed.
 
 Theorem progress_open_safe : forall Γ ms t T,
   eval_ctx Γ ->
-  marker_ok ms t ->
+  well_scoped ms t ->
   marker_types_safe t ->
   Γ ⊢ₜ t : T ->
   progress_result ms t.
@@ -222,7 +215,7 @@ Proof.
   intros Γ0 ms0 t0 T0 Hec0 Hmok0 Hsafe0 Hty0. revert ms0 Hmok0 Hsafe0 Hec0.
   revert Hty0; revert T0; revert t0; revert Γ0.
   apply (typing_ind2 (fun Γ t T => forall ms,
-    marker_ok ms t -> marker_types_safe t -> eval_ctx Γ -> progress_result ms t)).
+    well_scoped ms t -> marker_types_safe t -> eval_ctx Γ -> progress_result ms t)).
   - (* T_Var *)
     intros Γ x T Hlk Hwf ms Hmok Hsafe Hec.
     rewrite eval_ctx_no_tm in Hlk; auto; discriminate.
@@ -237,19 +230,17 @@ Proof.
     specialize (IH2 ms Hmok2 (marker_types_safe_app_r _ _ Hsafe) Hec).
     destruct IH1 as [Hv1 | [[t1' Hs1] | Hesc1]].
     + destruct IH2 as [Hv2 | [[t2' Hs2] | Hesc2]].
-        * destruct (canonical_fun _ _ _ _ _ Hec Ht1 Hv1) as
-          [[body [T0 Heq]] | [m [T_B [T_R [b Heq]]]]]; subst.
-        -- right. left. eexists. apply S_Beta; auto.
-        -- right. left. eexists. apply S_Resume; auto.
+        * destruct (canonical_fun _ _ _ _ _ Hec Ht1 Hv1) as [body [T0 Heq]]; subst.
+          right. left. eexists. apply S_Beta; auto.
       * destruct (S_App2 t1 t2 Hv1 (ex_intro _ t2' Hs2)) as [u Hu].
         right. left. exists u. exact Hu.
-      * destruct Hesc2 as (Et & m & nb & Ts0 & T_R & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
-        right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, v, (EC_app2 t1 P).
+      * destruct Hesc2 as (Et & m & nb & Ts0 & T_R & ob & Ss & A0 & v & P & Hin & Hp & Hv & Heq); subst.
+        right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, A0, v, (EC_app2 t1 P).
         repeat split; auto.
     + destruct (S_App1 t1 t2 (ex_intro _ t1' Hs1)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hesc1 as (Et & m & nb & Ts0 & T_R & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
-      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, v, (EC_app1 P t2).
+    + destruct Hesc1 as (Et & m & nb & Ts0 & T_R & ob & Ss & A0 & v & P & Hin & Hp & Hv & Heq); subst.
+      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, A0, v, (EC_app1 P t2).
       repeat split; auto.
   - (* T_TyLam *)
     intros Γ bound body T HwfBound HwfT Hbody IHbody ms Hmok Hsafe Hec. left; constructor.
@@ -261,8 +252,8 @@ Proof.
       right. left. eexists. apply S_TyBeta.
     + destruct (S_TyApp t S (ex_intro _ t' Hs)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
-      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, v, (EC_ty_app P S).
+    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & A0 & v & P & Hin & Hp & Hv & Heq); subst.
+      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, A0, v, (EC_ty_app P S).
       repeat split; auto.
   - (* T_LtLam *)
     intros Γ body T HwfT Hbody IHbody ms Hmok Hsafe Hec. left; constructor.
@@ -274,15 +265,15 @@ Proof.
       right. left. eexists. apply S_LtBeta.
     + destruct (S_LtApp t l (ex_intro _ t' Hs)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & v & P & Hin & Hp & Hv & Heq); subst.
-      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, v, (EC_lt_app P l).
+    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & A0 & v & P & Hin & Hp & Hv & Heq); subst.
+      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, A0, v, (EC_lt_app P l).
       repeat split; auto.
   - (* T_Ctor *)
     intros Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields
       result_ty result_tag l vs
       Hlk Heff Hlen_lts Hwflts Hrho Hlen_Ts HwfTs Hresult Hshape Hresult_eff Hwfl Hlt Hlen_vs
       HF HFP HargsIH ms Hmok Hsafe Hec.
-    assert (Hmok_vs : Forall (marker_ok ms) vs).
+    assert (Hmok_vs : Forall (well_scoped ms) vs).
     { clear - Hmok. induction vs as [|v vs IH]; simpl in Hmok; constructor; [tauto|apply IH; tauto]. }
     assert (Hsafe_vs : Forall marker_types_safe vs).
     { apply marker_types_safe_ctor_args with (K := K) (l := l) (lts := lts) (Ts := Ts). exact Hsafe. }
@@ -297,9 +288,9 @@ Proof.
     + left. constructor; auto.
     + subst. destruct (S_Ctor K l lts Ts vsl tm vsr Hallvl (ex_intro _ tm' Hst)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & v & P & Hin & Hp & Hv & Heqesc).
+    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & A0 & v & P & Hin & Hp & Hv & Heqesc).
       subst vs tm.
-      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, v, (EC_ctor K l lts Ts vsl P vsr).
+      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, A0, v, (EC_ctor K l lts Ts vsl P vsr).
       repeat split; auto.
   - (* T_Match *)
     intros Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
@@ -330,9 +321,9 @@ Proof.
       * eexists. eapply S_MatchNo; eauto.
     + destruct (S_Match scrut K n_lt arity yes_body no_body (ex_intro _ scrut' Hs)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & v & P & Hin & Hp & Hv & Heq).
+    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & A0 & v & P & Hin & Hp & Hv & Heq).
       subst scrut.
-      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, v, (EC_match P K n_lt arity yes_body no_body).
+      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, A0, v, (EC_match P K n_lt arity yes_body no_body).
       repeat split; auto.
   - (* T_Cap *)
     intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
@@ -348,24 +339,24 @@ Proof.
     intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
       Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs HnoSs Hsi HnoSig Hri HwfRet Harg IHarg ms Hmok Hsafe Hec.
     simpl in Hmok. destruct Hmok as [Hmok_recv Hmok_arg].
-    specialize (IHrecv ms Hmok_recv (marker_types_safe_perform_recv _ _ _ Hsafe) Hec).
+    specialize (IHrecv ms Hmok_recv (marker_types_safe_perform_recv _ _ _ _ Hsafe) Hec).
     destruct IHrecv as [Hvrecv | [[recv' Hsrecv] | Hescrecv]].
-    + specialize (IHarg ms Hmok_arg (marker_types_safe_perform_arg _ _ _ Hsafe) Hec).
+    + specialize (IHarg ms Hmok_arg (marker_types_safe_perform_arg _ _ _ _ Hsafe) Hec).
       destruct IHarg as [Hvarg | [[arg' Hsarg] | Hescarg]].
       * destruct (canonical_cap Γ recv E_tag Δ Ts n_α n_β sig ret Hec Heff Hrecv Hvrecv)
           as [m [T_R [op_body Heqcap]]].
         subst recv. simpl in Hmok_recv. destruct Hmok_recv as [Hin Hop_ok].
-        right. right. exists E_tag, m, n_β, Ts, T_R, op_body, Ss, arg, EC_hole.
+        right. right. exists E_tag, m, n_β, Ts, T_R, op_body, Ss, ret_inst, arg, EC_hole.
         repeat split; auto.
-      * destruct (S_PerformArg recv Ss arg Hvrecv (ex_intro _ arg' Hsarg)) as [u Hu].
+      * destruct (S_PerformArg recv Ss ret_inst arg Hvrecv (ex_intro _ arg' Hsarg)) as [u Hu].
         right. left. exists u. exact Hu.
-      * destruct Hescarg as (Et & m & nb & Ts0 & T_R & ob & Ss0 & v & P & Hin & Hp & Hv & Heq); subst.
-        right. right. exists Et, m, nb, Ts0, T_R, ob, Ss0, v, (EC_perform_a recv Ss P).
+      * destruct Hescarg as (Et & m & nb & Ts0 & T_R & ob & Ss0 & A0 & v & P & Hin & Hp & Hv & Heq); subst arg.
+        right. right. exists Et, m, nb, Ts0, T_R, ob, Ss0, A0, v, (EC_perform_a recv Ss ret_inst P).
         repeat split; auto.
-    + destruct (S_PerformRecv recv Ss arg (ex_intro _ recv' Hsrecv)) as [u Hu].
+    + destruct (S_PerformRecv recv Ss ret_inst arg (ex_intro _ recv' Hsrecv)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hescrecv as (Et & m & nb & Ts0 & T_R & ob & Ss0 & v & P & Hin & Hp & Hv & Heq); subst.
-      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss0, v, (EC_perform_r P Ss arg).
+    + destruct Hescrecv as (Et & m & nb & Ts0 & T_R & ob & Ss0 & A0 & v & P & Hin & Hp & Hv & Heq); subst recv.
+      right. right. exists Et, m, nb, Ts0, T_R, ob, Ss0, A0, v, (EC_perform_r P Ss ret_inst arg).
       repeat split; auto.
   - (* T_HandlerM *)
     intros Γ m T_B T_R t HwfTB HwfTR HnoLocal Hsub Ht IH ms Hmok Hsafe Hec.
@@ -375,24 +366,22 @@ Proof.
     + right. left. exists t. apply S_Return; auto.
     + destruct (S_HandlerM m T_B T_R t (ex_intro _ t' Hs)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m0 & nb & Ts & T_R0 & op_body & Ss & v & P & Hin & Hp & Hv & Heq); subst.
+    + destruct Hesc as (Et & m0 & nb & Ts & T_R0 & op_body & Ss & A0 & v & P & Hin & Hp & Hv & Heq); subst.
       destruct (Nat.eq_dec m0 m) as [Heqm | Hneq].
       * subst m0. right. left. eexists.
         pose proof (marker_types_ok_handler_perform_annotation_match
-                      m T_B T_R Et nb Ts T_R0 op_body Ss v P Hsafe) as HTR.
+                      m T_B T_R Et nb Ts T_R0 op_body Ss A0 v P Hsafe) as HTR.
         subst T_R0.
         apply (S_step EC_hole); [constructor|]. apply H_Perform; auto.
       * destruct Hin as [Hin_head | Hin_tail].
         { subst. contradiction. }
-        right. right. exists Et, m0, nb, Ts, T_R0, op_body, Ss, v, (EC_handler_m m T_B T_R P).
+        right. right. exists Et, m0, nb, Ts, T_R0, op_body, Ss, A0, v, (EC_handler_m m T_B T_R P).
         repeat split; auto.
-  - (* T_Resume *)
-    intros Γ m T_B T_R b A HwfA HwfTB HwfTR HnoLocal Hsub Hb IHb ms Hmok Hsafe Hec. left; constructor.
 Qed.
 
 Theorem progress_safe : forall Γ t T,
   eval_ctx Γ ->
-  marker_ok [] t ->
+  well_scoped [] t ->
   marker_types_safe t ->
   Γ ⊢ₜ t : T ->
   value t \/ exists t', t ==> t'.
@@ -401,13 +390,13 @@ Proof.
   destruct (progress_open_safe _ _ _ _ Hec Hmok Hsafe Hty) as [Hv | [[t' Hs] | Hesc]].
   - left. exact Hv.
   - right. exists t'. exact Hs.
-  - destruct Hesc as (Et & m & nb & Ts & T_R & op_body & Ss & v & P & Hin & Hp & Hv & Heq).
+  - destruct Hesc as (Et & m & nb & Ts & T_R & op_body & Ss & A0 & v & P & Hin & Hp & Hv & Heq).
     inversion Hin.
 Qed.
 
 Theorem progress : forall Γ t T,
   eval_ctx Γ ->
-  marker_ok [] t ->
+  well_scoped [] t ->
   marker_types_safe t ->
   Γ ⊢ₜ t : T ->
   value t \/ exists t', t ==> t'.

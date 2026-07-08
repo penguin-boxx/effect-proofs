@@ -3,8 +3,12 @@ Require Import Stdlib.Arith.PeanoNat.
 Import ListNotations.
 
 (* Lifetimes: Δ ::= free | local | Δ₁ + Δ₂                            *)
-(* + denotes the minimum (= least upper bound in the lattice where    *)
-(* free <: local). lt_min D1 D2 corresponds to D1 + D2.               *)
+(* `lt_min D1 D2` (written Δ₁ + Δ₂) is the SHORTER of the two         *)
+(* lifetimes — the minimum in duration terms.  In the subtyping       *)
+(* lattice, where `free <: local` (free at the bottom, local at the   *)
+(* top), the shorter lifetime is the more restrictive one, so lt_min  *)
+(* is the lattice JOIN (least upper bound): LS_MinL / LS_MinR1 /      *)
+(* LS_MinR2 in Typing.v place it above both operands.                 *)
 Inductive lifetime : Type :=
   | lt_var   : nat -> lifetime  (* lifetime variable *)
   | lt_free  : lifetime  (* free — bottom of lattice *)
@@ -78,17 +82,16 @@ Inductive term : Type :=
   (* parameters, body's no-local type, public result type, op's body,  *)
   (* handler's body.                                                   *)
   | term_handle : eff_tag -> nat -> list type -> type -> type -> term -> term -> term
-  (* perform x Ss arg — Ss instantiates the operation's β-args.        *)
-  | term_perform : term -> list type -> term -> term
+  (* perform x Ss A arg — Ss instantiates the operation's β-args; A    *)
+  (* is the instantiated operation result type (T_Perform pins it to   *)
+  (* ret_inst).  H_Perform reads it off the redex to annotate the      *)
+  (* continuation lambda it reifies.                                   *)
+  | term_perform : term -> list type -> type -> term -> term
   (* runtime-only: capability value                      .             *)
   (* Carries effect tag, marker, β-arity, α-type-args, and op_body.    *)
   | term_cap : eff_tag -> marker -> nat -> list type -> type -> term -> term
   (* runtime-only: continuation delimiter with body/public answers.    *)
   | term_handler_m : marker -> type -> type -> term -> term
-  (* runtime-only: reified resumption value. Carries the delimiter's   *)
-  (* body answer and public answer annotations; `b` has +1 term binder *)
-  (* for the resumed value.                                            *)
-  | term_resume : marker -> type -> type -> term -> term
   .
 
 (* ================================================================== *)
@@ -106,35 +109,9 @@ Inductive value : term -> Prop :=
       value (term_ctor K l lts Ts vs)
   | value_cap    : forall E m n_β Ts T_R op_body,
       value (term_cap E m n_β Ts T_R op_body)
-  | value_resume : forall m T_B T_R b,
-      value (term_resume m T_B T_R b)
   .
 
 Hint Constructors value : core.
-
-(* ================================================================== *)
-(* Decidable value predicate                                          *)
-(*                                                                    *)
-(* is_value t = true  iff  value t holds.                             *)
-(* The nested go helper handles the list of constructor arguments.    *)
-(* ================================================================== *)
-
-Fixpoint is_value (t : term) : bool :=
-  let fix go (ts : list term) : bool :=
-    match ts with
-    | []        => true
-    | u :: rest => andb (is_value u) (go rest)
-    end
-  in
-  match t with
-  | term_lam _ _          => true
-  | term_ty_lam _ _       => true
-  | term_lt_lam _         => true
-  | term_ctor _ _ _ _ vs  => go vs
-  | term_cap _ _ _ _ _ _  => true
-  | term_resume _ _ _ _   => true
-  | _                     => false
-  end.
 
 (* ================================================================== *)
 (* Abstraction head check (the "prenex-Λ" value restriction)          *)
@@ -159,7 +136,7 @@ Definition is_abs (t : term) : bool :=
 (* Runtime-capability occurrence check                                *)
 (*                                                                    *)
 (* has_rt_cap t = true iff a literal runtime form that mentions a     *)
-(* marker — term_cap, term_handler_m, or term_resume — occurs         *)
+(* marker — term_cap or term_handler_m — occurs                       *)
 (* anywhere syntactically in t (under all binders).  These are        *)
 (* exactly the constructors counted by markers_in (Semantics.v).      *)
 (* Source programs never contain them; they arise only at runtime.    *)
@@ -187,8 +164,7 @@ Fixpoint has_rt_cap (t : term) : bool :=
       orb (has_rt_cap scrut) (orb (has_rt_cap y) (has_rt_cap n))
   | term_handle _ _ _ _ _ op_body body =>
       orb (has_rt_cap op_body) (has_rt_cap body)
-  | term_perform t' _ arg       => orb (has_rt_cap t') (has_rt_cap arg)
+  | term_perform t' _ _ arg     => orb (has_rt_cap t') (has_rt_cap arg)
   | term_cap _ _ _ _ _ _        => true
   | term_handler_m _ _ _ _      => true
-  | term_resume _ _ _ _         => true
   end.

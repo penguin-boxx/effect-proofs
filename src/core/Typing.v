@@ -322,6 +322,21 @@ Fixpoint lt_of_ty_ctx (fuel : nat) (Γ : ctx) (T : type) : lifetime :=
 Definition lt_of_ty_G (Γ : ctx) (T : type) : lifetime :=
   lt_of_ty_ctx (List.length Γ) Γ T.
 
+(* DESIGN NOTE — why two escape-lifetime families.                     *)
+(* [lt_of_ty]/[lt_of_ty_list] are context-free (a type variable        *)
+(* contributes [free], i.e. no constraint); [lt_of_ty_ctx]/[lt_of_ty_G]*)
+(* consult the variable's bound in Γ.  The context-free family is used *)
+(* ONLY by T_Ctor, on the already-instantiated field types: demanding  *)
+(* the Γ-aware lifetime there would strengthen the premise on          *)
+(* polymorphic constructor fields (a variable bounded by a local type  *)
+(* would suddenly count as local) and lose source programs.  All other *)
+(* rules (T_Lam's capture, T_Handle/T_HandlerM's answer check,         *)
+(* T_Perform's boundary check) use the Γ-aware [lt_of_ty_G].  The two  *)
+(* are reconciled where needed by the bridge lemmas                    *)
+(* [lt_of_ty_list_le_lt_of_ty_ctx_list] (SubstTy.v) — context-free is  *)
+(* below context-aware — and [lt_of_ty_G_ty_closed_eq] (Weakening.v) — *)
+(* they agree on closed types.                                         *)
+
 (* ================================================================== *)
 (* "no local in σ" — syntactic check for T_Lam return-type side cond. *)
 (*                                                                    *)
@@ -351,53 +366,6 @@ Fixpoint no_local_ty (T : type) : bool :=
   | type_ty_all B A   => andb (no_local_ty B) (no_local_ty A)
   end.
 
-(* [is_any_at_free_bound B] holds when [B] is syntactically [Any]'free   *)
-(* ([type_ctor any_tag lt_free []]).  A type variable bounded by such a  *)
-(* [B] can only be inhabited at no-local types (the bound's lifetime is  *)
-(* free), so [no_local_ty_G] below treats the variable itself as         *)
-(* no-local.                                                             *)
-Definition is_any_at_free_bound (T : type) : bool :=
-  match T with
-  | type_ctor K lt_free [] => Nat.eqb K any_tag
-  | _ => false
-  end.
-
-(* [no_local_ty_G Γ T] is the context-sensitive refinement of [no_local_ty]:  *)
-(* it answers "does [T] mention no local lifetime?" while treating a type     *)
-(* variable as no-local exactly when its bound in [Γ] is [Any]'free (see      *)
-(* [is_any_at_free_bound]).  This is what lets handler answer types and       *)
-(* perform instantiations range over abstract — but provably non-local —      *)
-(* type variables.  Runtime types are ground, so on them it agrees with       *)
-(* [no_local_ty].                                                             *)
-Fixpoint no_local_ty_G (Γ : ctx) (T : type) : bool :=
-  let fix go (Γ : ctx) (Ts : list type) : bool :=
-    match Ts with
-    | []        => true
-    | A :: rest => andb (no_local_ty_G Γ A) (go Γ rest)
-    end
-  in
-  match T with
-  | type_var α =>
-      match ctx_lookup_ty Γ α with
-      | Some B => is_any_at_free_bound B
-      | None => false
-      end
-  | type_fun A l B =>
-      andb (no_local_ty_G Γ A) (andb (no_local_lt l) (no_local_ty_G Γ B))
-  | type_ctor _ l Ts => andb (no_local_lt l) (go Γ Ts)
-  | type_lt_all A => no_local_ty_G (bind_lt lt_local :: Γ) A
-  | type_ty_all B A => andb (no_local_ty_G Γ B) (no_local_ty_G (bind_ty B :: Γ) A)
-  end.
-
-(* [ty_app_arg_no_local Γ B S]: NOT a premise of [T_TyApp] — it is the     *)
-(* obligation shape consumed by the type-substitution metatheory (the      *)
-(* [subst_nl] hypothesis of [typing_SubstTy], subst/TypingSubstTy.v).      *)
-(* When a substituted variable's bound [B] is [Any]'free, the replacement  *)
-(* [S] must itself be no-local for [no_local_ty_G] to be preserved; for    *)
-(* any other bound there is no obligation.  Under an [eval_ctx] the        *)
-(* condition is discharged trivially at the preservation call sites.       *)
-Definition ty_app_arg_no_local (Γ : ctx) (B S : type) : bool :=
-  if is_any_at_free_bound B then no_local_ty_G Γ S else true.
 
 (* ================================================================== *)
 (* Free term variables and capture lifetime                           *)
@@ -409,7 +377,7 @@ Definition ty_app_arg_no_local (Γ : ctx) (B S : type) : bool :=
 (* capture_lt Γ body : +lt_Γ(τ̄) over captured variables' types —      *)
 (* the closure-lifetime bound in the Lam rule.                        *)
 (*   Cap-aware: a literal runtime capability form (term_cap /         *)
-(*   term_handler_m / term_resume) anywhere in the body forces the    *)
+(*   term_handler_m) anywhere in the body forces the                  *)
 (*   closure lifetime to lt_local, since free_tm_vars cannot see      *)
 (*   literal capabilities.                                            *)
 (* ================================================================== *)
@@ -438,11 +406,10 @@ Fixpoint free_tm_vars (cutoff : nat) (t : term) : list nat :=
   | term_handle _ _ _ _ _ op_body body =>
       free_tm_vars (cutoff + 2) op_body
         ++ free_tm_vars (S cutoff) body
-  | term_perform t _ arg =>
+  | term_perform t _ _ arg =>
       free_tm_vars cutoff t ++ free_tm_vars cutoff arg
   | term_cap _ _ _ _ _ op_body => free_tm_vars (cutoff + 2) op_body
   | term_handler_m _ _ _ t => free_tm_vars cutoff t
-  | term_resume _ _ _ b => free_tm_vars (S cutoff) b
   end.
 
 Definition capture_lt (Γ : ctx) (body : term) : lifetime :=
@@ -825,6 +792,14 @@ Definition lt_var_list (n : nat) : list lifetime :=
 (*              Γ ⊢ₜ t {Δ} : [l↦Δ] T                     (TApp, lt)   *)
 (* ================================================================== *)
 
+(* The op-body typing context shared by T_Cap and T_Handle: the        *)
+(* operation argument $0 (innermost), the resumption $1 of type        *)
+(* ret_β -local-> T_R, and the n_β β-type-binders above them.          *)
+Definition op_body_ctx (Γ : ctx) (n_β : nat) (sig_β ret_β T_R : type) : ctx :=
+  bind_tm sig_β
+    :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
+    :: push_ty_vars n_β any_at_free Γ.
+
 Reserved Notation "G '⊢ₜ' t ':' T" (at level 40, t at next level).
 
 Inductive typing : ctx -> term -> type -> Prop :=
@@ -971,9 +946,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       ty_wf Γ T_R ->
       sig_β = inst_op_ty_args n_α Ts n_β sig ->
       ret_β = inst_op_ty_args n_α Ts n_β ret ->
-      (bind_tm sig_β
-        :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
-        :: push_ty_vars n_β any_at_free Γ)
+      (op_body_ctx Γ n_β sig_β ret_β T_R)
         ⊢ₜ op_body : shift_ty n_β 0 T_R ->
       Γ ⊢ₜ term_cap E_tag m n_β Ts T_R op_body : type_ctor E_tag lt_local Ts
 
@@ -1001,9 +974,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       Γ ⊢ T_B <:: T_R ->
       sig_β = inst_op_ty_args n_α Ts n_β sig ->
       ret_β = inst_op_ty_args n_α Ts n_β ret ->
-      (bind_tm sig_β
-        :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
-        :: push_ty_vars n_β any_at_free Γ)
+      (op_body_ctx Γ n_β sig_β ret_β T_R)
         ⊢ₜ op_body : shift_ty n_β 0 T_R ->
       (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) ⊢ₜ body : T_B ->
       Γ ⊢ₜ term_handle E_tag n_β Ts T_B T_R op_body body : T_R
@@ -1027,7 +998,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       ret_inst = inst_op_all_args n_α Ts n_β Ss ret ->
       ty_wf Γ ret_inst ->
       Γ ⊢ₜ arg : sig_inst ->
-      Γ ⊢ₜ term_perform recv Ss arg : ret_inst
+      Γ ⊢ₜ term_perform recv Ss ret_inst arg : ret_inst
 
   (* (HandlerM, runtime): a delimiter is transparent to typing.        *)
   | T_HandlerM : forall Γ m t T_B T_R,
@@ -1038,23 +1009,6 @@ Inductive typing : ctx -> term -> type -> Prop :=
       Γ ⊢ₜ t : T_B ->
       Γ ⊢ₜ term_handler_m m T_B T_R t : T_R
 
-  (* (Resume, runtime): a reified resumption is a function value.     *)
-  (* Applying it (later) re-installs a delimiter around its body.     *)
-  | T_Resume : forall Γ m b A T_B T_R,
-      ty_wf Γ A ->
-      ty_wf Γ T_B ->
-      ty_wf Γ T_R ->
-      Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
-      Γ ⊢ T_B <:: T_R ->
-      (bind_tm A :: Γ) ⊢ₜ b : T_B ->
-      Γ ⊢ₜ term_resume m T_B T_R b : type_fun A lt_local T_R
-
-with args_typed : ctx -> list term -> list type -> Prop :=
-  | AT_nil  : forall Γ, args_typed Γ [] []
-  | AT_cons : forall Γ a sg args sgs,
-      Γ ⊢ₜ a : sg ->
-      args_typed Γ args sgs ->
-      args_typed Γ (a :: args) (sg :: sgs)
 
 where "G '⊢ₜ' t ':' T" := (typing G t T).
 
@@ -1071,20 +1025,6 @@ Hint Constructors typing : core.
 (* without any axioms.                                                 *)
 (* ------------------------------------------------------------------- *)
 
-Lemma f2_uncons_l : forall {A B} (R : A -> B -> Prop) x l ys,
-  Forall2 R (x :: l) ys ->
-  exists y l', ys = y :: l' /\ R x y /\ Forall2 R l l'.
-Proof. intros A B R x l ys H. inversion H; subst. eauto. Qed.
-
-Lemma Forall2_Forall_left : forall {A B} (R : A -> Prop) (S : A -> B -> Prop) xs ys,
-  Forall2 S xs ys ->
-  (forall x y, S x y -> R x) ->
-  Forall R xs.
-Proof.
-  intros A B R S xs ys H Himp; induction H; constructor.
-  - eapply Himp; eauto.
-  - apply IHForall2; auto.
-Qed.
 
 Lemma typing_ind2 :
   forall (P : ctx -> term -> type -> Prop),
@@ -1169,12 +1109,8 @@ Lemma typing_ind2 :
     ty_wf Γ T_R ->
       sig_β = inst_op_ty_args n_α Ts n_β sig ->
       ret_β = inst_op_ty_args n_α Ts n_β ret ->
-     (bind_tm sig_β
-        :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
-        :: push_ty_vars n_β any_at_free Γ) ⊢ₜ op_body : shift_ty n_β 0 T_R ->
-     P (bind_tm sig_β
-        :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
-        :: push_ty_vars n_β any_at_free Γ) op_body (shift_ty n_β 0 T_R) ->
+     (op_body_ctx Γ n_β sig_β ret_β T_R) ⊢ₜ op_body : shift_ty n_β 0 T_R ->
+     P (op_body_ctx Γ n_β sig_β ret_β T_R) op_body (shift_ty n_β 0 T_R) ->
     P Γ (term_cap E_tag m n_β Ts T_R op_body) (type_ctor E_tag lt_local Ts)) ->
   (forall Γ E_tag Ts op_body body n_α n_β sig ret T_B T_R sig_β ret_β,
      ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
@@ -1186,12 +1122,8 @@ Lemma typing_ind2 :
     Γ ⊢ T_B <:: T_R ->
       sig_β = inst_op_ty_args n_α Ts n_β sig ->
       ret_β = inst_op_ty_args n_α Ts n_β ret ->
-     (bind_tm sig_β
-        :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
-        :: push_ty_vars n_β any_at_free Γ) ⊢ₜ op_body : shift_ty n_β 0 T_R ->
-     P (bind_tm sig_β
-        :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
-        :: push_ty_vars n_β any_at_free Γ) op_body (shift_ty n_β 0 T_R) ->
+     (op_body_ctx Γ n_β sig_β ret_β T_R) ⊢ₜ op_body : shift_ty n_β 0 T_R ->
+     P (op_body_ctx Γ n_β sig_β ret_β T_R) op_body (shift_ty n_β 0 T_R) ->
       (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) ⊢ₜ body : T_B ->
       P (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) body T_B ->
      P Γ (term_handle E_tag n_β Ts T_B T_R op_body body) T_R) ->
@@ -1207,7 +1139,7 @@ Lemma typing_ind2 :
      ret_inst = inst_op_all_args n_α Ts n_β Ss ret ->
     ty_wf Γ ret_inst ->
      Γ ⊢ₜ arg : sig_inst -> P Γ arg sig_inst ->
-     P Γ (term_perform recv Ss arg) ret_inst) ->
+     P Γ (term_perform recv Ss ret_inst arg) ret_inst) ->
   (forall Γ m T_B T_R t,
     ty_wf Γ T_B ->
     ty_wf Γ T_R ->
@@ -1215,18 +1147,10 @@ Lemma typing_ind2 :
     Γ ⊢ T_B <:: T_R ->
     Γ ⊢ₜ t : T_B -> P Γ t T_B ->
     P Γ (term_handler_m m T_B T_R t) T_R) ->
-  (forall Γ m b A T_B T_R,
-    ty_wf Γ A ->
-    ty_wf Γ T_B ->
-    ty_wf Γ T_R ->
-    Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
-    Γ ⊢ T_B <:: T_R ->
-     (bind_tm A :: Γ) ⊢ₜ b : T_B -> P (bind_tm A :: Γ) b T_B ->
-    P Γ (term_resume m T_B T_R b) (type_fun A lt_local T_R)) ->
   forall Γ t T, Γ ⊢ₜ t : T -> P Γ t T.
 Proof.
   intros P HVar HSub HLam HApp HTyLam HTyApp HLtLam HLtApp HCtor HMatch
-         HCap HHandle HPerform HHandlerM HResume.
+         HCap HHandle HPerform HHandlerM.
   fix IH 4.
   intros Γ t T H. destruct H.
   - eapply HVar; (eassumption || (apply IH; eassumption)).
@@ -1251,5 +1175,4 @@ Proof.
   - eapply HHandle; (eassumption || (apply IH; eassumption)).
   - eapply HPerform; (eassumption || (apply IH; eassumption)).
   - eapply HHandlerM; (eassumption || (apply IH; eassumption)).
-  - eapply HResume; (eassumption || (apply IH; eassumption)).
 Qed.
