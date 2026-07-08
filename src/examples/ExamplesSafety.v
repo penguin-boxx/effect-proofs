@@ -13,6 +13,7 @@ Require Import Inversions.
 Require Import Preservation.
 Require Import Soundness.
 Require Import Escape.
+Require Import Boundary.
 Require Import Examples.
 Require Import ExamplesProofs.
 
@@ -112,4 +113,23 @@ Proof.
   - exact eval_ctx_data_ctx.
   - cbn; reflexivity.
   - unfold file_tag, any_tag. congruence.
+Qed.
+
+(* Boundary impermeability, witnessed: along any execution of the      *)
+(* Reader example, every value crossing a handler boundary — the       *)
+(* operation argument entering, or the delimiter's result leaving —    *)
+(* is typed at an escapable (noloc) type.                              *)
+Theorem readerExample_boundary_noloc : forall u v,
+  multi_step readerExample u ->
+  boundary_crossing u v ->
+  exists S,
+    full_ctx ⊢ₜ v : S /\ full_ctx ⊢ₗ lt_of_ty_G full_ctx S <: lt_free.
+Proof.
+  intros u v Hms Hbc.
+  apply (source_handler_boundary_noloc full_ctx readerExample (T_Nat `Lf) u v
+           eval_ctx_full_ctx).
+  - vm_compute; reflexivity.
+  - exact typed_readerExample_proof.
+  - exact Hms.
+  - exact Hbc.
 Qed.

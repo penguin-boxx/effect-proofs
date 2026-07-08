@@ -20,8 +20,9 @@ datum can escape the scope that delimits it.
 | `source_type_soundness` | `src/safety/Soundness.v` | A well-typed **source** program (no runtime marker constructs) never gets stuck — no extra hypotheses. |
 | `source_capability_never_exposed` | `src/safety/Escape.v` | Along any reduction of a well-typed source program, a live capability is never visible outside its own delimiter. |
 | `source_local_value_does_not_escape` | `src/safety/Escape.v` | A value a source program computes at an escapable (`free`) data type carries no top-level `local` lifetime. |
+| `source_handler_boundary_noloc` | `src/safety/Boundary.v` | Along any execution of a well-typed source program, every value crossing a handler boundary — operation argument in, delimiter return out — is typed at an escapable (noloc) type; local values never cross. |
 
-All four are witnessed on concrete programs in
+All five are witnessed on concrete programs in
 `src/examples/ExamplesSafety.v`.
 
 ## Build and verify
@@ -36,11 +37,12 @@ To re-check the axiom-freeness of the capstones:
 
 ```sh
 cd src
-echo 'Require Import Soundness Escape.
+echo 'Require Import Soundness Escape Boundary.
 Print Assumptions type_soundness.
 Print Assumptions source_type_soundness.
 Print Assumptions source_capability_never_exposed.
-Print Assumptions source_local_value_does_not_escape.' \
+Print Assumptions source_local_value_does_not_escape.
+Print Assumptions source_handler_boundary_noloc.' \
 | coqtop -Q core "" -Q subst "" -Q safety "" -Q examples ""
 ```
 
@@ -144,6 +146,7 @@ basename; `Subst.v` and `Safety.v` are re-export shims):
 | `safety/Preservation` | subject reduction + step-preservation of the runtime invariants |
 | `safety/Soundness` | the `safety_invariants` bundle and `type_soundness` |
 | `safety/Escape` | the non-escape and capability-confinement theorems |
+| `safety/Boundary` | handler-boundary impermeability: values crossing a delimiter are noloc-typed |
 
 ## The runtime invariant architecture
 

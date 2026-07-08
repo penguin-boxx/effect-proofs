@@ -59,6 +59,38 @@ Qed.
 (* datum can never surface as the result delivered at a `free` type.  *)
 (* ================================================================== *)
 
+(* The kernel shared by [local_value_does_not_escape] below and the    *)
+(* boundary-crossing corollary (Boundary.v): a value inhabiting a data *)
+(* type whose top-level lifetime is escapable is a constructor whose   *)
+(* own lifetime annotation carries no top-level `local`.               *)
+Lemma data_value_top_lifetime_non_local : forall Γ v K l Ts,
+  eval_ctx Γ ->
+  ctx_lookup_eff Γ K = None ->
+  K <> any_tag ->
+  Γ ⊢ₜ v : type_ctor K l Ts ->
+  value v ->
+  Γ ⊢ₗ l <: lt_free ->
+  exists K' l' lts' vs,
+    v = term_ctor K' l' lts' Ts vs /\
+    no_local_lt l' = true.
+Proof.
+  intros Γ v K l Ts Hec Hdata HK Htyv Hval Hlfree.
+  destruct (canonical_ctor_data _ _ _ _ _ Hec Hdata Htyv Hval HK)
+    as [K' [l' [lts' [Ts' [vs [Hveq Hvs]]]]]].
+  subst v.
+  apply ctor_typing_inv in Htyv.
+  destruct Htyv as
+    (n_lt & n_ty & sig & res & result_tag & Hlk & Hltlen & HTslen & Hresult &
+     Hlts_bound & Hvslen & Hf2 & Hsub).
+  destruct (sub_ctor_inv _ _ _ _ _ Hec Hsub HK) as [lx [Heq Hlsub]].
+  injection Heq as HKeq Hleq HTseq.
+  subst result_tag. subst Ts'.
+  exists K', l', lts', vs. split; [reflexivity|].
+  rewrite Hleq.
+  eapply lt_sub_no_local_mono;
+    [exact Hec | eapply LS_Trans; [exact Hlsub | exact Hlfree] | reflexivity].
+Qed.
+
 (* Operational non-escape: a value produced at an escapable `free`    *)
 (* data type is a constructor whose *own* lifetime annotation         *)
 (* provably contains no top-level `local`.  Equivalently, a value     *)
@@ -76,21 +108,10 @@ Theorem local_value_does_not_escape : forall Γ t K Ts v,
     no_local_lt l' = true.
 Proof.
   intros Γ t K Ts v Hec Hdata HK Hty_reachable Hms Hval.
-  pose proof (Hty_reachable _ Hms) as Htyv.
-  destruct (canonical_ctor_data _ _ _ _ _ Hec Hdata Htyv Hval HK)
-    as [K' [l' [lts' [Ts' [vs [Hveq Hvs]]]]]].
-  subst v.
-  apply ctor_typing_inv in Htyv.
-  destruct Htyv as
-    (n_lt & n_ty & sig & res & result_tag & Hlk & Hltlen & HTslen & Hresult &
-     Hlts_bound & Hvslen & Hf2 & Hsub).
-  destruct (sub_ctor_inv _ _ _ _ _ Hec Hsub HK) as [lx [Heq Hlsub]].
-  injection Heq as HKeq Hleq HTseq.
-  subst result_tag. subst Ts'.
-  exists K', l', lts', vs. split; [reflexivity|].
-  rewrite Hleq.
-  apply (lt_sub_no_local_mono _ _ _ Hec Hlsub).
-  reflexivity.
+  eapply data_value_top_lifetime_non_local;
+    [ exact Hec | exact Hdata | exact HK
+    | apply Hty_reachable; exact Hms | exact Hval
+    | apply LS_Free; constructor ].
 Qed.
 
 (* Source-facing form: for a program with no runtime marker constructs *)

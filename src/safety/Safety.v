@@ -14,3 +14,4 @@ Require Export Frames.
 Require Export Preservation.
 Require Export Soundness.
 Require Export Escape.
+Require Export Boundary.
