@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# ==================================================================
+#
+#            CAPSTONE ASSUMPTION CHECK (self-checking artifact)
+#
+# Verifies that every capstone theorem of the development is closed
+# under the global context — i.e. the proof depends on NO axioms, no
+# admitted lemmas, no section hypotheses smuggled into the statement.
+#
+# Mechanism: generate a scratch .v file (in a throwaway temp dir,
+# never inside the repo) that Requires the capstone modules and runs
+# `Print Assumptions` on each theorem, compile it against the built
+# development, and check the output:
+#   - every theorem must print "Closed under the global context"
+#     (occurrence count must equal the number of theorems);
+#   - any "Axioms:" occurrence is a FAIL.
+# Exit status is nonzero on any failure, so CI can gate on it.
+#
+# Run via `make check-assumptions` (which rebuilds first) — the .vo
+# files must be up to date or Require will fail / check stale proofs.
+#
+# ==================================================================
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+# ==================================================================
+# CAPSTONE LIST — the single place to extend.
+#
+# MAINTAINERS: when a new capstone Theorem/Corollary lands in
+# safety/Soundness.v, safety/Escape.v, safety/Boundary.v, or
+# examples/ExamplesSafety.v (or a new capstone file is added), add a
+# "<Module>:<theorem>" entry here.  Every Theorem and Corollary in
+# those files must be listed.
+# ==================================================================
+CAPSTONES=(
+  # safety/Soundness.v
+  Soundness:type_soundness
+  Soundness:source_type_soundness
+  # safety/Escape.v
+  Escape:local_data_not_escapes
+  Escape:local_value_does_not_escape
+  Escape:source_local_value_does_not_escape
+  Escape:capability_confined
+  Escape:capability_never_exposed
+  Escape:source_capability_never_exposed
+  # safety/Boundary.v
+  Boundary:handler_boundary_noloc
+  Boundary:source_handler_boundary_noloc
+  Boundary:source_boundary_value_non_local
+  # examples/ExamplesSafety.v
+  ExamplesSafety:withState_example_safe
+  ExamplesSafety:readerExample_safe
+  ExamplesSafety:withState_example_cap_confined
+  ExamplesSafety:file_local_confined
+  ExamplesSafety:readerExample_boundary_noloc
+)
+
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+SCRATCH="$WORK/CheckAssumptions.v"
+OUT="$WORK/check_assumptions.out"
+
+# ---- Generate the scratch file --------------------------------------
+# Plain `Require` (not Import) + fully qualified names: the namespace
+# is flat (-Q <dir> ""), so <Module>.<theorem> is unambiguous.
+{
+  # Require each capstone module once, in list order.
+  seen=""
+  for entry in "${CAPSTONES[@]}"; do
+    mod="${entry%%:*}"
+    case " $seen " in
+      *" $mod "*) ;;
+      *) printf 'Require %s.\n' "$mod"; seen="$seen $mod" ;;
+    esac
+  done
+  printf '\n'
+  for entry in "${CAPSTONES[@]}"; do
+    mod="${entry%%:*}"
+    thm="${entry#*:}"
+    printf 'Print Assumptions %s.%s.\n' "$mod" "$thm"
+  done
+} > "$SCRATCH"
+
+# ---- Compile it against the built development -----------------------
+if ! rocq c -Q src/core "" -Q src/subst "" -Q src/safety "" -Q src/examples "" \
+       "$SCRATCH" > "$OUT" 2>&1; then
+  cat "$OUT"
+  echo "FAIL: scratch file did not compile (is the build up to date?)." >&2
+  exit 1
+fi
+
+# ---- Verify the output ----------------------------------------------
+# `grep -c` exits 1 on zero matches; `|| true` keeps set -e happy
+# while still capturing the printed "0".
+n_expected="${#CAPSTONES[@]}"
+n_closed="$(grep -c 'Closed under the global context' "$OUT" || true)"
+n_axioms="$(grep -c 'Axioms:' "$OUT" || true)"
+
+echo "Capstone theorems checked: $n_expected"
+echo "Closed under the global context: $n_closed"
+
+if [ "$n_axioms" -ne 0 ]; then
+  cat "$OUT"
+  echo "FAIL: $n_axioms theorem(s) depend on axioms (see 'Axioms:' blocks above)." >&2
+  exit 1
+fi
+if [ "$n_closed" -ne "$n_expected" ]; then
+  cat "$OUT"
+  echo "FAIL: expected $n_expected 'Closed under the global context', got $n_closed." >&2
+  exit 1
+fi
+
+echo "OK: all $n_expected capstone theorems are closed under the global context."
