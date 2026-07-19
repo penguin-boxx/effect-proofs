@@ -29,4 +29,5 @@ safety/Boundary.v
 safety/Safety.v
 examples/Examples.v
 examples/ExamplesProofs.v
+examples/ExamplesRejection.v
 examples/ExamplesSafety.v
