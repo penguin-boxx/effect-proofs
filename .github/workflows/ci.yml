@@ -1,0 +1,61 @@
+# ==================================================================
+#
+#                 CI: build + capstone assumption check
+#
+# Builds the full development in a container with a pinned Rocq
+# Prover, then verifies that every capstone theorem is closed under
+# the global context (scripts/check_assumptions.sh).
+#
+# Version pinning: the artifact targets Rocq 9.1.0.  Docker Hub's
+# official Rocq Prover repository (rocq/rocq-prover) publishes NO
+# 9.1.0 tag — as of 2026-07-19 the 9.1 series exists only as `9.1`
+# and `9.1.1` (verified via the registry API; the 9.1.1 image config
+# carries ROCQ_VERSION=9.1.1).  We therefore pin the exact patch tag
+# `9.1.1`, the closest immutable pin in the 9.1 series (bugfix-only
+# delta from 9.1.0).  CHECK ON FIRST CI RUN that the image resolves
+# and that the "Rocq version" step prints 9.1.x.
+#
+# ==================================================================
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: rocq/rocq-prover:9.1.1
+      # The image's default user is `rocq` (its opam switch lives in
+      # /home/rocq/.opam), but the runner mounts the workspace with
+      # different ownership.  Run as root and point opam at the
+      # image's switch via OPAMROOT below.
+      options: --user root
+    env:
+      OPAMROOT: /home/rocq/.opam
+      # opam warns (and can balk) when invoked as root; the image's
+      # switch is prebuilt, so this is safe here.
+      OPAMROOTISOK: "1"
+    defaults:
+      run:
+        # An explicit `shell: bash` makes the runner invoke
+        # `bash --noprofile --norc -eo pipefail {0}`.  pipefail is
+        # load-bearing: a piped command must never mask a failing
+        # exit code (see also the BUILD GATING note in the repo).
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Rocq version
+        run: |
+          opam exec -- rocq --version
+          # Fail fast if the image ever drifts out of the 9.1 series.
+          opam exec -- rocq --version | grep -q 'version 9\.1\.'
+
+      - name: Build
+        run: opam exec -- make
+
+      - name: Check assumptions
+        run: opam exec -- make check-assumptions
