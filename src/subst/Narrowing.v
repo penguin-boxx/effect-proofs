@@ -102,7 +102,8 @@ Proof.
 Qed.
 
 (* ------------------------------------------------------------------ *)
-(* Kernel-F<: narrowing for subtyping.                                *)
+(* F<: narrowing for subtyping (the system is full F<:: SA_TyAll has  *)
+(* distinct, contravariant bounds).                                   *)
 (*                                                                    *)
 (* Replacing the bound of a type-variable binder by a *subtype*       *)
 (* preserves any subtyping derivation under it.  We prove this by     *)

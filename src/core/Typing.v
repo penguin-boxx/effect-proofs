@@ -599,7 +599,10 @@ Inductive sub : ctx -> type -> type -> Prop :=
       (bind_lt lt_local :: Γ) ⊢ A <:: A' ->
       Γ ⊢ type_lt_all A <:: type_lt_all A'
 
-  (* Kernel F<: for bounded type abstraction.                          *)
+  (* Full F<: for bounded type abstraction: distinct, contravariant   *)
+  (* bounds — NOT the kernel rule (equal bounds).  With SA_Trans this  *)
+  (* makes the subtype relation full F<:, which is undecidable         *)
+  (* (Pierce 1992); no complete terminating checker is claimed.        *)
   (* ∀(α<:B).A <: ∀(α<:B').A' when B'<:B (contra) and                  *)
   (* A <: A' under the tighter bound B'.                               *)
   | SA_TyAll  : forall Γ B B' A A',
@@ -982,9 +985,9 @@ Inductive typing : ctx -> term -> type -> Prop :=
   (* (Perform): invoke the (single) operation on a capability value.   *)
   (* Caller supplies the β-type-arguments Ss at the perform site.      *)
   (* The β-arguments and the instantiated signature must be no-local   *)
-  (* in [Γ] ([forallb no_local_ty_G Ss] and [no_local_ty_G sig_inst]): *)
-  (* a value crossing the operation boundary must not smuggle a local  *)
-  (* capability out of scope. *)
+  (* in [Γ] ([lt_of_ty_G Γ S <: lt_free] for each S among Ss and for   *)
+  (* [sig_inst]): a value crossing the operation boundary must not     *)
+  (* smuggle a local capability out of scope. *)
   | T_Perform : forall Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret
                        sig_inst ret_inst,
       Γ ⊢ₜ recv : type_ctor E_tag Δ Ts ->
