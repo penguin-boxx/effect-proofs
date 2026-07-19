@@ -12,4 +12,5 @@ clean:
 	$(MAKE) -C src -f Makefile.coq clean 2>/dev/null || true
 	rm -f src/Makefile.coq src/Makefile.coq.conf
 	rm -f src/**/.*.aux
+	rm -f src/.lia.cache
 	rm -f src/**/.lia.cache
