@@ -25,6 +25,7 @@ safety/Frames.v
 safety/Preservation.v
 safety/Soundness.v
 safety/Escape.v
+safety/Occurrence.v
 safety/Boundary.v
 safety/BoundaryStep.v
 safety/Safety.v
