@@ -217,3 +217,35 @@ Proof.
     as [_ [[Hws _] _]].
   exact Hws.
 Qed.
+
+(* ================================================================== *)
+(*                                                                    *)
+(*          NO RUNTIME FORMS INSIDE ESCAPABLE RESULTS                 *)
+(*                                                                    *)
+(* The strongest source-facing non-escape statement: a value          *)
+(* delivered at an escapable (noloc) type contains no runtime         *)
+(* capability and no delimiter at ANY depth — not under lambdas, not  *)
+(* nested inside data constructors ([has_rt_cap] traverses all        *)
+(* binders).  Escape via the result channel is therefore impossible   *)
+(* not just for the value's top-level lifetime annotation but for its *)
+(* entire syntactic body.                                             *)
+(* ================================================================== *)
+
+Corollary source_noloc_result_no_runtime_forms : forall Γ t T v,
+  eval_ctx Γ ->
+  has_rt_cap t = false ->
+  Γ ⊢ₜ t : T ->
+  Γ ⊢ₗ lt_of_ty_G Γ T <: lt_free ->
+  multi_step t v ->
+  value v ->
+  has_rt_cap v = false.
+Proof.
+  intros Γ t T v Hec Hsrc Hty Hnl Hms Hval.
+  destruct (multi_step_preserves_safety_invariants _ _ _ _ Hec
+              (source_safety_invariants _ _ _ Hsrc Hty) Hms)
+    as [_ [_ Htyv]].
+  eapply value_no_local_no_rt_cap;
+    [ exact Hec | exact Htyv | exact Hval
+    | eapply typing_closed; [exact Hec | exact Htyv]
+    | exact Hnl ].
+Qed.
