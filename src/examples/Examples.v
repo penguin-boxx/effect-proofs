@@ -397,8 +397,13 @@ Definition withState_example : term :=
   (withState @lt[ `Lf ] @ty[ T_Nat `Lf ] @ty[ T_Nat `Lf ]) @· withState_prog @· two_v.
 
 (* error: testWithState stores a local Reader capability inside free state. *)
+(* The rejection is stated on the REAL noloc premise of T_Perform /     *)
+(* T_Handle — `Γ ⊢ₗ lt_of_ty_G Γ S <: lt_free` — not on the auxiliary   *)
+(* [no_local_ty], which the typing rules never consult.  The proof is a *)
+(* certified decision by [nolocb] (Decide.v).                           *)
 Definition testWithState_escape_witness : Prop :=
-  no_local_ty (T_Option `Lf (T_Reader `Ll T_Unit)) = false.
+  ~ (full_ctx ⊢ₗ lt_of_ty_G full_ctx (T_Option `Lf (T_Reader `Ll T_Unit))
+        <: lt_free).
 
 (* fun withException<e <: Any'free, r>(f: context(Exception<e>) () -> r): Result<e, r> =
        handle h: Exception<e> {
@@ -502,13 +507,17 @@ Definition crashEndo_variance_witness : Prop :=
   elim_ty_n 1 `Ll var_pos trash_field = None.
 
 (* error: crashBox tries to expose Box's field Option<Nat'local>        *)
-(* (= [box_field] at a local lifetime) as escapable.                     *)
+(* (= [box_field] at a local lifetime) as escapable.  Stated on the     *)
+(* real noloc judgment, decided by [nolocb] (Decide.v).                 *)
 Definition crashBox_local_witness : Prop :=
-  no_local_ty (subst_lt_in_ty 0 `Ll box_field) = false.
+  ~ (data_ctx ⊢ₗ lt_of_ty_G data_ctx (subst_lt_in_ty 0 `Ll box_field)
+        <: lt_free).
 
-(* context(x: Nat'free, y: Nat'local) fun clash(): Unit = Unit() *)
+(* context(x: Nat'free, y: Nat'local) fun clash(): Unit = Unit()        *)
+(* Positive companion: Unit's lifetime IS escapable — the real noloc    *)
+(* judgment is derivable, again by certified decision.                  *)
 Definition clash_ignored_local_witness : Prop :=
-  no_local_ty T_Unit = true.
+  data_ctx ⊢ₗ lt_of_ty_G data_ctx T_Unit <: lt_free.
 
 (* fun withId<r>(f: context(Id) () -> r): r =
      handle h: Id { op id(x) resume(x) } f() *)

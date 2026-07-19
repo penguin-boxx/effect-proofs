@@ -5,6 +5,7 @@ Require Import Syntax.
 Require Import Substitution.
 Require Import Semantics.
 Require Import Typing.
+Require Import Decide.
 Require Import Examples.
 
 Import CoreNotation.
@@ -789,17 +790,39 @@ Qed.
 (* Negative/error witnesses                                           *)
 (* ================================================================== *)
 
-Theorem rejected_testWithState_proof : rejected_testWithState.
-Proof. reflexivity. Qed.
+(* The no-local witnesses are certified decisions of the REAL noloc    *)
+(* judgment `Γ ⊢ₗ lt_of_ty_G Γ T <: lt_free` via the reflected decider *)
+(* [nolocb] (Decide.v).  The [lt_ctx_wf] side condition is discharged  *)
+(* by computation: neither example context has a lifetime binder.      *)
 
+Theorem rejected_testWithState_proof : rejected_testWithState.
+Proof.
+  apply nolocb_false_rejects.
+  - intros x Δ H; cbn in H; discriminate.
+  - solve_wf.
+  - vm_compute; reflexivity.
+Qed.
+
+(* [crashEndo]'s witness is a genuine T_Match premise ([elim_ty_n])    *)
+(* and remains a direct computation.                                   *)
 Theorem rejected_crashEndo_proof : rejected_crashEndo.
 Proof. reflexivity. Qed.
 
 Theorem rejected_crashBox_proof : rejected_crashBox.
-Proof. reflexivity. Qed.
+Proof.
+  apply nolocb_false_rejects.
+  - intros x Δ H; cbn in H; discriminate.
+  - cbn; solve_wf.
+  - vm_compute; reflexivity.
+Qed.
 
 Theorem typed_clash_ignored_local_proof : typed_clash_ignored_local.
-Proof. reflexivity. Qed.
+Proof.
+  apply nolocb_true_accepts.
+  - intros x Δ H; cbn in H; discriminate.
+  - solve_wf.
+  - vm_compute; reflexivity.
+Qed.
 
 (* ================================================================== *)
 (* Reduction statements                                               *)
