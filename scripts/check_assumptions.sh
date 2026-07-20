@@ -31,7 +31,8 @@ cd "$ROOT"
 # MAINTAINERS: when a new capstone Theorem/Corollary lands in
 # safety/Soundness.v, safety/Escape.v, safety/Boundary.v,
 # safety/BoundaryStep.v, safety/Occurrence.v, safety/Decide.v,
-# safety/Stepf.v, safety/MarkerRename.v, safety/Guarantees.v,
+# safety/Stepf.v, safety/MarkerRename.v, safety/Determinism.v,
+# safety/Guarantees.v,
 # examples/ExamplesSafety.v, or
 # examples/ExamplesRejection.v (or a new capstone file is added), add
 # a "<Module>:<theorem>" entry here.  Every Theorem and Corollary in
@@ -90,6 +91,10 @@ CAPSTONES=(
   MarkerRename:marker_alpha_equiv_trans
   MarkerRename:handle_choice_irrelevant
   MarkerRename:head_step_deterministic_no_delim
+  # safety/Determinism.v
+  Determinism:head_step_deterministic
+  Determinism:stepf_complete_modulo_markers
+  Determinism:step_deterministic_modulo_markers
   # safety/Guarantees.v (the umbrella capstone)
   Guarantees:source_safety_suite
   # examples/ExamplesSafety.v
@@ -134,6 +139,7 @@ GATED_FILES=(
   src/safety/Decide.v
   src/safety/Stepf.v
   src/safety/MarkerRename.v
+  src/safety/Determinism.v
   src/safety/Guarantees.v
   src/examples/ExamplesSafety.v
   src/examples/ExamplesRejection.v

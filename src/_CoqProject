@@ -21,6 +21,7 @@ safety/TypingInv.v
 safety/Markers.v
 safety/Stepf.v
 safety/MarkerRename.v
+safety/Determinism.v
 safety/Progress.v
 safety/Inversions.v
 safety/Frames.v
