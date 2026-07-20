@@ -29,9 +29,11 @@ cd "$ROOT"
 # CAPSTONE LIST — the single place to extend.
 #
 # MAINTAINERS: when a new capstone Theorem/Corollary lands in
-# safety/Soundness.v, safety/Escape.v, safety/Boundary.v, or
-# examples/ExamplesSafety.v (or a new capstone file is added), add a
-# "<Module>:<theorem>" entry here.  Every Theorem and Corollary in
+# safety/Soundness.v, safety/Escape.v, safety/Boundary.v,
+# safety/BoundaryStep.v, safety/Occurrence.v, safety/Decide.v,
+# safety/Stepf.v, safety/Guarantees.v, examples/ExamplesSafety.v, or
+# examples/ExamplesRejection.v (or a new capstone file is added), add
+# a "<Module>:<theorem>" entry here.  Every Theorem and Corollary in
 # those files must be listed.
 # ==================================================================
 CAPSTONES=(
@@ -45,16 +47,52 @@ CAPSTONES=(
   Escape:capability_confined
   Escape:capability_never_exposed
   Escape:source_capability_never_exposed
+  Escape:source_noloc_result_no_runtime_forms
   # safety/Boundary.v
   Boundary:handler_boundary_noloc
   Boundary:source_handler_boundary_noloc
   Boundary:source_boundary_value_non_local
+  # safety/BoundaryStep.v
+  BoundaryStep:boundary_step_is_step
+  BoundaryStep:source_boundary_step_noloc
+  BoundaryStep:source_boundary_result_out_noloc
+  BoundaryStep:source_boundary_operation_in_noloc
+  BoundaryStep:source_boundary_resumption_local
+  # safety/Occurrence.v
+  Occurrence:well_scoped_occurrence_delimited
+  Occurrence:source_capability_occurrence_delimited
+  Occurrence:capability_confined_from_occurrence
+  # safety/Decide.v
+  Decide:lt_subb_sound
+  Decide:lt_subb_complete
+  Decide:lt_subb_spec
+  Decide:nolocb_spec
+  Decide:valueb_spec
+  Decide:sourceb_spec
+  # safety/Stepf.v
+  Stepf:stepf_sound
+  Stepf:stepf_value_none
+  Stepf:stepf_run_sound
+  # safety/Guarantees.v (the umbrella capstone)
+  Guarantees:source_safety_suite
   # examples/ExamplesSafety.v
   ExamplesSafety:withState_example_safe
   ExamplesSafety:readerExample_safe
   ExamplesSafety:withState_example_cap_confined
   ExamplesSafety:file_local_confined
   ExamplesSafety:readerExample_boundary_noloc
+  # examples/ExamplesRejection.v
+  ExamplesRejection:leak_reader_rejected
+  ExamplesRejection:leak_reader_rejected_at_free
+  ExamplesRejection:some_capability_typable_inside
+  ExamplesRejection:get_local_reader_rejected
+  ExamplesRejection:local_box_payload_not_coercible
+  ExamplesRejection:ask_closure_rejected_at_free
+  ExamplesRejection:ask_closure_typable_local
+  ExamplesRejection:leak_reader2_rejected
+  ExamplesRejection:some_some_capability_typable_inside
+  ExamplesRejection:typed_poly_id
+  ExamplesRejection:poly_id_conservatively_local
 )
 
 WORK="$(mktemp -d)"
