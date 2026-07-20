@@ -86,7 +86,7 @@ Definition leak_ty : type := T_Option `Lf (T_Reader `Ll T_Unit).
 
 Definition leak_reader : term :=
   term_handle Reader_tag 0 [T_Unit] leak_ty leak_ty
-    ($$ 0)
+    (($$ 1) @· ($$ 0))
     (some_v (T_Reader `Ll T_Unit) ($$ 0)).
 
 Theorem leak_reader_rejected : forall T,
@@ -315,7 +315,7 @@ Definition leak2_ty : type :=
 
 Definition leak_reader2 : term :=
   term_handle Reader_tag 0 [T_Unit] leak2_ty leak2_ty
-    ($$ 0)
+    (($$ 1) @· ($$ 0))
     (some_v (T_Option `Lf (T_Reader `Ll T_Unit))
             (some_v (T_Reader `Ll T_Unit) ($$ 0))).
 
@@ -500,13 +500,20 @@ Qed.
 Definition endo_id_local_v : term :=
   term_ctor endo_tag `Lf [] [T_Nat `Ll] [λ: T_Nat `Ll \\ $$ 0].
 
+(* Endo<Nat'free> value: the fallback branch of crashEndo_match.  It  *)
+(* is typable at the advertised free Endo interface (proved below),   *)
+(* so the match is rejected solely for the escape the YES branch      *)
+(* attempts — not for an independently ill-typed fallback.            *)
+Definition endo_id_free_v : term :=
+  term_ctor endo_tag `Lf [] [T_Nat `Lf] [λ: T_Nat `Lf \\ $$ 0].
+
 (* Trash[local](Endo<Nat'local>) — a legitimate local datum.          *)
 Definition trash_val : term :=
   term_ctor trash_tag `Ll [`Ll] [] [endo_id_local_v].
 
 (* match trash_val as Trash[l](e) => e — tries to move the field out. *)
 Definition crashEndo_match : term :=
-  term_match trash_val trash_tag 1 1 ($$ 0) unit_v.
+  term_match trash_val trash_tag 1 1 ($$ 0) endo_id_free_v.
 
 Theorem crashEndo_match_rejected_at_data : forall K l Ts,
   K <> any_tag ->
@@ -555,7 +562,7 @@ Definition box_val : term :=
   term_ctor box_tag `Ll [`Ll] [] [some_v (T_Nat `Ll) zero_v].
 
 Definition crashBox_match : term :=
-  term_match box_val box_tag 1 1 ($$ 0) unit_v.
+  term_match box_val box_tag 1 1 ($$ 0) (none_v (T_Nat `Lf)).
 
 Theorem crashBox_match_rejected_at_data : forall K l Ts,
   K <> any_tag ->
@@ -654,4 +661,118 @@ Proof.
     try solve [ repeat constructor | solve_wf | solve_lt
               | repeat (constructor; try (apply LS_Refl; solve_wf)) ].
   apply Forall2_cons; [ exact typed_some_nat_local | apply Forall2_nil ].
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* No independent typing error obscures the rejections: the fallback  *)
+(* branches are typable at the advertised free interfaces, and the    *)
+(* leak_reader operation clauses are typable at exactly the T_Handle  *)
+(* premise instance.                                                  *)
+(* ------------------------------------------------------------------ *)
+
+Lemma typed_endo_id_free :
+  data_ctx ⊢ₜ endo_id_free_v : T_Endo `Lf (T_Nat `Lf).
+Proof.
+  unfold endo_id_free_v.
+  eapply T_Ctor with
+    (lts := []) (Ts := [T_Nat `Lf])
+    (rho_fields := [T_Nat `Lf -{ `Lf }-> T_Nat `Lf])
+    (result_tag := endo_tag) (l := `Lf);
+    cbn; try reflexivity;
+    try solve [ repeat constructor | solve_wf | solve_lt ].
+Qed.
+
+Lemma typed_none_free :
+  data_ctx ⊢ₜ none_v (T_Nat `Lf) : T_Option `Lf (T_Nat `Lf).
+Proof.
+  unfold none_v.
+  eapply T_Ctor with
+    (lts := []) (Ts := [T_Nat `Lf]) (rho_fields := [])
+    (result_tag := option_tag) (l := `Lf);
+    cbn; try reflexivity;
+    try solve [ repeat constructor | solve_wf | solve_lt ].
+Qed.
+
+(* The Reader operation clause `resume(x)` is well-typed at exactly   *)
+(* the instantiated T_Handle premise, so leak_reader's rejection      *)
+(* rests SOLELY on the body-type noloc check.                         *)
+Lemma leak_reader_op_body_typed :
+  (op_body_ctx full_ctx 0
+     (inst_op_ty_args 1 [T_Unit] 0 T_Unit)
+     (inst_op_ty_args 1 [T_Unit] 0 (`T 0)) leak_ty)
+    ⊢ₜ ($$ 1) @· ($$ 0) : shift_ty 0 0 leak_ty.
+Proof.
+  cbn. eapply T_App; solve_var.
+Qed.
+
+Lemma leak_reader2_op_body_typed :
+  (op_body_ctx full_ctx 0
+     (inst_op_ty_args 1 [T_Unit] 0 T_Unit)
+     (inst_op_ty_args 1 [T_Unit] 0 (`T 0)) leak2_ty)
+    ⊢ₜ ($$ 1) @· ($$ 0) : shift_ty 0 0 leak2_ty.
+Proof.
+  cbn. eapply T_App; solve_var.
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* The Any@local escape hatch, PROVED: the very matches rejected at   *)
+(* every constructor interface are typable at Any@local — the sole    *)
+(* remaining interface, through which the data stays local and        *)
+(* confined.  Together with the rejections this delimits exactly      *)
+(* what is derivable.                                                 *)
+(* ------------------------------------------------------------------ *)
+
+Theorem crashEndo_match_typable_at_local_any :
+  data_ctx ⊢ₜ crashEndo_match : T_Any `Ll.
+Proof.
+  unfold crashEndo_match.
+  eapply T_Match with
+    (Delta := `Ll) (Ts := []) (eta := T_Any `Ll)
+    (result_tag := trash_tag) (result_l := `Ll)
+    (sigma_fields := [trash_field]) (result_ty_schema := T_Trash (`L 0))
+    (rho_fields := List.map (inst_ctor_type_open 1 0 []) [trash_field])
+    (lts := lt_var_list 1)
+    (Γ' := push_match_bound 1 `Ll data_ctx);
+    cbn; try reflexivity;
+    try solve [ intro Hx; discriminate Hx
+              | repeat constructor
+              | solve_wf
+              | apply LS_Refl; solve_wf
+              | exact typed_trash_val ].
+  (* remaining: the yes-branch and fallback typings at Any@local *)
+  all: try (eapply T_Sub;
+        [ solve_var
+        | apply SA_Any;
+          [ solve_wf | solve_wf | apply LS_Local; cbn; solve_wf ] ]).
+  all: eapply T_Sub;
+        [ exact typed_endo_id_free
+        | apply SA_Any;
+          [ solve_wf | solve_wf | apply LS_Local; cbn; solve_wf ] ].
+Qed.
+
+Theorem crashBox_match_typable_at_local_any :
+  data_ctx ⊢ₜ crashBox_match : T_Any `Ll.
+Proof.
+  unfold crashBox_match.
+  eapply T_Match with
+    (Delta := `Ll) (Ts := []) (eta := T_Any `Ll)
+    (result_tag := box_tag) (result_l := `Ll)
+    (sigma_fields := [box_field]) (result_ty_schema := T_Box (`L 0))
+    (rho_fields := List.map (inst_ctor_type_open 1 0 []) [box_field])
+    (lts := lt_var_list 1)
+    (Γ' := push_match_bound 1 `Ll data_ctx);
+    cbn; try reflexivity;
+    try solve [ intro Hx; discriminate Hx
+              | repeat constructor
+              | solve_wf
+              | apply LS_Refl; solve_wf
+              | exact typed_box_val ].
+  all: try (eapply T_Sub;
+        [ solve_var
+        | apply SA_Any;
+          [ solve_wf | solve_wf | apply LS_Local; cbn; solve_wf ] ]).
+  all: eapply T_Sub;
+        [ exact typed_none_free
+        | apply SA_Any;
+          [ solve_wf | solve_wf | apply LS_Local; cbn; solve_wf ] ].
 Qed.

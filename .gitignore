@@ -72,3 +72,6 @@ time-of-build-pretty.log
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode,coq
+
+### Local agent worktrees / session data ###
+.claude/

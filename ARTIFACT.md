@@ -41,7 +41,7 @@ make check-assumptions
 ```
 
 Rebuilds if needed, then runs `Print Assumptions` on **every capstone
-theorem** (16 as of this writing: all Theorems/Corollaries of
+theorem** (all Theorems/Corollaries of
 `safety/Soundness.v`, `safety/Escape.v`, `safety/Boundary.v`, and
 `examples/ExamplesSafety.v`) and fails unless each one prints
 `Closed under the global context` — i.e. the development is axiom-free,
@@ -78,9 +78,8 @@ push and pull request.
 These two steps are deliberately **not** done by tooling; only the
 maintainer can make these choices:
 
-1. **Choose a license.** The repository currently has no `LICENSE`
-   file. Pick one (artifact evaluation committees typically expect a
-   permissive license such as MIT/BSD/Apache-2.0, or CC-BY for
+1. ~~Choose a license.~~ **Done: MIT** (see `LICENSE`).
+2.0, or CC-BY for
    text-heavy artifacts) and commit it as `LICENSE`.
 
 2. **Cut the archival release.** Tag the reviewed commit

@@ -75,10 +75,11 @@ Record source_guarantees (Γ : ctx) (t : term) (T : type) : Prop := {
       boundary_step u u' ch v ->
       exists S, Γ ⊢ₜ v : S /\ Γ ⊢ₗ lt_of_ty_G Γ S <: lt_free;
 
-  (* The one local thing that enters the clause — the reified         *)
-  (* resumption — is a lambda typed at closure lifetime lt_local,     *)
-  (* which is exactly what pins it inside the clause (exempt from     *)
-  (* the noloc guarantee BY DESIGN).                                  *)
+  (* The reified resumption entering the clause is a lambda typed at *)
+  (* closure lifetime lt_local, so it cannot pass either guarded      *)
+  (* noloc channel (exempt from that guarantee BY DESIGN); if it is   *)
+  (* retained through a local channel, applying it is safe because    *)
+  (* its body re-installs the delimiter.                              *)
   sg_boundary_resumptions_local :
       forall u u' v,
       multi_step t u ->

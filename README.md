@@ -20,10 +20,19 @@ datum can escape the scope that delimits it.
 | `source_type_soundness` | `src/safety/Soundness.v` | A well-typed **source** program (no runtime marker constructs) never gets stuck — no extra hypotheses. |
 | `source_capability_never_exposed` | `src/safety/Escape.v` | Along any reduction of a well-typed source program, a live capability is never visible outside its own delimiter. |
 | `source_local_value_does_not_escape` | `src/safety/Escape.v` | A value a source program computes at an escapable (`free`) data type carries no top-level `local` lifetime. |
-| `source_handler_boundary_noloc` | `src/safety/Boundary.v` | Along any execution of a well-typed source program, every value crossing a handler boundary — operation argument in, delimiter return out — is typed at an escapable (noloc) type; local values never cross. |
+| `source_handler_boundary_noloc` | `src/safety/Boundary.v` | Every value passing a GUARDED handler-boundary data channel — operation argument in, delimiter return out — is typed at an escapable (noloc) type. |
+| `source_boundary_step_noloc` (+ per-channel corollaries) | `src/safety/BoundaryStep.v` | The same guarantee as labelled transition EVENTS: every executed boundary reduction on a guarded channel carries a noloc-typed value; the reified resumption is typed `A -local-> T_R` (`source_boundary_resumption_local`). |
+| `source_noloc_result_no_runtime_forms` | `src/safety/Escape.v` | A value delivered at an escapable type contains **no capability and no delimiter at any depth** — under lambdas and inside constructor fields. |
+| `source_capability_occurrence_delimited` | `src/safety/Occurrence.v` | EVERY syntactic capability occurrence — at any path, including under binders and inside stored operation bodies — has its marker in scope; the active-position theorem is its empty-scope instance. |
+| `source_safety_suite` | `src/safety/Guarantees.v` | **The umbrella theorem**: one record bundling type safety, invariant preservation, both confinement forms, capability-free escapable results, guarded-channel safety, and resumption locality — from `eval_ctx`, `sourceb t = true`, and one typing derivation. |
+| `lt_subb_spec` / `nolocb_spec` / `valueb_spec` / `sourceb_spec` | `src/safety/Decide.v` | Certified reflected deciders for lifetime subtyping, the REAL noloc premise, values, and source terms. |
+| `stepf_sound` / `stepf_run_sound` | `src/safety/Stepf.v` | A certified executable reduction strategy (and bounded driver) implementing the semantics. |
+| `typing_rename_markers` / `step_rename_markers` / `handle_choice_irrelevant` | `src/safety/MarkerRename.v` | Marker identities are operationally irrelevant: typing/reduction are equivariant under (injective) marker renaming, and the fresh-marker choice yields alpha-equivalent reducts. |
+| `leak_reader_rejected_at_free`, `crashEndo_match_rejected_at_data`, … | `src/examples/ExamplesRejection.v` | Complete offending TERMS have no typing derivation at their escapable interfaces, each paired with a positive companion at its confined interface (a precision evaluation, including the quantified-type false positive). |
 
-All five are witnessed on concrete programs in
-`src/examples/ExamplesSafety.v`.
+The classic capstones are witnessed on concrete programs in
+`src/examples/ExamplesSafety.v`; the rejection suite lives in
+`src/examples/ExamplesRejection.v`.
 
 ## Build and verify
 
@@ -33,20 +42,16 @@ Requires Rocq/Coq (developed against Rocq 9.1) with the standard library.
 make                     # builds everything in _CoqProject order
 ```
 
-To re-check the axiom-freeness of the capstones:
+To re-check the axiom-freeness of ALL capstones (the list is kept
+exhaustive by a built-in self-check):
 
 ```sh
-cd src
-echo 'Require Import Soundness Escape Boundary.
-Print Assumptions type_soundness.
-Print Assumptions source_type_soundness.
-Print Assumptions source_capability_never_exposed.
-Print Assumptions source_local_value_does_not_escape.
-Print Assumptions source_handler_boundary_noloc.' \
-| coqtop -Q core "" -Q subst "" -Q safety "" -Q examples ""
+make check-assumptions   # every capstone must be closed under the global context
+make theorem-index       # regenerates THEOREMS.md
+make stats               # regenerates STATS.md
 ```
 
-Each must print `Closed under the global context`.
+See `ARTIFACT.md` for the full artifact guide.
 
 ## The calculus at a glance
 
@@ -145,8 +150,14 @@ basename; `Subst.v` and `Safety.v` are re-export shims):
 | `safety/Frames` | evaluation-context typing recomposition (`plug_typing_replace`) |
 | `safety/Preservation` | subject reduction + step-preservation of the runtime invariants |
 | `safety/Soundness` | the `safety_invariants` bundle and `type_soundness` |
-| `safety/Escape` | the non-escape and capability-confinement theorems |
-| `safety/Boundary` | handler-boundary impermeability: values crossing a delimiter are noloc-typed |
+| `safety/Escape` | the non-escape and capability-confinement theorems, incl. capability-free escapable results |
+| `safety/Decide` | certified reflected deciders (`lt_subb`, `nolocb`, `valueb`, `sourceb`) |
+| `safety/Stepf` | the certified executable reduction strategy `stepf` |
+| `safety/MarkerRename` | marker-renaming equivariance and marker-choice irrelevance |
+| `safety/Occurrence` | occurrence/path-level capability confinement |
+| `safety/Boundary` | guarded boundary data channels: values crossing on a guarded channel are noloc-typed |
+| `safety/BoundaryStep` | labelled boundary transition events + per-channel theorems + resumption locality |
+| `safety/Guarantees` | the umbrella `source_guarantees` record and `source_safety_suite` |
 
 ## The runtime invariant architecture
 
@@ -212,3 +223,7 @@ delimiter). `ExamplesProofs.v` also contains *negative* witnesses: the
 escape checks computationally reject programs that would leak a `local`
 capability. `ExamplesSafety.v` instantiates the four capstones on these
 programs.
+
+## License
+
+MIT — see `LICENSE`.

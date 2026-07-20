@@ -31,10 +31,12 @@ cd "$ROOT"
 # MAINTAINERS: when a new capstone Theorem/Corollary lands in
 # safety/Soundness.v, safety/Escape.v, safety/Boundary.v,
 # safety/BoundaryStep.v, safety/Occurrence.v, safety/Decide.v,
-# safety/Stepf.v, safety/Guarantees.v, examples/ExamplesSafety.v, or
+# safety/Stepf.v, safety/MarkerRename.v, safety/Guarantees.v,
+# examples/ExamplesSafety.v, or
 # examples/ExamplesRejection.v (or a new capstone file is added), add
 # a "<Module>:<theorem>" entry here.  Every Theorem and Corollary in
-# those files must be listed.
+# those files must be listed — the exhaustiveness self-check below
+# fails the run otherwise.
 # ==================================================================
 CAPSTONES=(
   # safety/Soundness.v
@@ -63,10 +65,14 @@ CAPSTONES=(
   Occurrence:source_capability_occurrence_delimited
   Occurrence:capability_confined_from_occurrence
   # safety/Decide.v
+  Decide:lt_le_iff
   Decide:lt_subb_sound
   Decide:lt_subb_complete
   Decide:lt_subb_spec
   Decide:nolocb_spec
+  Decide:nolocb_spec_eval_ctx
+  Decide:nolocb_false_rejects
+  Decide:nolocb_true_accepts
   Decide:valueb_spec
   Decide:sourceb_spec
   # safety/Stepf.v
@@ -74,8 +80,10 @@ CAPSTONES=(
   Stepf:stepf_value_none
   Stepf:stepf_run_sound
   # safety/MarkerRename.v
+  MarkerRename:in_markers_in_rename_marker
   MarkerRename:typing_rename_markers
   MarkerRename:well_scoped_rename_markers
+  MarkerRename:head_step_rename_markers
   MarkerRename:step_rename_markers
   MarkerRename:marker_alpha_equiv_refl
   MarkerRename:handle_choice_irrelevant
@@ -109,7 +117,42 @@ CAPSTONES=(
   ExamplesRejection:crashBox_match_rejected_at_free
   ExamplesRejection:typed_trash_val
   ExamplesRejection:typed_box_val
+  ExamplesRejection:crashEndo_match_typable_at_local_any
+  ExamplesRejection:crashBox_match_typable_at_local_any
 )
+
+# ==================================================================
+# EXHAUSTIVENESS SELF-CHECK — the list above must contain EVERY
+# Theorem and Corollary declared in the gated files; a stale list
+# fails the run before anything is compiled.
+# ==================================================================
+GATED_FILES=(
+  src/safety/Soundness.v
+  src/safety/Escape.v
+  src/safety/Boundary.v
+  src/safety/BoundaryStep.v
+  src/safety/Occurrence.v
+  src/safety/Decide.v
+  src/safety/Stepf.v
+  src/safety/MarkerRename.v
+  src/safety/Guarantees.v
+  src/examples/ExamplesSafety.v
+  src/examples/ExamplesRejection.v
+)
+missing=0
+for f in "${GATED_FILES[@]}"; do
+  mod="$(basename "$f" .v)"
+  while read -r name; do
+    case " ${CAPSTONES[*]} " in
+      *" $mod:$name "*) ;;
+      *) echo "MISSING from capstone list: $mod:$name"; missing=1 ;;
+    esac
+  done < <(grep -oE '^(Theorem|Corollary) +[A-Za-z0-9_]+' "$f" | awk '{print $2}')
+done
+if [ "$missing" -ne 0 ]; then
+  echo "FAIL: capstone list is not exhaustive over the gated files."
+  exit 1
+fi
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
