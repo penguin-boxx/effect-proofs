@@ -41,14 +41,15 @@ make check-assumptions
 ```
 
 Rebuilds if needed, then runs `Print Assumptions` on **every capstone
-theorem** (all Theorems/Corollaries of
-`safety/Soundness.v`, `safety/Escape.v`, `safety/Boundary.v`, and
-`examples/ExamplesSafety.v`) and fails unless each one prints
-`Closed under the global context` — i.e. the development is axiom-free,
-with no admitted proofs and no smuggled hypotheses. The capstone list
-lives in one commented block at the top of
-`scripts/check_assumptions.sh`; extend it there when a new capstone
-lands.
+theorem** — all Theorems/Corollaries of the gated files (`Soundness`,
+`Escape`, `Boundary`, `BoundaryStep`, `Occurrence`, `Decide`, `Stepf`,
+`MarkerRename`, `Guarantees`, `ExamplesSafety`, `ExamplesRejection`) —
+and fails unless each one prints `Closed under the global context`,
+i.e. the development is axiom-free, with no admitted proofs and no
+smuggled hypotheses. The capstone list lives in one commented block at
+the top of `scripts/check_assumptions.sh` and is **verified
+exhaustive** by the script itself: an ungated `Theorem`/`Corollary` in
+any gated file fails the run.
 
 This is the command reviewers should run. CI runs it on every push.
 
