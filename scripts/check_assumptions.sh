@@ -44,8 +44,8 @@ CAPSTONES=(
   Soundness:source_type_soundness
   # safety/Escape.v
   Escape:local_data_not_escapes
-  Escape:local_value_does_not_escape
-  Escape:source_local_value_does_not_escape
+  Escape:free_data_result_top_lifetime
+  Escape:source_free_data_result_top_lifetime
   Escape:capability_confined
   Escape:capability_never_exposed
   Escape:source_capability_never_exposed

@@ -59,7 +59,7 @@ Qed.
 (* datum can never surface as the result delivered at a `free` type.  *)
 (* ================================================================== *)
 
-(* The kernel shared by [local_value_does_not_escape] below and the    *)
+(* The kernel shared by [free_data_result_top_lifetime] below and the  *)
 (* boundary-crossing corollary (Boundary.v): a value inhabiting a data *)
 (* type whose top-level lifetime is escapable is a constructor whose   *)
 (* own lifetime annotation carries no top-level `local`.               *)
@@ -96,7 +96,7 @@ Qed.
 (* provably contains no top-level `local`.  Equivalently, a value     *)
 (* confined to a `local` lifetime is never the result a program       *)
 (* hands back at a `free` (escapable) type.                           *)
-Theorem local_value_does_not_escape : forall Γ t K Ts v,
+Theorem free_data_result_top_lifetime : forall Γ t K Ts v,
   eval_ctx Γ ->
   ctx_lookup_eff Γ K = None ->
   K <> any_tag ->
@@ -118,7 +118,7 @@ Qed.
 (* the typing-along-the-trace premise is discharged by the             *)
 (* step-preserved runtime invariants (subject reduction), so the       *)
 (* guarantee needs only the initial typing.                            *)
-Corollary source_local_value_does_not_escape : forall Γ t K Ts v,
+Corollary source_free_data_result_top_lifetime : forall Γ t K Ts v,
   eval_ctx Γ ->
   ctx_lookup_eff Γ K = None ->
   K <> any_tag ->
@@ -131,7 +131,7 @@ Corollary source_local_value_does_not_escape : forall Γ t K Ts v,
     no_local_lt l' = true.
 Proof.
   intros Γ t K Ts v Hec Hdata HK Hsrc Hty Hms Hval.
-  eapply local_value_does_not_escape;
+  eapply free_data_result_top_lifetime;
     [exact Hec | exact Hdata | exact HK | | exact Hms | exact Hval].
   intros u Hms'.
   destruct (multi_step_preserves_safety_invariants _ _ _ _ Hec

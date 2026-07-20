@@ -19,7 +19,7 @@ datum can escape the scope that delimits it.
 | `type_soundness` | `src/safety/Soundness.v` | A state satisfying the runtime invariants never reaches a stuck state. |
 | `source_type_soundness` | `src/safety/Soundness.v` | A well-typed **source** program (no runtime marker constructs) never gets stuck — no extra hypotheses. |
 | `source_capability_never_exposed` | `src/safety/Escape.v` | Along any reduction of a well-typed source program, a live capability is never visible outside its own delimiter. |
-| `source_local_value_does_not_escape` | `src/safety/Escape.v` | A value a source program computes at an escapable (`free`) data type carries no top-level `local` lifetime. |
+| `source_free_data_result_top_lifetime` | `src/safety/Escape.v` | A value a source program computes at an escapable (`free`) data type carries no top-level `local` lifetime annotation (the deep form is `source_noloc_result_no_runtime_forms`). |
 | `source_handler_boundary_noloc` | `src/safety/Boundary.v` | Every value passing a GUARDED handler-boundary data channel — operation argument in, delimiter return out — is typed at an escapable (noloc) type. |
 | `source_boundary_step_noloc` (+ per-channel corollaries) | `src/safety/BoundaryStep.v` | The same guarantee as labelled transition EVENTS: every executed boundary reduction on a guarded channel carries a noloc-typed value; the reified resumption is typed `A -local-> T_R` (`source_boundary_resumption_local`). |
 | `source_noloc_result_no_runtime_forms` | `src/safety/Escape.v` | A value delivered at an escapable type contains **no capability and no delimiter at any depth** — under lambdas and inside constructor fields. |
