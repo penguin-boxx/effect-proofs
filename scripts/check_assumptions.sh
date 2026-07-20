@@ -93,6 +93,12 @@ CAPSTONES=(
   ExamplesRejection:some_some_capability_typable_inside
   ExamplesRejection:typed_poly_id
   ExamplesRejection:poly_id_conservatively_local
+  ExamplesRejection:crashEndo_match_rejected_at_data
+  ExamplesRejection:crashEndo_match_rejected_at_free
+  ExamplesRejection:crashBox_match_rejected_at_data
+  ExamplesRejection:crashBox_match_rejected_at_free
+  ExamplesRejection:typed_trash_val
+  ExamplesRejection:typed_box_val
 )
 
 WORK="$(mktemp -d)"

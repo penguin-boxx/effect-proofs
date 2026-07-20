@@ -389,3 +389,269 @@ Proof.
   - solve_wf.
   - vm_compute; reflexivity.
 Qed.
+
+(* ================================================================== *)
+(* 7. crashEndo / crashBox as complete match terms                    *)
+(*                                                                    *)
+(* The match that binds a Trash/Box existential lifetime and returns  *)
+(* the field is REJECTED at every data-constructor interface: T_Match *)
+(* demands `elim_ty_n ... eta = Some _` for the yes-branch type eta,  *)
+(* and the bound existential occurs in an INVARIANT position (a       *)
+(* constructor argument) of the field type, where elimination fails.  *)
+(*                                                                    *)
+(* The rejection is deliberately NOT `forall T`: subsumption into     *)
+(* `Any` is available (eta := Any@local always passes elimination),   *)
+(* so the match may still type at Any-supertypes — the local-Any      *)
+(* escape hatch, through which data remains confined.  Rejection at   *)
+(* every proper constructor interface is the exact boundary of what   *)
+(* is derivable.                                                      *)
+(* ================================================================== *)
+
+(* ------------------------------------------------------------------ *)
+(* Supertype characterizations (left inversion).  Unlike the right    *)
+(* inversions these need NO context hypothesis: the variable rule     *)
+(* has a type variable on the LEFT, which a constructor shape kills.  *)
+(* ------------------------------------------------------------------ *)
+
+(* Supertypes of Any@Δ are Any@Δ'.                                    *)
+Lemma sub_any_sup : forall Γ S U,
+  Γ ⊢ S <:: U ->
+  forall Δ, S = type_ctor any_tag Δ [] ->
+  exists Δ', U = type_ctor any_tag Δ' [].
+Proof.
+  intros Γ S U H; induction H; intros Δ0 Heq.
+  - (* Refl *) subst. eauto.
+  - (* Trans *)
+    destruct (IHsub1 _ Heq) as [Δ1 HeqU].
+    destruct (IHsub2 _ HeqU) as [Δ2 HeqT]. eauto.
+  - (* VarCtx *) discriminate.
+  - (* Data *) injection Heq as -> -> ->. eauto.
+  - (* Any *) eauto.
+  - (* Fun *) discriminate.
+  - (* LtAll *) discriminate.
+  - (* TyAll *) discriminate.
+Qed.
+
+(* Supertypes of a non-Any constructor type: the same constructor     *)
+(* with the same (invariant) arguments at a larger lifetime, or an    *)
+(* Any type.                                                          *)
+Lemma sub_ctor_sup : forall Γ S U,
+  Γ ⊢ S <:: U ->
+  forall K l Ts, S = type_ctor K l Ts -> K <> any_tag ->
+  (exists l', U = type_ctor K l' Ts /\ Γ ⊢ₗ l <: l') \/
+  (exists Δ, U = type_ctor any_tag Δ []).
+Proof.
+  intros Γ S U H; induction H; intros K0 l0 Ts0 Heq HK.
+  - (* Refl *) subst. left. exists l0. split; [reflexivity|].
+    apply LS_Refl. inversion H; assumption.
+  - (* Trans *)
+    destruct (IHsub1 _ _ _ Heq HK) as [[l1 [HeqU Hl1]] | [Δ1 HeqU]].
+    + destruct (IHsub2 _ _ _ HeqU HK) as [[l2 [HeqT Hl2]] | [Δ2 HeqT]].
+      * left. exists l2. split; [exact HeqT | eapply LS_Trans; eauto].
+      * right. eauto.
+    + subst U.
+      destruct (sub_any_sup _ _ _ H0 _ eq_refl) as [Δ2 HeqT].
+      right. eauto.
+  - (* VarCtx *) discriminate.
+  - (* Data *) injection Heq as HKe Hle HTse. subst. left.
+    exists l'. split; [reflexivity | assumption].
+  - (* Any *) right. eauto.
+  - (* Fun *) discriminate.
+  - (* LtAll *) discriminate.
+  - (* TyAll *) discriminate.
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* Elimination facts: the shared field shape [K l' [Nat@`L0]] has the *)
+(* bound variable in an invariant constructor-argument position, so   *)
+(* elimination fails for ANY lifetime l' and ANY bound; on Any@Δ it   *)
+(* succeeds and preserves the Any head.                               *)
+(* ------------------------------------------------------------------ *)
+
+Lemma elim_ty_nat_arg_None : forall bound l' K,
+  elim_ty 0 bound var_pos (type_ctor K l' [T_Nat (`L 0)]) = None.
+Proof.
+  intros bound l' K. cbn.
+  destruct (elim_lt 0 bound var_pos l'); reflexivity.
+Qed.
+
+Lemma elim_ty_n_nat_arg_None : forall bound l' K,
+  elim_ty_n 1 bound var_pos (type_ctor K l' [T_Nat (`L 0)]) = None.
+Proof.
+  intros bound l' K. cbn [elim_ty_n].
+  rewrite elim_ty_nat_arg_None. reflexivity.
+Qed.
+
+Lemma elim_ty_n_any_shape : forall bound Δa r,
+  elim_ty_n 1 bound var_pos (type_ctor any_tag Δa []) = Some r ->
+  exists Δr, r = type_ctor any_tag Δr [].
+Proof.
+  intros bound Δa r H. simpl in H.
+  destruct (elim_lt 0 bound var_pos Δa) as [Δ1|]; simpl in H;
+    [| discriminate].
+  injection H as <-. eexists. reflexivity.
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* The complete offending terms, with well-typed scrutinees           *)
+(* ------------------------------------------------------------------ *)
+
+(* Endo<Nat'local> value: the identity on local naturals.             *)
+Definition endo_id_local_v : term :=
+  term_ctor endo_tag `Lf [] [T_Nat `Ll] [λ: T_Nat `Ll \\ $$ 0].
+
+(* Trash[local](Endo<Nat'local>) — a legitimate local datum.          *)
+Definition trash_val : term :=
+  term_ctor trash_tag `Ll [`Ll] [] [endo_id_local_v].
+
+(* match trash_val as Trash[l](e) => e — tries to move the field out. *)
+Definition crashEndo_match : term :=
+  term_match trash_val trash_tag 1 1 ($$ 0) unit_v.
+
+Theorem crashEndo_match_rejected_at_data : forall K l Ts,
+  K <> any_tag ->
+  ~ (data_ctx ⊢ₜ crashEndo_match : type_ctor K l Ts).
+Proof.
+  intros K l Ts HK H.
+  apply match_typing_inv in H.
+  destruct H as
+    (n_lt & n_ty & sigma & schema & Ts0 & Delta & sres & rtag & rl & eta & er &
+     _ & Hlk & _ & _ & HTs0 & _ & _ & _ & _ & _ & _ & _ & Hbody & Helim & _ &
+     HsubOr).
+  vm_compute in Hlk. injection Hlk as H1 H2 H3 H4. subst n_lt n_ty sigma schema.
+  destruct Ts0 as [|? ?]; [|discriminate HTs0].
+  cbn in Hbody.
+  apply var_typing_inv in Hbody.
+  destruct Hbody as [S [Hlk0 Hsub]].
+  cbn in Hlk0. injection Hlk0 as HS. subst S.
+  assert (Hne : endo_tag <> any_tag) by (intro Hx; discriminate Hx).
+  destruct (sub_ctor_sup _ _ _ Hsub _ _ _ eq_refl Hne)
+    as [[l1 [Heta _]] | [Δa Heta]]; subst eta.
+  - (* eta is the Endo constructor: elimination fails *)
+    rewrite elim_ty_n_nat_arg_None in Helim. discriminate.
+  - (* eta is Any@Δa: the eliminated result keeps the Any head, which *)
+    (* can never reach a non-Any constructor interface.               *)
+    destruct (elim_ty_n_any_shape _ _ _ Helim) as [Δr Her]. subst er.
+    destruct HsubOr as [HeqT | HsubT].
+    + injection HeqT as HKa _ _. congruence.
+    + destruct (sub_ctor_inv_noty _ _ _ _ _ data_ctx_no_ty HsubT HK)
+        as [l'' [Heq'' _]].
+      injection Heq'' as HKa _ _. congruence.
+Qed.
+
+(* The reviewer-facing instance: the field cannot come out at the     *)
+(* free Endo interface (nor, per the theorem above, at ANY            *)
+(* constructor interface, free or local — the variance failure is     *)
+(* about the existential, not the lattice).                           *)
+Corollary crashEndo_match_rejected_at_free :
+  ~ (data_ctx ⊢ₜ crashEndo_match : T_Endo `Lf (T_Nat `Lf)).
+Proof.
+  apply crashEndo_match_rejected_at_data.
+  intro Hx; discriminate Hx.
+Qed.
+
+(* Box[local](Option<Nat'local>) and its match.                       *)
+Definition box_val : term :=
+  term_ctor box_tag `Ll [`Ll] [] [some_v (T_Nat `Ll) zero_v].
+
+Definition crashBox_match : term :=
+  term_match box_val box_tag 1 1 ($$ 0) unit_v.
+
+Theorem crashBox_match_rejected_at_data : forall K l Ts,
+  K <> any_tag ->
+  ~ (data_ctx ⊢ₜ crashBox_match : type_ctor K l Ts).
+Proof.
+  intros K l Ts HK H.
+  apply match_typing_inv in H.
+  destruct H as
+    (n_lt & n_ty & sigma & schema & Ts0 & Delta & sres & rtag & rl & eta & er &
+     _ & Hlk & _ & _ & HTs0 & _ & _ & _ & _ & _ & _ & _ & Hbody & Helim & _ &
+     HsubOr).
+  vm_compute in Hlk. injection Hlk as H1 H2 H3 H4. subst n_lt n_ty sigma schema.
+  destruct Ts0 as [|? ?]; [|discriminate HTs0].
+  cbn in Hbody.
+  apply var_typing_inv in Hbody.
+  destruct Hbody as [S [Hlk0 Hsub]].
+  cbn in Hlk0. injection Hlk0 as HS. subst S.
+  assert (Hne : option_tag <> any_tag) by (intro Hx; discriminate Hx).
+  destruct (sub_ctor_sup _ _ _ Hsub _ _ _ eq_refl Hne)
+    as [[l1 [Heta _]] | [Δa Heta]]; subst eta.
+  - rewrite elim_ty_n_nat_arg_None in Helim. discriminate.
+  - destruct (elim_ty_n_any_shape _ _ _ Helim) as [Δr Her]. subst er.
+    destruct HsubOr as [HeqT | HsubT].
+    + injection HeqT as HKa _ _. congruence.
+    + destruct (sub_ctor_inv_noty _ _ _ _ _ data_ctx_no_ty HsubT HK)
+        as [l'' [Heq'' _]].
+      injection Heq'' as HKa _ _. congruence.
+Qed.
+
+Corollary crashBox_match_rejected_at_free :
+  ~ (data_ctx ⊢ₜ crashBox_match : T_Option `Lf (T_Nat `Lf)).
+Proof.
+  apply crashBox_match_rejected_at_data.
+  intro Hx; discriminate Hx.
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* The scrutinees are genuine well-typed local values — the matches   *)
+(* above are rejected for the escape they attempt, not because their  *)
+(* scrutinees were ill-formed.                                        *)
+(* ------------------------------------------------------------------ *)
+
+Lemma typed_endo_id_local :
+  data_ctx ⊢ₜ endo_id_local_v : T_Endo `Ll (T_Nat `Ll).
+Proof.
+  unfold endo_id_local_v.
+  eapply T_Sub.
+  - eapply T_Ctor with
+      (lts := []) (Ts := [T_Nat `Ll])
+      (rho_fields := [T_Nat `Ll -{ `Lf }-> T_Nat `Ll])
+      (result_tag := endo_tag) (l := `Lf);
+      cbn; try reflexivity;
+      try solve [ repeat constructor | solve_wf | solve_lt ].
+  - apply SA_Data; [ solve_lt | solve_wf ].
+Qed.
+
+Theorem typed_trash_val : data_ctx ⊢ₜ trash_val : T_Trash `Ll.
+Proof.
+  unfold trash_val.
+  eapply T_Ctor with
+    (lts := [`Ll]) (Ts := [])
+    (rho_fields := [T_Endo `Ll (T_Nat `Ll)])
+    (result_tag := trash_tag) (l := `Ll);
+    cbn; try reflexivity;
+    try solve [ repeat constructor | solve_wf | solve_lt
+              | repeat (constructor; try (apply LS_Refl; solve_wf)) ].
+  apply Forall2_cons; [ exact typed_endo_id_local | apply Forall2_nil ].
+Qed.
+
+Lemma typed_some_nat_local :
+  data_ctx ⊢ₜ some_v (T_Nat `Ll) zero_v : T_Option `Ll (T_Nat `Ll).
+Proof.
+  assert (Hz : data_ctx ⊢ₜ zero_v : T_Nat `Lf)
+    by (unfold zero_v; solve_nullary_ctor).
+  unfold some_v.
+  eapply T_Sub.
+  - eapply T_Ctor with
+      (lts := []) (Ts := [T_Nat `Ll])
+      (rho_fields := [T_Nat `Ll])
+      (result_tag := option_tag) (l := `Lf);
+      cbn; try reflexivity;
+      try solve [ repeat constructor | solve_wf | solve_lt ].
+    apply Forall2_cons; [| apply Forall2_nil].
+    eapply T_Sub; [ exact Hz | apply SA_Data; [ solve_lt | solve_wf ] ].
+  - apply SA_Data; [ solve_lt | solve_wf ].
+Qed.
+
+Theorem typed_box_val : data_ctx ⊢ₜ box_val : T_Box `Ll.
+Proof.
+  unfold box_val.
+  eapply T_Ctor with
+    (lts := [`Ll]) (Ts := [])
+    (rho_fields := [T_Option `Ll (T_Nat `Ll)])
+    (result_tag := box_tag) (l := `Ll);
+    cbn; try reflexivity;
+    try solve [ repeat constructor | solve_wf | solve_lt
+              | repeat (constructor; try (apply LS_Refl; solve_wf)) ].
+  apply Forall2_cons; [ exact typed_some_nat_local | apply Forall2_nil ].
+Qed.
