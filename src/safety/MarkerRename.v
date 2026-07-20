@@ -735,3 +735,459 @@ Proof.
     + apply ectx_wf_rename_ectx. assumption.
     + exact Hfr.
 Qed.
+
+(* ================================================================== *)
+(* PRIORITY 3: marker alpha-equivalence and determinism modulo        *)
+(* freshness.                                                         *)
+(* ================================================================== *)
+
+(* Two terms are equal modulo an (injective) marker renaming. *)
+Definition marker_alpha_equiv (u1 u2 : term) : Prop :=
+  exists f, marker_inj f /\ rename_marker f u1 = u2.
+
+(* A renaming that fixes every marker occurring in t fixes t. *)
+Lemma rename_marker_fixes : forall f t,
+  (forall m, In m (markers_in t) -> f m = m) ->
+  rename_marker f t = t.
+Proof.
+  intros f.
+  apply (term_list_ind
+    (fun t => (forall m, In m (markers_in t) -> f m = m) ->
+              rename_marker f t = t)
+    (fun ts => (forall m, In m (markers_in_list ts) -> f m = m) ->
+               List.map (rename_marker f) ts = ts)).
+  - intros n _. reflexivity.
+  - intros t1 t2 IH1 IH2 Hf. simpl.
+    rewrite IH1 by (intros m Hm; apply Hf; simpl; apply in_or_app; left;
+                    exact Hm).
+    rewrite IH2 by (intros m Hm; apply Hf; simpl; apply in_or_app; right;
+                    exact Hm).
+    reflexivity.
+  - intros body T IH Hf. simpl. rewrite IH by exact Hf. reflexivity.
+  - intros t T IH Hf. simpl. rewrite IH by exact Hf. reflexivity.
+  - intros bound body IH Hf. simpl. rewrite IH by exact Hf. reflexivity.
+  - intros t l IH Hf. simpl. rewrite IH by exact Hf. reflexivity.
+  - intros body IH Hf. simpl. rewrite IH by exact Hf. reflexivity.
+  - intros K l lts Ts ts IH Hf. rewrite rename_marker_ctor_eq.
+    rewrite IH by (intros m Hm; apply Hf; rewrite markers_in_ctor_eq;
+                   exact Hm).
+    reflexivity.
+  - intros scrut tag n_lt arity yes no IHs IHy IHn Hf. simpl.
+    rewrite IHs by (intros m Hm; apply Hf; simpl; apply in_or_app; left;
+                    exact Hm).
+    rewrite IHy by (intros m Hm; apply Hf; simpl; apply in_or_app; right;
+                    apply in_or_app; left; exact Hm).
+    rewrite IHn by (intros m Hm; apply Hf; simpl; apply in_or_app; right;
+                    apply in_or_app; right; exact Hm).
+    reflexivity.
+  - intros E n_beta Ts T_B T_R op_body body IHop IHb Hf. simpl.
+    rewrite IHop by (intros m Hm; apply Hf; simpl; apply in_or_app; left;
+                     exact Hm).
+    rewrite IHb by (intros m Hm; apply Hf; simpl; apply in_or_app; right;
+                    exact Hm).
+    reflexivity.
+  - intros recv Ss A arg IHr IHa Hf. simpl.
+    rewrite IHr by (intros m Hm; apply Hf; simpl; apply in_or_app; left;
+                    exact Hm).
+    rewrite IHa by (intros m Hm; apply Hf; simpl; apply in_or_app; right;
+                    exact Hm).
+    reflexivity.
+  - intros E m0 n_beta Ts T_R op_body IHop Hf. simpl.
+    rewrite IHop by (intros m Hm; apply Hf; simpl; right; exact Hm).
+    rewrite (Hf m0) by (simpl; left; reflexivity).
+    reflexivity.
+  - intros m0 T_B T_R body IH Hf. simpl.
+    rewrite IH by (intros m Hm; apply Hf; simpl; right; exact Hm).
+    rewrite (Hf m0) by (simpl; left; reflexivity).
+    reflexivity.
+  - intros _. reflexivity.
+  - intros t ts IHt IHts Hf. simpl.
+    rewrite IHt by (intros m Hm; apply Hf; simpl; apply in_or_app; left;
+                    exact Hm).
+    rewrite IHts by (intros m Hm; apply Hf; simpl; apply in_or_app; right;
+                     exact Hm).
+    reflexivity.
+Qed.
+
+Lemma rename_marker_id : forall t, rename_marker (fun m => m) t = t.
+Proof.
+  intros t. apply rename_marker_fixes. intros m _. reflexivity.
+Qed.
+
+Lemma marker_alpha_equiv_refl : forall t, marker_alpha_equiv t t.
+Proof.
+  intros t. exists (fun m => m).
+  split; [intros a b H; exact H | apply rename_marker_id].
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* Markers of an evaluation context; the components of a plug embed   *)
+(* into the markers of the whole.                                     *)
+(* ------------------------------------------------------------------ *)
+
+Lemma markers_in_list_app : forall xs ys,
+  markers_in_list (xs ++ ys) = markers_in_list xs ++ markers_in_list ys.
+Proof.
+  induction xs as [|x xs IH]; intros ys; simpl.
+  - reflexivity.
+  - rewrite IH, app_assoc. reflexivity.
+Qed.
+
+Fixpoint markers_in_ectx (E : ectx) : list marker :=
+  match E with
+  | EC_hole => []
+  | EC_app1 E1 t2 => markers_in_ectx E1 ++ markers_in t2
+  | EC_app2 v E2 => markers_in v ++ markers_in_ectx E2
+  | EC_ty_app E1 _ => markers_in_ectx E1
+  | EC_lt_app E1 _ => markers_in_ectx E1
+  | EC_ctor _ _ _ _ vs E1 ts =>
+      markers_in_list vs ++ markers_in_ectx E1 ++ markers_in_list ts
+  | EC_match E1 _ _ _ y n =>
+      markers_in_ectx E1 ++ markers_in y ++ markers_in n
+  | EC_handler_m m _ _ E1 => m :: markers_in_ectx E1
+  | EC_perform_r E1 _ _ arg => markers_in_ectx E1 ++ markers_in arg
+  | EC_perform_a v _ _ E1 => markers_in v ++ markers_in_ectx E1
+  end.
+
+Lemma markers_in_plug_ectx_incl : forall E t m,
+  In m (markers_in_ectx E) -> In m (markers_in (plug E t)).
+Proof.
+  induction E; intros u m0 Hm.
+  - simpl in Hm. contradiction.
+  - simpl in *. apply in_app_or in Hm. apply in_or_app.
+    destruct Hm as [Hm | Hm]; [left; apply IHE; exact Hm | right; exact Hm].
+  - simpl in *. apply in_app_or in Hm. apply in_or_app.
+    destruct Hm as [Hm | Hm]; [left; exact Hm | right; apply IHE; exact Hm].
+  - simpl in *. apply IHE. exact Hm.
+  - simpl in *. apply IHE. exact Hm.
+  - (* EC_ctor *)
+    simpl in Hm. cbn [plug].
+    rewrite markers_in_ctor_eq, markers_in_list_app. simpl.
+    rewrite !in_app_iff. rewrite !in_app_iff in Hm.
+    destruct Hm as [Hm | [Hm | Hm]];
+      [left; exact Hm | right; left; apply IHE; exact Hm
+      | right; right; exact Hm].
+  - simpl in *. rewrite !in_app_iff. rewrite !in_app_iff in Hm.
+    destruct Hm as [Hm | [Hm | Hm]];
+      [left; apply IHE; exact Hm | right; left; exact Hm
+      | right; right; exact Hm].
+  - simpl in *.
+    destruct Hm as [Hm | Hm]; [left; exact Hm | right; apply IHE; exact Hm].
+  - simpl in *. apply in_app_or in Hm. apply in_or_app.
+    destruct Hm as [Hm | Hm]; [left; apply IHE; exact Hm | right; exact Hm].
+  - simpl in *. apply in_app_or in Hm. apply in_or_app.
+    destruct Hm as [Hm | Hm]; [left; exact Hm | right; apply IHE; exact Hm].
+Qed.
+
+Lemma markers_in_plug_hole_incl : forall E t m,
+  In m (markers_in t) -> In m (markers_in (plug E t)).
+Proof.
+  induction E; intros u m0 Hm.
+  - exact Hm.
+  - simpl. apply in_or_app. left. apply IHE. exact Hm.
+  - simpl. apply in_or_app. right. apply IHE. exact Hm.
+  - simpl. apply IHE. exact Hm.
+  - simpl. apply IHE. exact Hm.
+  - cbn [plug]. rewrite markers_in_ctor_eq, markers_in_list_app. simpl.
+    rewrite !in_app_iff. right. left. apply IHE. exact Hm.
+  - simpl. apply in_or_app. left. apply IHE. exact Hm.
+  - simpl. right. apply IHE. exact Hm.
+  - simpl. apply in_or_app. left. apply IHE. exact Hm.
+  - simpl. apply in_or_app. right. apply IHE. exact Hm.
+Qed.
+
+Lemma rename_marker_list_fixes : forall f ts,
+  (forall m, In m (markers_in_list ts) -> f m = m) ->
+  List.map (rename_marker f) ts = ts.
+Proof.
+  intros f. induction ts as [|t ts IH]; intros Hf; simpl.
+  - reflexivity.
+  - rewrite rename_marker_fixes
+      by (intros m Hm; apply Hf; simpl; apply in_or_app; left; exact Hm).
+    rewrite IH
+      by (intros m Hm; apply Hf; simpl; apply in_or_app; right; exact Hm).
+    reflexivity.
+Qed.
+
+Lemma rename_ectx_fixes : forall f E,
+  (forall m, In m (markers_in_ectx E) -> f m = m) ->
+  rename_ectx f E = E.
+Proof.
+  intros f. induction E; intros Hf; simpl.
+  - reflexivity.
+  - f_equal.
+    + apply IHE. intros m Hm. apply Hf. simpl. apply in_or_app. left.
+      exact Hm.
+    + apply rename_marker_fixes. intros m Hm. apply Hf. simpl.
+      apply in_or_app. right. exact Hm.
+  - f_equal.
+    + apply rename_marker_fixes. intros m Hm. apply Hf. simpl.
+      apply in_or_app. left. exact Hm.
+    + apply IHE. intros m Hm. apply Hf. simpl. apply in_or_app. right.
+      exact Hm.
+  - f_equal. apply IHE. exact Hf.
+  - f_equal. apply IHE. exact Hf.
+  - (* EC_ctor *)
+    f_equal.
+    + apply rename_marker_list_fixes. intros m Hm. apply Hf. simpl.
+      rewrite !in_app_iff. left. exact Hm.
+    + apply IHE. intros m Hm. apply Hf. simpl.
+      rewrite !in_app_iff. right. left. exact Hm.
+    + apply rename_marker_list_fixes. intros m Hm. apply Hf. simpl.
+      rewrite !in_app_iff. right. right. exact Hm.
+  - f_equal.
+    + apply IHE. intros m Hm. apply Hf. simpl.
+      rewrite !in_app_iff. left. exact Hm.
+    + apply rename_marker_fixes. intros m Hm. apply Hf. simpl.
+      rewrite !in_app_iff. right. left. exact Hm.
+    + apply rename_marker_fixes. intros m Hm. apply Hf. simpl.
+      rewrite !in_app_iff. right. right. exact Hm.
+  - f_equal.
+    + apply Hf. simpl. left. reflexivity.
+    + apply IHE. intros m0 Hm. apply Hf. simpl. right. exact Hm.
+  - f_equal.
+    + apply IHE. intros m Hm. apply Hf. simpl. apply in_or_app. left.
+      exact Hm.
+    + apply rename_marker_fixes. intros m Hm. apply Hf. simpl.
+      apply in_or_app. right. exact Hm.
+  - f_equal.
+    + apply rename_marker_fixes. intros m Hm. apply Hf. simpl.
+      apply in_or_app. left. exact Hm.
+    + apply IHE. intros m Hm. apply Hf. simpl. apply in_or_app. right.
+      exact Hm.
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* Transpositions: the injective renaming used to align two fresh     *)
+(* marker choices.                                                    *)
+(* ------------------------------------------------------------------ *)
+
+Definition marker_swap (m1 m2 : marker) (x : marker) : marker :=
+  if Nat.eqb x m1 then m2 else if Nat.eqb x m2 then m1 else x.
+
+Lemma marker_swap_inj : forall m1 m2, marker_inj (marker_swap m1 m2).
+Proof.
+  intros m1 m2 a b H. unfold marker_swap in H. revert H.
+  destruct (Nat.eqb_spec a m1); destruct (Nat.eqb_spec a m2);
+    destruct (Nat.eqb_spec b m1); destruct (Nat.eqb_spec b m2);
+    simpl; intros H; congruence.
+Qed.
+
+Lemma marker_swap_l : forall m1 m2, marker_swap m1 m2 m1 = m2.
+Proof.
+  intros m1 m2. unfold marker_swap. rewrite Nat.eqb_refl. reflexivity.
+Qed.
+
+Lemma marker_swap_other : forall m1 m2 x,
+  x <> m1 -> x <> m2 -> marker_swap m1 m2 x = x.
+Proof.
+  intros m1 m2 x H1 H2. unfold marker_swap.
+  rewrite (proj2 (Nat.eqb_neq x m1) H1), (proj2 (Nat.eqb_neq x m2) H2).
+  reflexivity.
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* THE determinism-modulo-freshness result: the two S_HandleCtx       *)
+(* reducts of the SAME handle redex in the SAME context under two     *)
+(* different fresh markers are marker-alpha-equivalent (via the       *)
+(* transposition m1 <-> m2, which fixes everything else because both  *)
+(* markers are globally fresh).                                       *)
+(* ------------------------------------------------------------------ *)
+
+Theorem handle_choice_irrelevant :
+  forall E E_tag n_beta Ts T_B T_R op_body body m1 m2,
+    ~ In m1 (markers_in
+        (plug E (term_handle E_tag n_beta Ts T_B T_R op_body body))) ->
+    ~ In m2 (markers_in
+        (plug E (term_handle E_tag n_beta Ts T_B T_R op_body body))) ->
+    marker_alpha_equiv
+      (plug E (term_handler_m m1 T_B T_R
+                 (subst_tm 0 (term_cap E_tag m1 n_beta Ts T_R op_body) body)))
+      (plug E (term_handler_m m2 T_B T_R
+                 (subst_tm 0 (term_cap E_tag m2 n_beta Ts T_R op_body) body))).
+Proof.
+  intros E E_tag n_beta Ts T_B T_R op_body body m1 m2 Hf1 Hf2.
+  assert (Hfix : forall m,
+    In m (markers_in (plug E (term_handle E_tag n_beta Ts T_B T_R op_body body))) ->
+    marker_swap m1 m2 m = m).
+  { intros m Hm. apply marker_swap_other; intro Heq; subst m;
+      [exact (Hf1 Hm) | exact (Hf2 Hm)]. }
+  exists (marker_swap m1 m2). split; [apply marker_swap_inj|].
+  rewrite rename_marker_plug.
+  rewrite rename_ectx_fixes
+    by (intros m Hm; apply Hfix; apply markers_in_plug_ectx_incl; exact Hm).
+  cbn [rename_marker].
+  rewrite rename_marker_subst_tm.
+  cbn [rename_marker].
+  rewrite marker_swap_l.
+  rewrite (rename_marker_fixes (marker_swap m1 m2) op_body)
+    by (intros m Hm; apply Hfix; apply markers_in_plug_hole_incl; simpl;
+        apply in_or_app; left; exact Hm).
+  rewrite (rename_marker_fixes (marker_swap m1 m2) body)
+    by (intros m Hm; apply Hfix; apply markers_in_plug_hole_incl; simpl;
+        apply in_or_app; right; exact Hm).
+  reflexivity.
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* Head reduction IS deterministic away from delimiters: the only     *)
+(* overlapping head rules are H_Return / H_Perform on a               *)
+(* term_handler_m redex (and H_Perform against itself when the body   *)
+(* holds two escaping performs for the same marker).                  *)
+(* ------------------------------------------------------------------ *)
+
+Theorem head_step_deterministic_no_delim : forall r u1 u2,
+  (forall m T_B T_R b, r <> term_handler_m m T_B T_R b) ->
+  r -->h u1 -> r -->h u2 -> u1 = u2.
+Proof.
+  intros r u1 u2 Hnd H1 H2.
+  destruct H1; try (exfalso; eapply Hnd; reflexivity);
+    inversion H2; subst; try reflexivity; congruence.
+Qed.
+
+(* ================================================================== *)
+(* COUNTEREXAMPLES: general determinism modulo markers is FALSE.      *)
+(*                                                                    *)
+(* H_Perform captures a [pure_ectx_m] context, which (unlike          *)
+(* [ectx_wf]) imposes NO left-to-right value discipline: EC_app2 v P  *)
+(* is marker-pure for ANY term v, value or not.  So a delimited       *)
+(* perform whose argument is already a value can fire even while an   *)
+(* unevaluated redex sits to its left — a redex the congruence rule   *)
+(* S_step can reduce instead.  The two reducts differ in shape, not   *)
+(* just in markers.                                                   *)
+(*                                                                    *)
+(* Witness:  handler_m 0 ((id id) (perform (cap 0) id))               *)
+(*   step A (congruence):  reduce (id id) under the delimiter;        *)
+(*   step B (H_Perform):   the perform fires with captured context    *)
+(*                         P = EC_app2 (id id) EC_hole, and the       *)
+(*                         op-body (var 0) returns the argument, so   *)
+(*                         the whole term collapses to id.            *)
+(* ================================================================== *)
+
+Definition mr_TU : type := type_ctor 1 lt_free [].
+Definition mr_TV : type := type_ctor 2 lt_free [].
+Definition mr_id  : term := term_lam (term_var 0) mr_TU.
+Definition mr_idv : term := term_lam (term_var 0) mr_TV.
+Definition mr_redex : term := term_app mr_id mr_id.
+Definition mr_cap : term := term_cap 5 0 0 [] mr_TU (term_var 0).
+Definition mr_perform : term := term_perform mr_cap [] mr_TU mr_id.
+Definition mr_t : term :=
+  term_handler_m 0 mr_TU mr_TU (term_app mr_redex mr_perform).
+Definition mr_u1 : term :=
+  term_handler_m 0 mr_TU mr_TU (term_app mr_id mr_perform).
+
+Lemma mr_step_congruence : mr_t ==> mr_u1.
+Proof.
+  apply (S_step (EC_handler_m 0 mr_TU mr_TU (EC_app1 EC_hole mr_perform))
+                mr_redex mr_id).
+  - repeat constructor.
+  - change (term_app (term_lam (term_var 0) mr_TU) mr_id
+              -->h subst_tm 0 mr_id (term_var 0)).
+    apply H_Beta. exact (value_lam (term_var 0) mr_TU).
+Qed.
+
+Lemma mr_step_perform : mr_t ==> mr_id.
+Proof.
+  assert (Hh : term_handler_m 0 mr_TU mr_TU
+                 (plug (EC_app2 mr_redex EC_hole)
+                    (term_perform (term_cap 5 0 0 [] mr_TU (term_var 0))
+                                  [] mr_TU mr_id))
+               -->h
+               subst_list_tm
+                 [mr_id;
+                  term_lam (term_handler_m 0 mr_TU mr_TU
+                              (plug (shift_ectx_tm 1 0
+                                       (EC_app2 mr_redex EC_hole))
+                                    (term_var 0))) mr_TU]
+                 (subst_list_ty_in_tm [] (term_var 0))).
+  { apply H_Perform.
+    - exact (value_lam (term_var 0) mr_TU).
+    - constructor. constructor. }
+  exact (S_step EC_hole _ _ wf_hole Hh).
+Qed.
+
+Lemma mr_u1_not_alpha_id : ~ marker_alpha_equiv mr_u1 mr_id.
+Proof.
+  intros [f [_ Heq]]. vm_compute in Heq. discriminate Heq.
+Qed.
+
+(* The step relation is NOT deterministic modulo marker renaming:     *)
+(* the requested theorem step_deterministic_modulo_markers is false.  *)
+Theorem step_not_deterministic_modulo_markers :
+  exists t u1 u2, t ==> u1 /\ t ==> u2 /\ ~ marker_alpha_equiv u1 u2.
+Proof.
+  exists mr_t, mr_u1, mr_id.
+  split; [exact mr_step_congruence
+         | split; [exact mr_step_perform | exact mr_u1_not_alpha_id]].
+Qed.
+
+(* Head reduction alone is not deterministic either: a delimiter      *)
+(* body can hold TWO escaping performs for the same marker (one in    *)
+(* each application position — again pure_ectx_m allows both), and    *)
+(* H_Perform may consume either one first.                            *)
+
+Definition mr_perform_v : term := term_perform mr_cap [] mr_TU mr_idv.
+Definition mr_r2 : term :=
+  term_handler_m 0 mr_TU mr_TU (term_app mr_perform mr_perform_v).
+
+Theorem head_step_not_deterministic :
+  exists r u1 u2, r -->h u1 /\ r -->h u2 /\ u1 <> u2.
+Proof.
+  exists mr_r2, mr_id, mr_idv.
+  split; [| split].
+  - change (term_handler_m 0 mr_TU mr_TU
+              (plug (EC_app1 EC_hole mr_perform_v)
+                 (term_perform (term_cap 5 0 0 [] mr_TU (term_var 0))
+                               [] mr_TU mr_id))
+            -->h
+            subst_list_tm
+              [mr_id;
+               term_lam (term_handler_m 0 mr_TU mr_TU
+                           (plug (shift_ectx_tm 1 0
+                                    (EC_app1 EC_hole mr_perform_v))
+                                 (term_var 0))) mr_TU]
+              (subst_list_ty_in_tm [] (term_var 0))).
+    apply H_Perform.
+    + exact (value_lam (term_var 0) mr_TU).
+    + constructor. constructor.
+  - change (term_handler_m 0 mr_TU mr_TU
+              (plug (EC_app2 mr_perform EC_hole)
+                 (term_perform (term_cap 5 0 0 [] mr_TU (term_var 0))
+                               [] mr_TU mr_idv))
+            -->h
+            subst_list_tm
+              [mr_idv;
+               term_lam (term_handler_m 0 mr_TU mr_TU
+                           (plug (shift_ectx_tm 1 0
+                                    (EC_app2 mr_perform EC_hole))
+                                 (term_var 0))) mr_TU]
+              (subst_list_ty_in_tm [] (term_var 0))).
+    apply H_Perform.
+    + exact (value_lam (term_var 0) mr_TV).
+    + constructor. constructor.
+  - intro Hbad. vm_compute in Hbad. discriminate Hbad.
+Qed.
+
+(* ================================================================== *)
+(* PRIORITY 4 (refuted): stepf completeness modulo markers is FALSE.  *)
+(*                                                                    *)
+(* stepf implements the canonical left-to-right strategy, so on mr_t  *)
+(* it reduces (id id) — but mr_t ALSO steps by H_Perform to mr_id     *)
+(* (mr_step_perform), and no marker renaming relates mr_id to the     *)
+(* canonical reduct.  Hence the requested                             *)
+(*   stepf_complete_modulo_markers :                                  *)
+(*     t ==> u -> exists u', stepf t = Some u' /\                     *)
+(*                           marker_alpha_equiv u u'                  *)
+(* is not provable.                                                   *)
+(* ================================================================== *)
+
+Theorem stepf_not_complete_modulo_markers :
+  ~ (forall t u, t ==> u ->
+       exists u', stepf t = Some u' /\ marker_alpha_equiv u u').
+Proof.
+  intros Hcomp.
+  destruct (Hcomp mr_t mr_id mr_step_perform) as [u' [Hs Halpha]].
+  vm_compute in Hs. injection Hs as Hs. subst u'.
+  destruct Halpha as [f [_ Heq]].
+  vm_compute in Heq. discriminate Heq.
+Qed.
