@@ -852,7 +852,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step EC_hole). constructor.
     apply (H_Perform Reader_tag 0 0 [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) (($$ 1) @· two_v) [] (T_Nat `Lf) unit_v EC_hole);
-      [apply unit_v_value | constructor]. }
+      [apply unit_v_value | constructor | constructor]. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole). constructor. apply H_Beta, two_v_value. }
@@ -876,7 +876,7 @@ Proof.
     apply (H_Perform Optionality_tag 0 1 [] (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf (T_Nat `Lf))
              (($$ 1) @· term_ctor some_tag `Lf [] [`T 0] [$$ 0])
              [T_Nat `Lf] (T_Option `Lf (T_Nat `Lf)) three_v EC_hole);
-      [apply three_v_value | constructor]. }
+      [apply three_v_value | constructor | constructor]. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole). constructor.
@@ -928,6 +928,7 @@ Proof.
     - eapply (H_Perform _ _ _ _ _ _ _ _ _ _
                 (EC_ctor ok_tag `Lf [] [T_Nat `Lf; T_File `Lf] [] EC_hole [])).
       + apply three_v_value.
+      + repeat constructor.
       + repeat constructor. }
   cbn. apply MS_Refl.
 Qed.
@@ -972,6 +973,7 @@ Proof.
     - repeat constructor.
     - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ (EC_app2 _ (EC_app2 _ EC_hole))).
       + repeat constructor.
+      + repeat constructor.
       + repeat constructor. }
   cbn.
   (* reduct-λ applied to the initial state 2 *)
@@ -1003,6 +1005,7 @@ Proof.
   { apply (S_step (EC_app1 EC_hole two_v)).
     - repeat constructor.
     - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ (EC_app2 _ (EC_app2 _ EC_hole))).
+      + repeat constructor.
       + repeat constructor.
       + repeat constructor. }
   cbn.
@@ -1043,6 +1046,7 @@ Proof.
   { apply (S_step (EC_app1 EC_hole three_v)).
     - repeat constructor.
     - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
+      + repeat constructor.
       + repeat constructor.
       + repeat constructor. }
   cbn.
@@ -1349,6 +1353,7 @@ Proof.
     - repeat constructor.
     - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
       + repeat constructor.
+      + repeat constructor.
       + repeat constructor. }
   cbn.
   eapply MS_Step.
@@ -1406,6 +1411,7 @@ Proof.
     - constructor.
     - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ EC_hole).
       + apply two_v_value.
+      + constructor.
       + constructor. }
   cbn.
   eapply MS_Step.
@@ -1641,6 +1647,7 @@ Proof.
     - constructor.
     - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ EC_hole).
       + repeat constructor.
+      + constructor.
       + constructor. }
   cbn.
   eapply MS_Step.
@@ -1694,6 +1701,7 @@ Proof.
     - repeat constructor.
     - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
       + repeat constructor.
+      + repeat constructor.
       + repeat constructor. }
   cbn.
   eapply MS_Step.
@@ -1718,6 +1726,7 @@ Proof.
         (EC_ctor ok_tag `Lf [] [T_Nat `Lf; T_File `Lf] []
           (EC_handler_m 1 (T_File `Lf) (T_File `Lf) EC_hole) [])).
       + apply two_v_value.
-      + apply pem_ctor. apply pem_handler_m; [ discriminate | apply pem_hole ]. }
+      + apply pem_ctor. apply pem_handler_m; [ discriminate | apply pem_hole ].
+      + repeat constructor. }
   cbn. apply MS_Refl.
 Qed.

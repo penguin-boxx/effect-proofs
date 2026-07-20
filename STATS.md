@@ -5,8 +5,8 @@ is computed from `src/` at generation time.
 
 | Directory | Files | LOC | Definition | Fixpoint | Inductive | Lemma | Theorem | Corollary |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| core | 4 | 2338 | 27 | 42 | 18 | 23 | 0 | 0 |
+| core | 4 | 2344 | 27 | 42 | 18 | 23 | 0 | 0 |
 | subst | 10 | 14016 | 22 | 15 | 11 | 620 | 1 | 0 |
-| safety | 16 | 8825 | 40 | 24 | 8 | 265 | 38 | 13 |
-| examples | 4 | 3499 | 213 | 0 | 0 | 42 | 79 | 3 |
-| **total** | 34 | 28678 | 302 | 81 | 37 | 950 | 118 | 16 |
+| safety | 16 | 8692 | 29 | 24 | 8 | 262 | 35 | 13 |
+| examples | 4 | 3508 | 213 | 0 | 0 | 42 | 79 | 3 |
+| **total** | 34 | 28560 | 291 | 81 | 37 | 947 | 115 | 16 |

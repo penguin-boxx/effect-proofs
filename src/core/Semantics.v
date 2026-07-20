@@ -178,6 +178,39 @@ Qed.
 
 
 (* ------------------------------------------------------------------ *)
+(* 1a. Evaluation context well-formedness                             *)
+(* ------------------------------------------------------------------ *)
+
+(* Well-formedness: arguments to the left of an evaluation hole must  *)
+(* already be values (call-by-value, left-to-right).  Defined BEFORE  *)
+(* head_step because H_Perform requires the captured context to be    *)
+(* value-disciplined too: capture may not skip a pending redex.       *)
+Inductive ectx_wf : ectx -> Prop :=
+  | wf_hole       : ectx_wf EC_hole
+  | wf_app1       : forall E t,
+      ectx_wf E -> ectx_wf (EC_app1 E t)
+  | wf_app2       : forall v E,
+      value v -> ectx_wf E -> ectx_wf (EC_app2 v E)
+  | wf_ty_app     : forall E T,
+      ectx_wf E -> ectx_wf (EC_ty_app E T)
+  | wf_lt_app     : forall E l,
+      ectx_wf E -> ectx_wf (EC_lt_app E l)
+  | wf_ctor       : forall K l lts Ts vs E ts,
+      Forall value vs -> ectx_wf E ->
+      ectx_wf (EC_ctor K l lts Ts vs E ts)
+  | wf_match      : forall E K nlt ar y n,
+      ectx_wf E -> ectx_wf (EC_match E K nlt ar y n)
+    | wf_handler_m  : forall m T_B T_R E,
+      ectx_wf E -> ectx_wf (EC_handler_m m T_B T_R E)
+  | wf_perform_r  : forall E Ss A arg,
+      ectx_wf E -> ectx_wf (EC_perform_r E Ss A arg)
+  | wf_perform_a  : forall v Ss A E,
+      value v -> ectx_wf E ->
+      ectx_wf (EC_perform_a v Ss A E).
+
+Hint Constructors ectx_wf : core.
+
+(* ------------------------------------------------------------------ *)
 (* 1. Head reductions                                                 *)
 (* ------------------------------------------------------------------ *)
 
@@ -212,7 +245,10 @@ Inductive head_step : term -> term -> Prop :=
 
   (* (perform): a `perform (cap E_tag m Ts op_body) Ss A v` inside a  *)
   (* matching handler delimiter `term_handler_m m _` reduces by       *)
-  (*   1) capturing the surrounding pure (delimiter-free) ectx P;     *)
+  (*   1) capturing the surrounding pure (delimiter-free) AND         *)
+  (*      value-disciplined ectx P — `ectx_wf P` forbids capturing    *)
+  (*      past a pending redex, which is what makes reduction         *)
+  (*      deterministic modulo the fresh-marker choice;               *)
   (*   2) reifying the resumption as an ordinary lambda (annotated    *)
   (*      with the perform's instantiated result type A) whose body   *)
   (*      re-installs the delimiter around `plug P [hole]`;           *)
@@ -222,7 +258,7 @@ Inductive head_step : term -> term -> Prop :=
   (* the resumption lambda.  Applying the resumption is ordinary      *)
   (* H_Beta: it substitutes the value into the delimited body.        *)
   | H_Perform : forall E_tag m n_beta Ts T_B T_R op_body Ss A v P,
-      value v -> pure_ectx_m m P ->
+      value v -> pure_ectx_m m P -> ectx_wf P ->
       term_handler_m m T_B T_R
         (plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss A v))
         -->h
@@ -236,36 +272,6 @@ where "t '-->h' t'" := (head_step t t').
 
 Hint Constructors head_step : core.
 
-(* ------------------------------------------------------------------ *)
-(* 2. Evaluation context well-formedness                              *)
-(* ------------------------------------------------------------------ *)
-
-(* Well-formedness: arguments to the left of an evaluation hole must  *)
-(* already be values (call-by-value, left-to-right).                  *)
-Inductive ectx_wf : ectx -> Prop :=
-  | wf_hole       : ectx_wf EC_hole
-  | wf_app1       : forall E t,
-      ectx_wf E -> ectx_wf (EC_app1 E t)
-  | wf_app2       : forall v E,
-      value v -> ectx_wf E -> ectx_wf (EC_app2 v E)
-  | wf_ty_app     : forall E T,
-      ectx_wf E -> ectx_wf (EC_ty_app E T)
-  | wf_lt_app     : forall E l,
-      ectx_wf E -> ectx_wf (EC_lt_app E l)
-  | wf_ctor       : forall K l lts Ts vs E ts,
-      Forall value vs -> ectx_wf E ->
-      ectx_wf (EC_ctor K l lts Ts vs E ts)
-  | wf_match      : forall E K nlt ar y n,
-      ectx_wf E -> ectx_wf (EC_match E K nlt ar y n)
-    | wf_handler_m  : forall m T_B T_R E,
-      ectx_wf E -> ectx_wf (EC_handler_m m T_B T_R E)
-  | wf_perform_r  : forall E Ss A arg,
-      ectx_wf E -> ectx_wf (EC_perform_r E Ss A arg)
-  | wf_perform_a  : forall v Ss A E,
-      value v -> ectx_wf E ->
-      ectx_wf (EC_perform_a v Ss A E).
-
-Hint Constructors ectx_wf : core.
 
 (* ------------------------------------------------------------------ *)
 (* 3. Reduction = head step under any well-formed evaluation context  *)

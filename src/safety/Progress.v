@@ -21,7 +21,7 @@ Require Import Markers.
 (* the escape disjunct is vacuous, giving the classical progress.      *)
 Definition perform_escape (ms : list marker) (t : term) : Prop :=
   exists E_tag m n_beta Ts T_R op_body Ss A v P,
-    In m ms /\ pure_ectx_m m P /\ value v /\
+    In m ms /\ pure_ectx_m m P /\ ectx_wf P /\ value v /\
     t = plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss A v).
 
 Definition progress_result (ms : list marker) (t : term) : Prop :=
@@ -234,12 +234,12 @@ Proof.
           right. left. eexists. apply S_Beta; auto.
       * destruct (S_App2 t1 t2 Hv1 (ex_intro _ t2' Hs2)) as [u Hu].
         right. left. exists u. exact Hu.
-      * destruct Hesc2 as (Et & m & nb & Ts0 & T_R & ob & Ss & A0 & v & P & Hin & Hp & Hv & Heq); subst.
+      * destruct Hesc2 as (Et & m & nb & Ts0 & T_R & ob & Ss & A0 & v & P & Hin & Hp & Hwf & Hv & Heq); subst.
         right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, A0, v, (EC_app2 t1 P).
         repeat split; auto.
     + destruct (S_App1 t1 t2 (ex_intro _ t1' Hs1)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hesc1 as (Et & m & nb & Ts0 & T_R & ob & Ss & A0 & v & P & Hin & Hp & Hv & Heq); subst.
+    + destruct Hesc1 as (Et & m & nb & Ts0 & T_R & ob & Ss & A0 & v & P & Hin & Hp & Hwf & Hv & Heq); subst.
       right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, A0, v, (EC_app1 P t2).
       repeat split; auto.
   - (* T_TyLam *)
@@ -252,7 +252,7 @@ Proof.
       right. left. eexists. apply S_TyBeta.
     + destruct (S_TyApp t S (ex_intro _ t' Hs)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & A0 & v & P & Hin & Hp & Hv & Heq); subst.
+    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & A0 & v & P & Hin & Hp & Hwf & Hv & Heq); subst.
       right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, A0, v, (EC_ty_app P S).
       repeat split; auto.
   - (* T_LtLam *)
@@ -265,7 +265,7 @@ Proof.
       right. left. eexists. apply S_LtBeta.
     + destruct (S_LtApp t l (ex_intro _ t' Hs)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & A0 & v & P & Hin & Hp & Hv & Heq); subst.
+    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & A0 & v & P & Hin & Hp & Hwf & Hv & Heq); subst.
       right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, A0, v, (EC_lt_app P l).
       repeat split; auto.
   - (* T_Ctor *)
@@ -288,7 +288,7 @@ Proof.
     + left. constructor; auto.
     + subst. destruct (S_Ctor K l lts Ts vsl tm vsr Hallvl (ex_intro _ tm' Hst)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & A0 & v & P & Hin & Hp & Hv & Heqesc).
+    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & A0 & v & P & Hin & Hp & Hwf & Hv & Heqesc).
       subst vs tm.
       right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, A0, v, (EC_ctor K l lts Ts vsl P vsr).
       repeat split; auto.
@@ -321,7 +321,7 @@ Proof.
       * eexists. eapply S_MatchNo; eauto.
     + destruct (S_Match scrut K n_lt arity yes_body no_body (ex_intro _ scrut' Hs)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & A0 & v & P & Hin & Hp & Hv & Heq).
+    + destruct Hesc as (Et & m & nb & Ts0 & T_R & ob & Ss & A0 & v & P & Hin & Hp & Hwf & Hv & Heq).
       subst scrut.
       right. right. exists Et, m, nb, Ts0, T_R, ob, Ss, A0, v, (EC_match P K n_lt arity yes_body no_body).
       repeat split; auto.
@@ -350,12 +350,12 @@ Proof.
         repeat split; auto.
       * destruct (S_PerformArg recv Ss ret_inst arg Hvrecv (ex_intro _ arg' Hsarg)) as [u Hu].
         right. left. exists u. exact Hu.
-      * destruct Hescarg as (Et & m & nb & Ts0 & T_R & ob & Ss0 & A0 & v & P & Hin & Hp & Hv & Heq); subst arg.
+      * destruct Hescarg as (Et & m & nb & Ts0 & T_R & ob & Ss0 & A0 & v & P & Hin & Hp & Hwf & Hv & Heq); subst arg.
         right. right. exists Et, m, nb, Ts0, T_R, ob, Ss0, A0, v, (EC_perform_a recv Ss ret_inst P).
         repeat split; auto.
     + destruct (S_PerformRecv recv Ss ret_inst arg (ex_intro _ recv' Hsrecv)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hescrecv as (Et & m & nb & Ts0 & T_R & ob & Ss0 & A0 & v & P & Hin & Hp & Hv & Heq); subst recv.
+    + destruct Hescrecv as (Et & m & nb & Ts0 & T_R & ob & Ss0 & A0 & v & P & Hin & Hp & Hwf & Hv & Heq); subst recv.
       right. right. exists Et, m, nb, Ts0, T_R, ob, Ss0, A0, v, (EC_perform_r P Ss ret_inst arg).
       repeat split; auto.
   - (* T_HandlerM *)
@@ -366,7 +366,7 @@ Proof.
     + right. left. exists t. apply S_Return; auto.
     + destruct (S_HandlerM m T_B T_R t (ex_intro _ t' Hs)) as [u Hu].
       right. left. exists u. exact Hu.
-    + destruct Hesc as (Et & m0 & nb & Ts & T_R0 & op_body & Ss & A0 & v & P & Hin & Hp & Hv & Heq); subst.
+    + destruct Hesc as (Et & m0 & nb & Ts & T_R0 & op_body & Ss & A0 & v & P & Hin & Hp & Hwf & Hv & Heq); subst.
       destruct (Nat.eq_dec m0 m) as [Heqm | Hneq].
       * subst m0. right. left. eexists.
         pose proof (marker_types_ok_handler_perform_annotation_match
@@ -390,7 +390,7 @@ Proof.
   destruct (progress_open_safe _ _ _ _ Hec Hmok Hsafe Hty) as [Hv | [[t' Hs] | Hesc]].
   - left. exact Hv.
   - right. exists t'. exact Hs.
-  - destruct Hesc as (Et & m & nb & Ts & T_R & op_body & Ss & A0 & v & P & Hin & Hp & Hv & Heq).
+  - destruct Hesc as (Et & m & nb & Ts & T_R & op_body & Ss & A0 & v & P & Hin & Hp & Hwf & Hv & Heq).
     inversion Hin.
 Qed.
 

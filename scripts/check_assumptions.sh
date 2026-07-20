@@ -88,9 +88,6 @@ CAPSTONES=(
   MarkerRename:marker_alpha_equiv_refl
   MarkerRename:handle_choice_irrelevant
   MarkerRename:head_step_deterministic_no_delim
-  MarkerRename:step_not_deterministic_modulo_markers
-  MarkerRename:head_step_not_deterministic
-  MarkerRename:stepf_not_complete_modulo_markers
   # safety/Guarantees.v (the umbrella capstone)
   Guarantees:source_safety_suite
   # examples/ExamplesSafety.v

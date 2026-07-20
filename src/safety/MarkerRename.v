@@ -32,14 +32,12 @@ Require Import Stepf.
 (*   5. The fresh-marker choice of S_HandleCtx is irrelevant up to    *)
 (*      [marker_alpha_equiv]: [handle_choice_irrelevant].             *)
 (*                                                                    *)
-(* The GENERAL statement "step is deterministic modulo markers" is    *)
-(* FALSE, for a reason unrelated to markers: H_Perform's captured     *)
-(* context [pure_ectx_m] imposes no left-to-right value discipline,   *)
-(* so a perform can fire past an unevaluated redex that the           *)
-(* congruence rules could also reduce.  See                           *)
-(* [step_not_deterministic_modulo_markers] /                          *)
-(* [head_step_not_deterministic] /                                    *)
-(* [stepf_not_complete_modulo_markers] at the end of this file.       *)
+(* H_Perform additionally requires its captured context to be         *)
+(* value-disciplined ([ectx_wf], Semantics.v), so the fresh-marker    *)
+(* choice is the ONLY one-step nondeterminism in the semantics; the   *)
+(* general determinism-modulo-markers statement is the subject of     *)
+(* the unique-decomposition development building on this file (see    *)
+(* the closing comment).                                              *)
 (* ================================================================== *)
 
 (* Injectivity of a marker renaming.  All equivariance results below  *)
@@ -710,6 +708,7 @@ Proof.
     apply H_Perform.
     + apply value_rename_marker. assumption.
     + apply pure_ectx_m_rename_ectx; assumption.
+    + apply ectx_wf_rename_ectx. assumption.
 Qed.
 
 Theorem step_rename_markers : forall f, marker_inj f ->
@@ -1046,148 +1045,16 @@ Proof.
 Qed.
 
 (* ================================================================== *)
-(* COUNTEREXAMPLES: general determinism modulo markers is FALSE.      *)
+(* DETERMINISM MODULO MARKERS.                                        *)
 (*                                                                    *)
-(* H_Perform captures a [pure_ectx_m] context, which (unlike          *)
-(* [ectx_wf]) imposes NO left-to-right value discipline: EC_app2 v P  *)
-(* is marker-pure for ANY term v, value or not.  So a delimited       *)
-(* perform whose argument is already a value can fire even while an   *)
-(* unevaluated redex sits to its left — a redex the congruence rule   *)
-(* S_step can reduce instead.  The two reducts differ in shape, not   *)
-(* just in markers.                                                   *)
-(*                                                                    *)
-(* Witness:  handler_m 0 ((id id) (perform (cap 0) id))               *)
-(*   step A (congruence):  reduce (id id) under the delimiter;        *)
-(*   step B (H_Perform):   the perform fires with captured context    *)
-(*                         P = EC_app2 (id id) EC_hole, and the       *)
-(*                         op-body (var 0) returns the argument, so   *)
-(*                         the whole term collapses to id.            *)
+(* H_Perform requires the captured context to be BOTH marker-pure     *)
+(* ([pure_ectx_m]) and value-disciplined ([ectx_wf]): capture may     *)
+(* not skip a pending redex.  Under that rule the only one-step       *)
+(* nondeterminism left in the semantics is S_HandleCtx's choice of    *)
+(* fresh marker, which [handle_choice_irrelevant] above shows to be   *)
+(* irrelevant up to [marker_alpha_equiv].  The general statements     *)
+(*   step_deterministic_modulo_markers                                *)
+(*   stepf_complete_modulo_markers                                    *)
+(* are the subject of the unique-decomposition development that       *)
+(* builds on this file.                                               *)
 (* ================================================================== *)
-
-Definition mr_TU : type := type_ctor 1 lt_free [].
-Definition mr_TV : type := type_ctor 2 lt_free [].
-Definition mr_id  : term := term_lam (term_var 0) mr_TU.
-Definition mr_idv : term := term_lam (term_var 0) mr_TV.
-Definition mr_redex : term := term_app mr_id mr_id.
-Definition mr_cap : term := term_cap 5 0 0 [] mr_TU (term_var 0).
-Definition mr_perform : term := term_perform mr_cap [] mr_TU mr_id.
-Definition mr_t : term :=
-  term_handler_m 0 mr_TU mr_TU (term_app mr_redex mr_perform).
-Definition mr_u1 : term :=
-  term_handler_m 0 mr_TU mr_TU (term_app mr_id mr_perform).
-
-Lemma mr_step_congruence : mr_t ==> mr_u1.
-Proof.
-  apply (S_step (EC_handler_m 0 mr_TU mr_TU (EC_app1 EC_hole mr_perform))
-                mr_redex mr_id).
-  - repeat constructor.
-  - change (term_app (term_lam (term_var 0) mr_TU) mr_id
-              -->h subst_tm 0 mr_id (term_var 0)).
-    apply H_Beta. exact (value_lam (term_var 0) mr_TU).
-Qed.
-
-Lemma mr_step_perform : mr_t ==> mr_id.
-Proof.
-  assert (Hh : term_handler_m 0 mr_TU mr_TU
-                 (plug (EC_app2 mr_redex EC_hole)
-                    (term_perform (term_cap 5 0 0 [] mr_TU (term_var 0))
-                                  [] mr_TU mr_id))
-               -->h
-               subst_list_tm
-                 [mr_id;
-                  term_lam (term_handler_m 0 mr_TU mr_TU
-                              (plug (shift_ectx_tm 1 0
-                                       (EC_app2 mr_redex EC_hole))
-                                    (term_var 0))) mr_TU]
-                 (subst_list_ty_in_tm [] (term_var 0))).
-  { apply H_Perform.
-    - exact (value_lam (term_var 0) mr_TU).
-    - constructor. constructor. }
-  exact (S_step EC_hole _ _ wf_hole Hh).
-Qed.
-
-Lemma mr_u1_not_alpha_id : ~ marker_alpha_equiv mr_u1 mr_id.
-Proof.
-  intros [f [_ Heq]]. vm_compute in Heq. discriminate Heq.
-Qed.
-
-(* The step relation is NOT deterministic modulo marker renaming:     *)
-(* the requested theorem step_deterministic_modulo_markers is false.  *)
-Theorem step_not_deterministic_modulo_markers :
-  exists t u1 u2, t ==> u1 /\ t ==> u2 /\ ~ marker_alpha_equiv u1 u2.
-Proof.
-  exists mr_t, mr_u1, mr_id.
-  split; [exact mr_step_congruence
-         | split; [exact mr_step_perform | exact mr_u1_not_alpha_id]].
-Qed.
-
-(* Head reduction alone is not deterministic either: a delimiter      *)
-(* body can hold TWO escaping performs for the same marker (one in    *)
-(* each application position — again pure_ectx_m allows both), and    *)
-(* H_Perform may consume either one first.                            *)
-
-Definition mr_perform_v : term := term_perform mr_cap [] mr_TU mr_idv.
-Definition mr_r2 : term :=
-  term_handler_m 0 mr_TU mr_TU (term_app mr_perform mr_perform_v).
-
-Theorem head_step_not_deterministic :
-  exists r u1 u2, r -->h u1 /\ r -->h u2 /\ u1 <> u2.
-Proof.
-  exists mr_r2, mr_id, mr_idv.
-  split; [| split].
-  - change (term_handler_m 0 mr_TU mr_TU
-              (plug (EC_app1 EC_hole mr_perform_v)
-                 (term_perform (term_cap 5 0 0 [] mr_TU (term_var 0))
-                               [] mr_TU mr_id))
-            -->h
-            subst_list_tm
-              [mr_id;
-               term_lam (term_handler_m 0 mr_TU mr_TU
-                           (plug (shift_ectx_tm 1 0
-                                    (EC_app1 EC_hole mr_perform_v))
-                                 (term_var 0))) mr_TU]
-              (subst_list_ty_in_tm [] (term_var 0))).
-    apply H_Perform.
-    + exact (value_lam (term_var 0) mr_TU).
-    + constructor. constructor.
-  - change (term_handler_m 0 mr_TU mr_TU
-              (plug (EC_app2 mr_perform EC_hole)
-                 (term_perform (term_cap 5 0 0 [] mr_TU (term_var 0))
-                               [] mr_TU mr_idv))
-            -->h
-            subst_list_tm
-              [mr_idv;
-               term_lam (term_handler_m 0 mr_TU mr_TU
-                           (plug (shift_ectx_tm 1 0
-                                    (EC_app2 mr_perform EC_hole))
-                                 (term_var 0))) mr_TU]
-              (subst_list_ty_in_tm [] (term_var 0))).
-    apply H_Perform.
-    + exact (value_lam (term_var 0) mr_TV).
-    + constructor. constructor.
-  - intro Hbad. vm_compute in Hbad. discriminate Hbad.
-Qed.
-
-(* ================================================================== *)
-(* PRIORITY 4 (refuted): stepf completeness modulo markers is FALSE.  *)
-(*                                                                    *)
-(* stepf implements the canonical left-to-right strategy, so on mr_t  *)
-(* it reduces (id id) — but mr_t ALSO steps by H_Perform to mr_id     *)
-(* (mr_step_perform), and no marker renaming relates mr_id to the     *)
-(* canonical reduct.  Hence the requested                             *)
-(*   stepf_complete_modulo_markers :                                  *)
-(*     t ==> u -> exists u', stepf t = Some u' /\                     *)
-(*                           marker_alpha_equiv u u'                  *)
-(* is not provable.                                                   *)
-(* ================================================================== *)
-
-Theorem stepf_not_complete_modulo_markers :
-  ~ (forall t u, t ==> u ->
-       exists u', stepf t = Some u' /\ marker_alpha_equiv u u').
-Proof.
-  intros Hcomp.
-  destruct (Hcomp mr_t mr_id mr_step_perform) as [u' [Hs Halpha]].
-  vm_compute in Hs. injection Hs as Hs. subst u'.
-  destruct Halpha as [f [_ Heq]].
-  vm_compute in Heq. discriminate Heq.
-Qed.

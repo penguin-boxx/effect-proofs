@@ -93,6 +93,7 @@ Inductive boundary_step : term -> term -> boundary_channel -> term -> Prop :=
   | BS_Perform : forall E E_tag m n_beta Ts T_B T_R op_body Ss A v P,
       value v ->
       pure_ectx_m m P ->
+      ectx_wf P ->
       ectx_wf E ->
       boundary_step
         (plug E (term_handler_m m T_B T_R
@@ -112,7 +113,7 @@ Proof.
   intros u u' ch v Hbs.
   destruct Hbs as
     [E m T_B T_R v Hval HwfE
-    |E E_tag m n_beta Ts T_B T_R op_body Ss A v P Hval Hpure HwfE].
+    |E E_tag m n_beta Ts T_B T_R op_body Ss A v P Hval Hpure HwfP HwfE].
   - apply S_step; [exact HwfE | apply H_Return; exact Hval].
   - apply S_step; [exact HwfE | apply H_Perform; assumption].
 Qed.
