@@ -86,6 +86,8 @@ CAPSTONES=(
   MarkerRename:head_step_rename_markers
   MarkerRename:step_rename_markers
   MarkerRename:marker_alpha_equiv_refl
+  MarkerRename:marker_alpha_equiv_sym
+  MarkerRename:marker_alpha_equiv_trans
   MarkerRename:handle_choice_irrelevant
   MarkerRename:head_step_deterministic_no_delim
   # safety/Guarantees.v (the umbrella capstone)

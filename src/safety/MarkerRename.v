@@ -29,15 +29,18 @@ Require Import Stepf.
 (*      [well_scoped_rename_markers].                                 *)
 (*   4. Reduction is equivariant under injective renamings:           *)
 (*      [step_rename_markers].                                        *)
-(*   5. The fresh-marker choice of S_HandleCtx is irrelevant up to    *)
+(*   5. [marker_alpha_equiv] — equality up to a marker BIJECTION      *)
+(*      (a renaming with an explicit two-sided inverse) — is a        *)
+(*      genuine equivalence: [marker_alpha_equiv_refl] / [_sym] /     *)
+(*      [_trans].                                                     *)
+(*   6. The fresh-marker choice of S_HandleCtx is irrelevant up to    *)
 (*      [marker_alpha_equiv]: [handle_choice_irrelevant].             *)
 (*                                                                    *)
 (* H_Perform additionally requires its captured context to be         *)
 (* value-disciplined ([ectx_wf], Semantics.v), so the fresh-marker    *)
 (* choice is the ONLY one-step nondeterminism in the semantics; the   *)
-(* general determinism-modulo-markers statement is the subject of     *)
-(* the unique-decomposition development building on this file (see    *)
-(* the closing comment).                                              *)
+(* general determinism-modulo-markers statements are delivered in     *)
+(* Determinism.v on top of this file's equivalence.                   *)
 (* ================================================================== *)
 
 (* Injectivity of a marker renaming.  All equivariance results below  *)
@@ -740,9 +743,17 @@ Qed.
 (* freshness.                                                         *)
 (* ================================================================== *)
 
-(* Two terms are equal modulo an (injective) marker renaming. *)
+(* Two terms are equal modulo a marker BIJECTION: a renaming carrying *)
+(* an explicit two-sided inverse.  Carrying the inverse (rather than  *)
+(* bare injectivity) is what makes symmetry and transitivity          *)
+(* provable, turning the relation into a genuine equivalence;         *)
+(* injectivity — the hypothesis of the equivariance theorems above —  *)
+(* is recovered by [marker_alpha_equiv_inj] below.                    *)
 Definition marker_alpha_equiv (u1 u2 : term) : Prop :=
-  exists f, marker_inj f /\ rename_marker f u1 = u2.
+  exists f g,
+    (forall m, g (f m) = m) /\
+    (forall m, f (g m) = m) /\
+    rename_marker f u1 = u2.
 
 (* A renaming that fixes every marker occurring in t fixes t. *)
 Lemma rename_marker_fixes : forall f t,
@@ -813,10 +824,84 @@ Proof.
   intros t. apply rename_marker_fixes. intros m _. reflexivity.
 Qed.
 
-Lemma marker_alpha_equiv_refl : forall t, marker_alpha_equiv t t.
+(* Two renamings in a row fuse into their composition. *)
+Lemma rename_marker_compose : forall f g t,
+  rename_marker f (rename_marker g t) = rename_marker (fun m => f (g m)) t.
 Proof.
-  intros t. exists (fun m => m).
-  split; [intros a b H; exact H | apply rename_marker_id].
+  intros f g.
+  apply (term_list_ind
+    (fun t => rename_marker f (rename_marker g t)
+              = rename_marker (fun m => f (g m)) t)
+    (fun ts => List.map (rename_marker f) (List.map (rename_marker g) ts)
+               = List.map (rename_marker (fun m => f (g m))) ts)).
+  - intros n. reflexivity.
+  - intros t1 t2 IH1 IH2. simpl. rewrite IH1, IH2. reflexivity.
+  - intros body T IH. simpl. rewrite IH. reflexivity.
+  - intros t T IH. simpl. rewrite IH. reflexivity.
+  - intros bound body IH. simpl. rewrite IH. reflexivity.
+  - intros t l IH. simpl. rewrite IH. reflexivity.
+  - intros body IH. simpl. rewrite IH. reflexivity.
+  - intros K l lts Ts ts IH. rewrite !rename_marker_ctor_eq, IH. reflexivity.
+  - intros scrut tag n_lt arity yes no IHs IHy IHn. simpl.
+    rewrite IHs, IHy, IHn. reflexivity.
+  - intros E n_beta Ts T_B T_R op_body body IHop IHb. simpl.
+    rewrite IHop, IHb. reflexivity.
+  - intros recv Ss A arg IHr IHa. simpl. rewrite IHr, IHa. reflexivity.
+  - intros E m n_beta Ts T_R op_body IHop. simpl. rewrite IHop. reflexivity.
+  - intros m T_B T_R body IH. simpl. rewrite IH. reflexivity.
+  - reflexivity.
+  - intros t ts IHt IHts. simpl. rewrite IHt, IHts. reflexivity.
+Qed.
+
+(* A left inverse forces injectivity: the bridge from the bijection   *)
+(* form of [marker_alpha_equiv] back to the [marker_inj] hypotheses   *)
+(* of the equivariance theorems above.                                *)
+Lemma marker_left_inverse_inj : forall f g,
+  (forall m, g (f m) = m) -> marker_inj f.
+Proof.
+  intros f g Hgf m1 m2 Heq.
+  rewrite <- (Hgf m1), <- (Hgf m2), Heq. reflexivity.
+Qed.
+
+Lemma marker_alpha_equiv_inj : forall u1 u2,
+  marker_alpha_equiv u1 u2 ->
+  exists f, marker_inj f /\ rename_marker f u1 = u2.
+Proof.
+  intros u1 u2 (f & g & Hgf & _ & Heq).
+  exists f. split; [exact (marker_left_inverse_inj f g Hgf) | exact Heq].
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* [marker_alpha_equiv] is an equivalence relation.                   *)
+(* ------------------------------------------------------------------ *)
+
+Theorem marker_alpha_equiv_refl : forall t, marker_alpha_equiv t t.
+Proof.
+  intros t. exists (fun m => m), (fun m => m).
+  split; [intros m; reflexivity|].
+  split; [intros m; reflexivity|].
+  apply rename_marker_id.
+Qed.
+
+Theorem marker_alpha_equiv_sym : forall u1 u2,
+  marker_alpha_equiv u1 u2 -> marker_alpha_equiv u2 u1.
+Proof.
+  intros u1 u2 (f & g & Hgf & Hfg & Heq).
+  exists g, f.
+  split; [exact Hfg|]. split; [exact Hgf|].
+  subst u2. rewrite rename_marker_compose.
+  apply rename_marker_fixes. intros m _. apply Hgf.
+Qed.
+
+Theorem marker_alpha_equiv_trans : forall u1 u2 u3,
+  marker_alpha_equiv u1 u2 -> marker_alpha_equiv u2 u3 ->
+  marker_alpha_equiv u1 u3.
+Proof.
+  intros u1 u2 u3 (f1 & g1 & Hgf1 & Hfg1 & Heq1) (f2 & g2 & Hgf2 & Hfg2 & Heq2).
+  exists (fun m => f2 (f1 m)), (fun m => g1 (g2 m)).
+  split; [intros m; rewrite Hgf2; apply Hgf1|].
+  split; [intros m; rewrite Hfg1; apply Hfg2|].
+  subst. symmetry. apply rename_marker_compose.
 Qed.
 
 (* ------------------------------------------------------------------ *)
@@ -985,6 +1070,27 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma marker_swap_r : forall m1 m2, marker_swap m1 m2 m2 = m1.
+Proof.
+  intros m1 m2. unfold marker_swap.
+  destruct (Nat.eqb_spec m2 m1) as [-> | Hne].
+  - reflexivity.
+  - rewrite Nat.eqb_refl. reflexivity.
+Qed.
+
+(* Transpositions are their own inverse — so the bijection form of    *)
+(* [marker_alpha_equiv] costs nothing for the freshness argument.     *)
+Lemma marker_swap_invol : forall m1 m2 x,
+  marker_swap m1 m2 (marker_swap m1 m2 x) = x.
+Proof.
+  intros m1 m2 x.
+  destruct (Nat.eqb_spec x m1) as [-> | Hx1].
+  - rewrite marker_swap_l. apply marker_swap_r.
+  - destruct (Nat.eqb_spec x m2) as [-> | Hx2].
+    + rewrite marker_swap_r. apply marker_swap_l.
+    + rewrite !(marker_swap_other m1 m2 x Hx1 Hx2). reflexivity.
+Qed.
+
 (* ------------------------------------------------------------------ *)
 (* THE determinism-modulo-freshness result: the two S_HandleCtx       *)
 (* reducts of the SAME handle redex in the SAME context under two     *)
@@ -1011,7 +1117,9 @@ Proof.
     marker_swap m1 m2 m = m).
   { intros m Hm. apply marker_swap_other; intro Heq; subst m;
       [exact (Hf1 Hm) | exact (Hf2 Hm)]. }
-  exists (marker_swap m1 m2). split; [apply marker_swap_inj|].
+  exists (marker_swap m1 m2), (marker_swap m1 m2).
+  split; [exact (marker_swap_invol m1 m2)|].
+  split; [exact (marker_swap_invol m1 m2)|].
   rewrite rename_marker_plug.
   rewrite rename_ectx_fixes
     by (intros m Hm; apply Hfix; apply markers_in_plug_ectx_incl; exact Hm).
