@@ -16,3 +16,6 @@ Require Export Soundness.
 Require Export Escape.
 Require Export Occurrence.
 Require Export Boundary.
+Require Export BoundaryStep.
+Require Export Decide.
+Require Export Guarantees.

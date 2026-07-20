@@ -28,6 +28,7 @@ safety/Escape.v
 safety/Occurrence.v
 safety/Boundary.v
 safety/BoundaryStep.v
+safety/Guarantees.v
 safety/Safety.v
 examples/Examples.v
 examples/ExamplesProofs.v
