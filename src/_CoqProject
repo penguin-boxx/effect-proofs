@@ -20,6 +20,7 @@ safety/Decide.v
 safety/TypingInv.v
 safety/Markers.v
 safety/Stepf.v
+safety/MarkerRename.v
 safety/Progress.v
 safety/Inversions.v
 safety/Frames.v
