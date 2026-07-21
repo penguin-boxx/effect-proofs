@@ -20,6 +20,17 @@ CI builds in the official Docker image `rocq/rocq-prover:9.1.1`
 (Docker Hub publishes no 9.1.0 tag; 9.1.1 is the bugfix-only patch of
 the same minor series — see `.github/workflows/ci.yml`).
 
+## Scope of the verified development
+
+The verified development is **exactly the files listed in
+`src/_CoqProject`** — those are what `make` builds and what the
+assumption gate checks.  The `experiments/` directory is unbuilt
+scratch work (it contains `Admitted`/`Axiom` placeholders by nature)
+and is **excluded from archival tarballs** via `.gitattributes`
+(`export-ignore`), as is the local `.claude/` directory.  Axiom-freeness
+claims refer to the built development, and `git archive` output
+contains nothing else.
+
 ## Build
 
 ```sh
