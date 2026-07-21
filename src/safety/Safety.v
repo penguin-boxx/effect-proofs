@@ -18,4 +18,7 @@ Require Export Occurrence.
 Require Export Boundary.
 Require Export BoundaryStep.
 Require Export Decide.
+Require Export Stepf.
+Require Export MarkerRename.
+Require Export Determinism.
 Require Export Guarantees.

@@ -15,6 +15,8 @@ Require Import Occurrence.
 Require Import Boundary.
 Require Import BoundaryStep.
 Require Import Decide.
+Require Import Stepf.
+Require Import Determinism.
 
 (* ================================================================== *)
 (*                                                                    *)
@@ -118,4 +120,49 @@ Proof.
     eapply source_boundary_step_noloc; eauto.
   - intros u u' v Hms Hbs.
     eapply source_boundary_resumption_local; eauto.
+Qed.
+
+(* ================================================================== *)
+(* The certified evaluator decides termination on safe states: on a   *)
+(* state satisfying the runtime invariants, [stepf] returns [None]    *)
+(* ONLY on values.  Progress supplies value-or-step; evaluator        *)
+(* completeness (Determinism.v) turns the absence of a stepf result   *)
+(* into the absence of a step.                                        *)
+(* ================================================================== *)
+
+Theorem safe_stepf_none_is_value : forall Γ T t,
+  eval_ctx Γ ->
+  safety_invariants Γ T t ->
+  stepf t = None ->
+  value t.
+Proof.
+  intros Γ T t Hec [Hann [Hwr Hty]] Hnone.
+  destruct Hann as [Hsafe _].
+  destruct Hwr as [Hws _].
+  destruct (progress_safe _ _ _ Hec Hws Hsafe Hty) as [Hv | [t' Hs]].
+  - exact Hv.
+  - exfalso.
+    destruct (stepf_complete_modulo_markers _ _ Hs) as [u' [Hsome _]].
+    rewrite Hnone in Hsome. discriminate.
+Qed.
+
+(* Source-facing trace form: running a well-typed source program with  *)
+(* [stepf] can only halt at a value — the certified evaluator is a     *)
+(* decision procedure for "one more step exists" along any execution.  *)
+Corollary source_stepf_none_is_value : forall Γ t T u,
+  eval_ctx Γ ->
+  sourceb t = true ->
+  Γ ⊢ₜ t : T ->
+  multi_step t u ->
+  stepf u = None ->
+  value u.
+Proof.
+  intros Γ t T u Hec Hsb Hty Hms Hnone.
+  apply sourceb_spec in Hsb.
+  eapply safe_stepf_none_is_value with (T := T);
+    [exact Hec | | exact Hnone].
+  eapply multi_step_preserves_safety_invariants;
+    [ exact Hec
+    | apply source_safety_invariants; [exact Hsb | exact Hty]
+    | exact Hms ].
 Qed.

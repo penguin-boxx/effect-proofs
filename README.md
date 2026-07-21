@@ -28,6 +28,7 @@ datum can escape the scope that delimits it.
 | `lt_subb_spec` / `nolocb_spec` / `valueb_spec` / `sourceb_spec` | `src/safety/Decide.v` | Certified reflected deciders for lifetime subtyping, the REAL noloc premise, values, and source terms. |
 | `stepf_sound` / `stepf_run_sound` | `src/safety/Stepf.v` | A certified executable reduction strategy (and bounded driver) implementing the semantics. |
 | `typing_rename_markers` / `step_rename_markers` / `handle_choice_irrelevant` | `src/safety/MarkerRename.v` | Marker identities are operationally irrelevant: typing/reduction are equivariant under (injective) marker renaming, and the fresh-marker choice yields alpha-equivalent reducts. |
+| `head_step_deterministic` / `step_deterministic_modulo_markers` / `stepf_complete_modulo_markers` | `src/safety/Determinism.v` | Head reduction is a partial function; any two steps from one state agree up to a marker bijection; the certified evaluator is complete for the step relation modulo the fresh-marker choice. |
 | `leak_reader_rejected_at_free`, `crashEndo_match_rejected_at_data`, … | `src/examples/ExamplesRejection.v` | Complete offending TERMS have no typing derivation at their escapable interfaces, each paired with a positive companion at its confined interface (a precision evaluation, including the quantified-type false positive). |
 
 The classic capstones are witnessed on concrete programs in
@@ -153,7 +154,8 @@ basename; `Subst.v` and `Safety.v` are re-export shims):
 | `safety/Escape` | the non-escape and capability-confinement theorems, incl. capability-free escapable results |
 | `safety/Decide` | certified reflected deciders (`lt_subb`, `nolocb`, `valueb`, `sourceb`) |
 | `safety/Stepf` | the certified executable reduction strategy `stepf` |
-| `safety/MarkerRename` | marker-renaming equivariance and marker-choice irrelevance |
+| `safety/MarkerRename` | marker-renaming equivariance, marker alpha-equivalence (a genuine equivalence), marker-choice irrelevance |
+| `safety/Determinism` | head-step determinism, evaluator completeness, and one-step determinism modulo marker renaming |
 | `safety/Occurrence` | occurrence/path-level capability confinement |
 | `safety/Boundary` | guarded boundary data channels: values crossing on a guarded channel are noloc-typed |
 | `safety/BoundaryStep` | labelled boundary transition events + per-channel theorems + resumption locality |

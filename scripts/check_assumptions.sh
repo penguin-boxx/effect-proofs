@@ -97,6 +97,8 @@ CAPSTONES=(
   Determinism:step_deterministic_modulo_markers
   # safety/Guarantees.v (the umbrella capstone)
   Guarantees:source_safety_suite
+  Guarantees:safe_stepf_none_is_value
+  Guarantees:source_stepf_none_is_value
   # examples/ExamplesSafety.v
   ExamplesSafety:withState_example_safe
   ExamplesSafety:readerExample_safe

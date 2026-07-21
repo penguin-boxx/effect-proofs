@@ -80,8 +80,6 @@ These two steps are deliberately **not** done by tooling; only the
 maintainer can make these choices:
 
 1. ~~Choose a license.~~ **Done: MIT** (see `LICENSE`).
-2.0, or CC-BY for
-   text-heavy artifacts) and commit it as `LICENSE`.
 
 2. **Cut the archival release.** Tag the reviewed commit
    (e.g. `git tag -a v1.0 -m "artifact for <paper>"`), push the tag,

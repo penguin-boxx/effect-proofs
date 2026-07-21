@@ -502,7 +502,8 @@ Definition foldEndo_example : term :=
   (foldEndo @lt[ `Lf ]) @· two_v @· endoi_v.
 
 (* error: crashEndo tries to existentially forget Trash's local Nat    *)
-(* lifetime, which occurs contravariantly in [trash_field] (Endo).      *)
+(* lifetime, which occurs in an INVARIANT position — a constructor      *)
+(* type argument — of [trash_field] (Endo's parameter Nat'l).           *)
 Definition crashEndo_variance_witness : Prop :=
   elim_ty_n 1 `Ll var_pos trash_field = None.
 
