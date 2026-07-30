@@ -58,7 +58,7 @@ theorem** — all Theorems/Corollaries of the gated files (`Soundness`,
 and fails unless each one prints `Closed under the global context`,
 i.e. the development is axiom-free, with no admitted proofs and no
 smuggled hypotheses. The capstone list lives in one commented block at
-the top of `scripts/check_assumptions.sh` and is **verified
+the top of `scripts/check_assumptions.py` and is **verified
 exhaustive** by the script itself: an ungated `Theorem`/`Corollary` in
 any gated file fails the run.
 

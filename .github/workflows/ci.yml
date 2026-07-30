@@ -4,7 +4,7 @@
 #
 # Builds the full development in a container with a pinned Rocq
 # Prover, then verifies that every capstone theorem is closed under
-# the global context (scripts/check_assumptions.sh).
+# the global context (scripts/check_assumptions.py).
 #
 # Version pinning: the artifact targets Rocq 9.1.0.  Docker Hub's
 # official Rocq Prover repository (rocq/rocq-prover) publishes NO
