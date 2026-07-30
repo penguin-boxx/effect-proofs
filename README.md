@@ -41,10 +41,12 @@ Requires Rocq/Coq (developed against Rocq 9.1) with the standard library.
 
 ```sh
 make                     # builds everything in _CoqProject order
+make verify              # build + axiom gate + docs-freshness gate
 ```
 
-To re-check the axiom-freeness of ALL capstones (the list is kept
-exhaustive by a built-in self-check):
+`make verify` re-checks the axiom-freeness of ALL capstones (the
+capstone list is derived from the gated files, so it cannot go stale)
+and that the committed generated docs match the sources:
 
 ```sh
 make check-assumptions   # every capstone must be closed under the global context
@@ -63,10 +65,9 @@ Three independent de Bruijn variable sorts — **lifetimes**, **types**,
 terms; types occur in terms; never the reverse).
 
 - **Lifetimes** `Δ ::= l | free | local | Δ₁ + Δ₂`. The subtyping
-  lattice puts `free` at the bottom and `local` at the top; `lt_min`
-  (written `+`) is the *shorter* of two lifetimes in duration terms,
-  which makes it the lattice **join**. "More local" = higher = more
-  restricted.
+  lattice puts `free` at the bottom and `local` at the top; `lt_join`
+  (written `+`) is the lattice **join** — duration-wise, the *shorter*
+  of the two lifetimes. "More local" = higher = more restricted.
 - **Types** `τ ::= α | τ →Δ τ | K Δ τ̄ | ∀l.τ | ∀(α<:B).τ`. `Any@Δ` is
   the encoded top of the data lattice (`type_ctor any_tag Δ []`);
   effect/capability types reuse `type_ctor` at the effect tag.
@@ -78,8 +79,9 @@ terms; types occur in terms; never the reverse).
   (a runtime identity for the dynamically nearest delimiter).
 
 Effect declarations carry a **list of operations** — `bind_eff E n_α
-[(n_β, σ, ρ); …]`, one `(β-arity, signature, result)` triple per
-operation, identified by its **list index**. A handler supplies one
+[(n_β, σ, ρ); …]` (a context binding, `src/core/Context.v`), one
+`(β-arity, signature, result)` triple per operation, identified by its
+**list index**. A handler supplies one
 clause per operation, a `perform` names its operation by index, and
 `H_Perform` selects the fired clause with `nth_error`. Each `perform`
 also carries its **instantiated result type** as an annotation; that
@@ -96,7 +98,7 @@ handler_m m T_B T_R (P[ perform (cap E m T_R ops) i S̄ A v ])
 There is no dedicated "reified resumption" constructor: applying the
 resumption is plain β-reduction, which re-installs the delimiter around
 a fresh copy of the captured frames — multi-shot resumption for free
-(see `multishotExample` in the examples).
+(see `multishot_example` in the examples).
 
 ### Semantics (`src/core/Semantics.v`)
 
@@ -108,7 +110,11 @@ are derived lemmas via a single congruence lemma `step_in_ctx`.
 
 ### Typing (`src/core/Typing.v`)
 
-The interesting side conditions are all escape checks:
+The static semantics is split into dependency-ordered modules —
+`Context`, `Wf`, `LtSub`, `LtAnalysis`, `Elim`, `Subtyping`,
+`Instantiate` — all re-exported by `Typing.v`, which holds the typing
+relation itself. The interesting side conditions are all escape
+checks:
 
 - `T_Lam` bounds the closure lifetime by `capture_lt` — the join of the
   captured variables' type-lifetimes, forced to `local` if the body
@@ -129,7 +135,8 @@ The interesting side conditions are all escape checks:
 
 ```
 src/
-  core/      Syntax, Substitution, Semantics, Typing   (the calculus)
+  core/      Syntax, Substitution, Semantics, and the static
+             semantics modules re-exported by Typing (the calculus)
   subst/     de Bruijn metatheory                      (the proof engine)
   safety/    the safety theorems                       (the deliverables)
   examples/  fully verified example programs
@@ -143,15 +150,19 @@ basename; `Subst.v` and `Safety.v` are re-export shims):
 |---|---|
 | `subst/ShiftLaws` | σ-calculus laws for the six shift/subst operations, closedness predicates |
 | `subst/Weakening` | context-insertion relations (`InsTm`/`InsTy`/`InsLt`) and typing weakening |
-| `subst/SubstLt`, `SubstTy`, `SubstTm` | per-sort substitution relations and typing substitution |
+| `subst/SubstLt`, `SubstTy` | the lt/ty substitution relations and their transport lemmas |
 | `subst/ProgramCtx` | the `eval_ctx` predicate (contexts of only ctor/effect bindings) and its closedness corollaries |
-| `subst/TypingSubstTy` | `typing_SubstTy` / `typing_SubstLt` — the type- and lifetime-substitution payload |
+| `subst/SubstTm` | the term-substitution relation and `typing_SubstTm` (term-substitution preserves typing) |
+| `subst/TypingSubst` | `typing_SubstLt` / `typing_SubstTy` — the lifetime- and type-substitution typing payloads |
+| `subst/SubstTactics` | the substitution-tier tactic library and hint databases (`subst_go`, `ctxmap`) |
 | `subst/Narrowing` | F<: narrowing, λ/∀ typing inversions, ∀-subtyping inversions |
 | `subst/Variance` | soundness of the `elim_ty` variance eliminator used by `T_Match` |
-| `safety/TypingInv` | **the** inversion module: subtyping shape inversions, principal typing inversions, canonical forms, `plug_typing_inv` |
-| `safety/Markers` | the runtime marker invariants and their traversal/step lemmas |
+| `safety/Eqb` | boolean equality on lifetimes/types with its spec lemmas |
+| `safety/TypingInv` | **the** inversion module: subtyping shape inversions, principal typing inversions, canonical forms, `plug_typing_inv`, wf context conversion |
+| `safety/WellScoped` | the `well_scoped`/`rt_closed`/`ws_rt` runtime invariants (definitions) |
+| `safety/WsRtLaws` | the ws_rt proof engine: traversal, plug, and confinement laws |
+| `safety/MarkerAnnots` | the marker-annotation invariants and their step preservation |
 | `safety/Progress` | progress, generalized over an open marker scope (`perform_escape`) |
-| `safety/Inversions` | match/ctor-specific plumbing, free-variable bounds (`typing_closed`) |
 | `safety/Frames` | evaluation-context typing recomposition (`plug_typing_replace`) |
 | `safety/Preservation` | subject reduction + step-preservation of the runtime invariants |
 | `safety/Soundness` | the `safety_invariants` bundle and `type_soundness` |
@@ -201,7 +212,7 @@ vacuously on source terms (`has_rt_cap t = false`), which is how the
   wrapped as `lt_of_ty_G`. The context-free `lt_of_ty` (variables
   contribute `free`) is used only by `T_Ctor` on instantiated field
   types; bridge lemmas relate the two (see the comment at the
-  definitions in `Typing.v`).
+  definitions in `core/LtAnalysis.v`).
 - **Why three "push binders" operations?** `push_ty_vars` /
   `push_lt_vars` push uniform bounds; `push_match_bound` stores
   per-level *shifted* copies of the scrutinee lifetime so that all `n`
@@ -229,8 +240,12 @@ end-to-end (including a **multi-shot** handler that resumes twice and a
 **forwarding** example where a `throw` crosses a live unrelated Reader
 delimiter). `ExamplesProofs.v` also contains *negative* witnesses: the
 escape checks computationally reject programs that would leak a `local`
-capability. `ExamplesSafety.v` instantiates the four capstones on these
-programs.
+capability. The shared tactic library lives in `ExamplesTactics.v`.
+`ExamplesSafety.v` witnesses four of the capstones — five theorems
+over two concrete programs plus one type-level confinement fact — and `ExamplesRejection.v` proves the rejection suite: complete
+offending terms have **no typing derivation** at their escapable
+interfaces, each paired with a positive companion at its confined
+interface.
 
 ## License
 

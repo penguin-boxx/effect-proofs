@@ -14,7 +14,9 @@ Require Import ShiftLaws.
 (* [InsTm] / [InsTmAt] (G' is G with one binder inserted at depth c) — *)
 (* each with its lookup/wf transport lemmas, culminating in the three  *)
 (* typing-weakening theorems [typing_InsTy] / [typing_InsLt] (in       *)
-(* SubstLt.v, which owns the lt/ty payload) and [typing_InsTmAt] with  *)
+(* SubstLt.v — their T_Match cases need SubstLt's elim/multi_subst     *)
+(* theory, so the dependency order forces them there) and              *)
+(* [typing_InsTmAt] with                                               *)
 (* its front instance [typing_weaken_tm_shift].  Also home to          *)
 (* [typing_ind_forall2], the Forall2-aware induction principle every   *)
 (* payload theorem in this tier applies.                               *)
@@ -375,11 +377,11 @@ Proof.
     + eapply lt_wf_InsTy; eauto.
   - apply LS_Refl. eapply lt_wf_InsTy; eauto.
   - eapply LS_Trans; [apply (IH1 c G' HIns) | apply (IH2 c G' HIns)].
-  - apply LS_MinL; [apply (IH1 c G' HIns) | apply (IH2 c G' HIns)].
-  - apply LS_MinR1.
+  - apply LS_JoinL; [apply (IH1 c G' HIns) | apply (IH2 c G' HIns)].
+  - apply LS_JoinR1.
     + apply (IH1 c G' HIns).
     + eapply lt_wf_InsTy; eauto.
-  - apply LS_MinR2.
+  - apply LS_JoinR2.
     + apply (IH1 c G' HIns).
     + eapply lt_wf_InsTy; eauto.
 Qed.
@@ -421,12 +423,11 @@ Qed.
 
 (* ---- Subtyping weakening (correctly shifted) -------------------- *)
 
-(* Correct context weakening for subtyping.  Inserting a `bind_ty`      *)
-(* binding at the front shifts the type-variable namespace by one, so   *)
-(* the related types must be shifted by `shift_ty 1 0`.  (The earlier   *)
-(* no-shift `sub_weaken_cons` omitted this shift and was unsound:       *)
-(* prepending a binding silently re-captured the de Bruijn indices.)    *)
-(* Standard weakening metatheory; now derived from `sub_InsTy`.         *)
+(* Context weakening for subtyping.  Inserting a `bind_ty` binding at   *)
+(* the front shifts the type-variable namespace by one, so the related  *)
+(* types must be shifted by `shift_ty 1 0`.  (A no-shift variant would  *)
+(* be unsound: prepending a binding silently re-captures the de Bruijn  *)
+(* indices.)  Derived from `sub_InsTy`.                                 *)
 Lemma sub_weaken_ty_shift : forall Γ B T1 T2,
   Γ ⊢ T1 <:: T2 ->
   (bind_ty B :: Γ) ⊢ shift_ty 1 0 T1 <:: shift_ty 1 0 T2.
@@ -682,12 +683,12 @@ Proof.
                       = shift_lt 1 c (lt_of_ty_ctx_list 0 G Ts)).
     + rewrite shift_lt_in_ty_var_eq. rewrite !(lt_of_ty_ctx_var 0). reflexivity.
     + rewrite shift_lt_in_ty_fun_eq. rewrite !lt_of_ty_ctx_fun. reflexivity.
-    + rewrite shift_lt_in_ty_ctor_eq. rewrite !lt_of_ty_ctx_ctor. rewrite shift_lt_min_eq.
+    + rewrite shift_lt_in_ty_ctor_eq. rewrite !lt_of_ty_ctx_ctor. rewrite shift_lt_join_eq.
       f_equal. exact IHT.
     + rewrite !lt_of_ty_ctx_ltall. reflexivity.
     + rewrite !lt_of_ty_ctx_tyall. reflexivity.
     + reflexivity.
-    + cbn [List.map]. rewrite !lt_of_ty_ctx_list_cons. rewrite shift_lt_min_eq. rewrite IHT, IHT0. reflexivity.
+    + cbn [List.map]. rewrite !lt_of_ty_ctx_list_cons. rewrite shift_lt_join_eq. rewrite IHT, IHT0. reflexivity.
   - induction T using type_list_ind with
       (Q := fun Ts => lt_of_ty_ctx_list (S f') G' (List.map (shift_lt_in_ty 1 c) Ts)
                       = shift_lt 1 c (lt_of_ty_ctx_list (S f') G Ts)).
@@ -698,12 +699,12 @@ Proof.
       * apply IHf.
       * reflexivity.
     + rewrite shift_lt_in_ty_fun_eq. rewrite !lt_of_ty_ctx_fun. reflexivity.
-    + rewrite shift_lt_in_ty_ctor_eq. rewrite !lt_of_ty_ctx_ctor. rewrite shift_lt_min_eq.
+    + rewrite shift_lt_in_ty_ctor_eq. rewrite !lt_of_ty_ctx_ctor. rewrite shift_lt_join_eq.
       f_equal. exact IHT.
     + rewrite !lt_of_ty_ctx_ltall. reflexivity.
     + rewrite !lt_of_ty_ctx_tyall. reflexivity.
     + reflexivity.
-    + cbn [List.map]. rewrite !lt_of_ty_ctx_list_cons. rewrite shift_lt_min_eq. rewrite IHT, IHT0. reflexivity.
+    + cbn [List.map]. rewrite !lt_of_ty_ctx_list_cons. rewrite shift_lt_join_eq. rewrite IHT, IHT0. reflexivity.
 Qed.
 
 Lemma lt_of_ty_G_InsLt : forall c G G', InsLt c G G' ->
@@ -797,11 +798,11 @@ Proof.
     + eapply lt_wf_InsLt; eauto.
   - apply LS_Refl. eapply lt_wf_InsLt; eauto.
   - eapply LS_Trans; [apply (IH1 c G' HIns) | apply (IH2 c G' HIns)].
-  - apply LS_MinL; [apply (IH1 c G' HIns) | apply (IH2 c G' HIns)].
-  - apply LS_MinR1.
+  - apply LS_JoinL; [apply (IH1 c G' HIns) | apply (IH2 c G' HIns)].
+  - apply LS_JoinR1.
     + apply (IH1 c G' HIns).
     + eapply lt_wf_InsLt; eauto.
-  - apply LS_MinR2.
+  - apply LS_JoinR2.
     + apply (IH1 c G' HIns).
     + eapply lt_wf_InsLt; eauto.
 Qed.
@@ -1014,11 +1015,11 @@ Proof.
     + eapply lt_wf_InsTm; eauto.
   - apply LS_Refl. eapply lt_wf_InsTm; eauto.
   - eapply LS_Trans; [apply IH12 | apply IH23]; exact HIns.
-  - apply LS_MinL; [apply IH1|apply IH2]; exact HIns.
-  - apply LS_MinR1.
+  - apply LS_JoinL; [apply IH1|apply IH2]; exact HIns.
+  - apply LS_JoinR1.
     + apply IH. exact HIns.
     + eapply lt_wf_InsTm; eauto.
-  - apply LS_MinR2.
+  - apply LS_JoinR2.
     + apply IH. exact HIns.
     + eapply lt_wf_InsTm; eauto.
 Qed.
@@ -1532,9 +1533,9 @@ Proof.
   - unfold lt_of_ty_G. rewrite lt_of_ty_ctx_tyall. reflexivity.
   - destruct H1 as [HT HTs].
     change (lt_of_ty_ctx (List.length Γ) Γ A) with (lt_of_ty_G Γ A).
-    change (fold_right (fun A0 acc => lt_min (lt_of_ty_ctx (List.length Γ) Γ A0) acc) lt_free Ts)
+    change (fold_right (fun A0 acc => lt_join (lt_of_ty_ctx (List.length Γ) Γ A0) acc) lt_free Ts)
       with (lt_of_ty_ctx_list (List.length Γ) Γ Ts).
-    change (fold_right (fun T0 acc => lt_min (lt_of_ty T0) acc) lt_free Ts)
+    change (fold_right (fun T0 acc => lt_join (lt_of_ty T0) acc) lt_free Ts)
       with (lt_of_ty_list Ts).
     rewrite H by exact HT. rewrite H0 by exact HTs. reflexivity.
 Qed.
@@ -1974,16 +1975,12 @@ Proof.
 Qed.
 
 (* ================================================================== *)
-(* Stability of the context-sensitive no-local checks under weakening *)
+(* Stability of the [any_at_free] bound under weakening               *)
 (*                                                                    *)
-(* The new typing premises ([no_local_ty_G], [ty_app_arg_no_local],   *)
-(* [forallb no_local_ty_G ...]) read the bound of each type variable  *)
-(* from the context, so weakening lemmas must show they are preserved *)
-(* when a binder is inserted ([InsTm]/[InsTy]/[InsLt]).  The two      *)
-(* [is_any_at_free_bound_shift_*] lemmas establish that shifting an   *)
-(* inserted bound does not change whether it is [Any]'free, and       *)
-(* [no_local_ty_G_go_eq_fold] re-exposes the inner [go] fixpoint as a *)
-(* [fold_right] so it can be reasoned about by [Forall]/induction.    *)
+(* The op-body contexts of T_Cap/T_Handle push type binders bounded   *)
+(* by [any_at_free], so the weakening lemmas must show that inserting *)
+(* a binder ([InsTm]/[InsTy]/[InsLt]) leaves those pushed bounds      *)
+(* untouched: shifting [any_at_free] is the identity.                 *)
 (* ================================================================== *)
 
 Lemma shift_ty_any_at_free : forall c, shift_ty 1 c any_at_free = any_at_free.

@@ -5,6 +5,7 @@ Require Import Syntax.
 Require Import Substitution.
 Require Import Semantics.
 Require Import ShiftLaws.
+Require Import Eqb.
 Require Import Stepf.
 Require Import MarkerRename.
 
@@ -37,34 +38,6 @@ Require Import MarkerRename.
 (* completeness glued by the [marker_alpha_equiv] equivalence laws    *)
 (* (MarkerRename.v).                                                  *)
 (* ================================================================== *)
-
-(* ------------------------------------------------------------------ *)
-(* Reflexivity of the evaluator's syntactic equality tests            *)
-(* ------------------------------------------------------------------ *)
-
-Lemma lt_eqb_refl : forall l, lt_eqb l l = true.
-Proof.
-  induction l; simpl.
-  - apply Nat.eqb_refl.
-  - reflexivity.
-  - reflexivity.
-  - rewrite IHl1, IHl2. reflexivity.
-Qed.
-
-Lemma ty_eqb_refl : forall T, ty_eqb T T = true.
-Proof.
-  apply (type_list_ind
-    (fun T => ty_eqb T T = true)
-    (fun Ts => ty_list_eqb Ts Ts = true)).
-  - intros n. apply Nat.eqb_refl.
-  - intros A l B IHA IHB. simpl. rewrite IHA, lt_eqb_refl, IHB. reflexivity.
-  - intros K l Ts IHTs. simpl.
-    rewrite ty_eqb_go_eq, Nat.eqb_refl, lt_eqb_refl, IHTs. reflexivity.
-  - intros A IHA. simpl. exact IHA.
-  - intros B A IHB IHA. simpl. rewrite IHB, IHA. reflexivity.
-  - reflexivity.
-  - intros A Ts IHA IHTs. simpl. rewrite IHA, IHTs. reflexivity.
-Qed.
 
 (* ------------------------------------------------------------------ *)
 (* Constructor-spine plumbing: a value prefix passes through the      *)
@@ -188,7 +161,6 @@ Proof.
 Qed.
 
 (* Head reduction is a genuine partial function — no modulo needed.   *)
-(* (Subsumes MarkerRename.v's [head_step_deterministic_no_delim].)    *)
 Theorem head_step_deterministic : forall r u1 u2,
   r -->h u1 -> r -->h u2 -> u1 = u2.
 Proof.

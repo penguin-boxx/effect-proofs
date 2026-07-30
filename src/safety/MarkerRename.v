@@ -8,7 +8,10 @@ Require Import Typing.
 Require Import ShiftLaws.
 Require Import Weakening.
 Require Import ProgramCtx.
-Require Import Markers.
+Require Import SubstTm.
+Require Import MarkerAnnots.
+Require Import WellScoped.
+Require Import WsRtLaws.
 Require Import Stepf.
 
 (* ================================================================== *)
@@ -869,7 +872,7 @@ Proof.
 Qed.
 
 (* ================================================================== *)
-(* PRIORITY 3: marker alpha-equivalence and determinism modulo        *)
+(* Marker alpha-equivalence and determinism modulo                    *)
 (* freshness.                                                         *)
 (* ================================================================== *)
 
@@ -1201,14 +1204,6 @@ Qed.
 Definition marker_swap (m1 m2 : marker) (x : marker) : marker :=
   if Nat.eqb x m1 then m2 else if Nat.eqb x m2 then m1 else x.
 
-Lemma marker_swap_inj : forall m1 m2, marker_inj (marker_swap m1 m2).
-Proof.
-  intros m1 m2 a b H. unfold marker_swap in H. revert H.
-  destruct (Nat.eqb_spec a m1); destruct (Nat.eqb_spec a m2);
-    destruct (Nat.eqb_spec b m1); destruct (Nat.eqb_spec b m2);
-    simpl; intros H; congruence.
-Qed.
-
 Lemma marker_swap_l : forall m1 m2, marker_swap m1 m2 m1 = m2.
 Proof.
   intros m1 m2. unfold marker_swap. rewrite Nat.eqb_refl. reflexivity.
@@ -1302,22 +1297,6 @@ Proof.
   reflexivity.
 Qed.
 
-(* ------------------------------------------------------------------ *)
-(* Head reduction IS deterministic away from delimiters: the only     *)
-(* overlapping head rules are H_Return / H_Perform on a               *)
-(* term_handler_m redex (and H_Perform against itself when the body   *)
-(* holds two escaping performs for the same marker).                  *)
-(* ------------------------------------------------------------------ *)
-
-Theorem head_step_deterministic_no_delim : forall r u1 u2,
-  (forall m T_B T_R b, r <> term_handler_m m T_B T_R b) ->
-  r -->h u1 -> r -->h u2 -> u1 = u2.
-Proof.
-  intros r u1 u2 Hnd H1 H2.
-  destruct H1; try (exfalso; eapply Hnd; reflexivity);
-    inversion H2; subst; try reflexivity; congruence.
-Qed.
-
 (* ================================================================== *)
 (* DETERMINISM MODULO MARKERS.                                        *)
 (*                                                                    *)
@@ -1329,6 +1308,5 @@ Qed.
 (* irrelevant up to [marker_alpha_equiv].  The general statements     *)
 (*   step_deterministic_modulo_markers                                *)
 (*   stepf_complete_modulo_markers                                    *)
-(* are the subject of the unique-decomposition development that       *)
-(* builds on this file.                                               *)
+(* are proved in Determinism.v.                                       *)
 (* ================================================================== *)

@@ -103,7 +103,7 @@ Qed.
 (*      SubstLt, sound because the context shrinks with the shift.    *)
 (* ================================================================== *)
 
-(* Over-approximation context [push_match_bound] is defined in Typing.v   *)
+(* Over-approximation context [push_match_bound] is defined in core/Instantiate.v   *)
 (* (it is the context the T_Match rule pushes for the yes-branch).     *)
 
 Lemma push_match_bound_lookup0 : forall n' Delta G,
@@ -165,8 +165,8 @@ Proof.
     destruct (IHl1 _ _ _ _ _ E1 Hlk HwfBound H2) as [Hwf1' Hrel1].
     destruct (IHl2 _ _ _ _ _ E2 Hlk HwfBound H3) as [Hwf2' Hrel2].
     split; [constructor; assumption|]. destruct p; simpl in *.
-    + apply lt_min_mono; assumption.
-    + apply lt_min_mono; assumption.
+    + apply lt_join_mono; assumption.
+    + apply lt_join_mono; assumption.
     + f_equal; assumption.
 Qed.
 

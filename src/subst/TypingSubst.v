@@ -9,13 +9,19 @@ Require Import ShiftLaws.
 Require Import Weakening.
 Require Import SubstLt.
 Require Import SubstTy.
-Require Import SubstTm.
 Require Import ProgramCtx.
+Require Import SubstTm.
 
 (* ================================================================== *)
-(* typing_SubstTy : type-substitution preserves typing.               *)
-(* Discharges `subst_ty_in_tm_lemma` (it is the depth-0 instance with *)
-(* `SubstTy_here`).  Mirrors `typing_InsTy`, swapping shift→subst.    *)
+(* The lt/ty typing payloads: [typing_SubstLt] and [typing_SubstTy].  *)
+(*                                                                    *)
+(* Both live here — not in SubstLt.v / SubstTy.v — because both       *)
+(* T_TyApp cases lean on the F<: narrowing bridge                     *)
+(* [type_ty_all_narrow_bound] (SubstTy.v), which itself needs the     *)
+(* wf-transport of BOTH substitutions; the dependency order therefore *)
+(* forces the payloads below SubstTy.  The depth-0 instances (with    *)
+(* SubstLt_here / SubstTy_here) are what Preservation.v's beta        *)
+(* lemmas consume.                                                    *)
 (* ================================================================== *)
 
 (* ---- schema-level type substitution ---- *)
@@ -624,7 +630,7 @@ Lemma inst_ctor_field_alignment : forall S lts Ts n Sb G,
   Forall (fun U => lt_wf G (lt_of_ty U)) Ts ->
   lt_wf G (lt_of_ty_list (List.map (subst_ty n Sb) Ts)) ->
   G ⊢ₗ lt_of_ty (subst_ty n Sb (inst_ctor_type (List.length lts) (List.length Ts) lts Ts S))
-      <: lt_min (lt_of_ty (inst_ctor_type (List.length lts) (List.length Ts) lts Ts S))
+      <: lt_join (lt_of_ty (inst_ctor_type (List.length lts) (List.length Ts) lts Ts S))
                 (lt_of_ty_list (List.map (subst_ty n Sb) Ts)).
 Proof.
   intros S lts Ts n Sb G HltC HtyC HFlts HwfTs HwfTs'.
@@ -647,7 +653,7 @@ Proof.
   { apply (multi_subst_lt_lt_sub
              (lt_of_ty (inst_ty_vars (List.length Ts)
                           (List.map (shift_lt_in_ty (List.length lts) 0) Ts') S))
-             (lt_min (lt_of_ty S) (shift_lt (List.length lts) 0 (lt_of_ty_list Ts')))
+             (lt_join (lt_of_ty S) (shift_lt (List.length lts) 0 (lt_of_ty_list Ts')))
              lts G HFlts).
     fold Gp.
     rewrite <- (lt_of_ty_list_shift_lt_amt Ts' (List.length lts) 0).
@@ -658,7 +664,7 @@ Proof.
              HwfS_p (lt_wf_push_shift_lt_of_ty_list Ts' (List.length lts) G HwfTs')). }
   cbn [multi_subst_lt].
   rewrite (multi_subst_lt_shift_cancel0 (List.length lts) lts (lt_of_ty_list Ts') eq_refl).
-  apply lt_min_mono; [| apply LS_Refl; exact HwfTs'].
+  apply lt_join_mono; [| apply LS_Refl; exact HwfTs'].
   apply (multi_subst_lt_lt_sub (lt_of_ty S)
            (lt_of_ty (inst_ty_vars (List.length Ts)
                         (List.map (shift_lt_in_ty (List.length lts) 0) Ts) S)) lts G HFlts).
@@ -671,17 +677,17 @@ Proof.
 Qed.
 
 (* Lattice redistribution: (P∨c) ∨ (Q∨c) <: (P∨Q) ∨ c.                  *)
-Lemma lt_min_redistribute : forall G P Q c,
+Lemma lt_join_redistribute : forall G P Q c,
   lt_wf G P -> lt_wf G Q -> lt_wf G c ->
-  G ⊢ₗ lt_min (lt_min P c) (lt_min Q c) <: lt_min (lt_min P Q) c.
+  G ⊢ₗ lt_join (lt_join P c) (lt_join Q c) <: lt_join (lt_join P Q) c.
 Proof.
-  intros G P Q c HP HQ Hc. apply LS_MinL.
-  - apply LS_MinL.
-    + apply LS_MinR1; [apply LS_MinR1; [apply LS_Refl; exact HP | exact HQ] | exact Hc].
-    + apply LS_MinR2; [apply LS_Refl; exact Hc | apply LWF_Min; assumption].
-  - apply LS_MinL.
-    + apply LS_MinR1; [apply LS_MinR2; [apply LS_Refl; exact HQ | exact HP] | exact Hc].
-    + apply LS_MinR2; [apply LS_Refl; exact Hc | apply LWF_Min; assumption].
+  intros G P Q c HP HQ Hc. apply LS_JoinL.
+  - apply LS_JoinL.
+    + apply LS_JoinR1; [apply LS_JoinR1; [apply LS_Refl; exact HP | exact HQ] | exact Hc].
+    + apply LS_JoinR2; [apply LS_Refl; exact Hc | apply LWF_Join; assumption].
+  - apply LS_JoinL.
+    + apply LS_JoinR1; [apply LS_JoinR2; [apply LS_Refl; exact HQ | exact HP] | exact Hc].
+    + apply LS_JoinR2; [apply LS_Refl; exact Hc | apply LWF_Join; assumption].
 Qed.
 
 (* The escape-premise stability lifted to the full constructor field    *)
@@ -694,7 +700,7 @@ Lemma inst_ctor_fields_alignment : forall sigma_fields lts Ts n Sb G,
   lt_wf G (lt_of_ty_list (List.map (subst_ty n Sb) Ts)) ->
   G ⊢ₗ lt_of_ty_list (List.map (subst_ty n Sb)
          (List.map (inst_ctor_type (List.length lts) (List.length Ts) lts Ts) sigma_fields))
-      <: lt_min (lt_of_ty_list
+      <: lt_join (lt_of_ty_list
            (List.map (inst_ctor_type (List.length lts) (List.length Ts) lts Ts) sigma_fields))
            (lt_of_ty_list (List.map (subst_ty n Sb) Ts)).
 Proof.
@@ -702,7 +708,7 @@ Proof.
   assert (Hwfc : lt_wf G (lt_of_ty_list (List.map (subst_ty n Sb) Ts))) by exact HwfTs'.
   induction sigma_fields as [|S rest IH].
   - cbn [List.map]. rewrite !lt_of_ty_list_nil.
-    apply LS_MinR1; [apply LS_Free; apply LWF_Free | exact Hwfc].
+    apply LS_JoinR1; [apply LS_Free; apply LWF_Free | exact Hwfc].
   - inversion HClosed as [|S0 rest0 [HltC HtyC] HClosedRest]; subst.
     cbn [List.map]. rewrite !lt_of_ty_list_cons.
     pose proof (inst_ctor_field_alignment S lts Ts n Sb G HltC HtyC HFlts HwfTs HwfTs') as Hpe.
@@ -712,16 +718,8 @@ Proof.
     destruct (lt_sub_wf _ _ _ Hih) as [_ HwfRih].
     inversion HwfRih as [| | |G1 a1 b1 HwfIh Hwfc1]; subst.
     eapply LS_Trans.
-    + apply lt_min_mono; [exact Hpe | exact Hih].
-    + apply lt_min_redistribute; assumption.
-Qed.
-
-Lemma subst_ty_in_tm_go_eq_map_local : forall n Sb ts,
-  (fix go ts := match ts with [] => [] | u :: rest => subst_ty_in_tm n Sb u :: go rest end) ts =
-  List.map (subst_ty_in_tm n Sb) ts.
-Proof.
-  intros n Sb ts. induction ts as [|t ts IH]; simpl; [reflexivity|].
-  rewrite IH. reflexivity.
+    + apply lt_join_mono; [exact Hpe | exact Hih].
+    + apply lt_join_redistribute; assumption.
 Qed.
 
 Lemma free_tm_vars_subst_ty_in_tm : forall t cutoff n Sb,
@@ -745,7 +743,7 @@ Proof.
   - intros bound body IH cutoff n Sb. simpl. apply IH.
   - intros t l IH cutoff n Sb. simpl. apply IH.
   - intros body IH cutoff n Sb. simpl. apply IH.
-  - intros K l lts Ts ts IH cutoff n Sb. simpl. rewrite subst_ty_in_tm_go_eq_map_local.
+  - intros K l lts Ts ts IH cutoff n Sb. simpl. rewrite subst_ty_in_tm_go_eq_map.
     rewrite !free_tm_vars_go_eq_concat. apply IH.
   - intros scrut tag n_lt arity yes_body no_body IHs IHy IHn cutoff n Sb. simpl.
     rewrite IHs, IHy, IHn. reflexivity.
@@ -785,7 +783,7 @@ Proof.
   - intros bound body IH n Sb. simpl. apply IH.
   - intros t l IH n Sb. simpl. apply IH.
   - intros body IH n Sb. simpl. apply IH.
-  - intros K l lts Ts ts IH n Sb. simpl. rewrite subst_ty_in_tm_go_eq_map_local. apply IH.
+  - intros K l lts Ts ts IH n Sb. simpl. rewrite subst_ty_in_tm_go_eq_map. apply IH.
   - intros scrut tag n_lt arity yes_body no_body IHs IHy IHn n Sb. simpl.
     rewrite IHs, IHy, IHn. reflexivity.
   - intros E Ts T_B T_R op_bodies body IHops IHb n Sb. simpl.
@@ -822,11 +820,11 @@ Proof.
       rewrite (subst_ty_var_neq n Sb n0 Hane).
       rewrite !(lt_of_ty_ctx_var 0). apply LS_Refl. constructor.
     + rewrite subst_ty_fun_eq. rewrite !lt_of_ty_ctx_fun. apply LS_Refl.
-      eapply lt_wf_SubstTy_ctx; eauto.
+      eapply lt_wf_SubstTy; eauto.
     + rewrite subst_ty_ctor_eq. rewrite !lt_of_ty_ctx_ctor.
       rewrite VB_ctor in HVB. inversion HwfLt; subst.
-      apply lt_min_mono.
-      * apply LS_Refl. eapply lt_wf_SubstTy_ctx; eauto.
+      apply lt_join_mono.
+      * apply LS_Refl. eapply lt_wf_SubstTy; eauto.
       * eapply IHT; eauto.
     + rewrite subst_ty_ltall_eq. rewrite !lt_of_ty_ctx_ltall. apply LS_Refl. constructor.
     + rewrite subst_ty_tyall_eq. rewrite !lt_of_ty_ctx_tyall. apply LS_Refl. constructor.
@@ -834,7 +832,7 @@ Proof.
     + rewrite VBL_cons in HVB. destruct HVB as [Ha Hr].
       cbn [List.map]. rewrite !lt_of_ty_ctx_list_cons.
       inversion HwfLt; subst.
-      apply lt_min_mono; [eapply IHT; eauto | eapply IHT0; eauto].
+      apply lt_join_mono; [eapply IHT; eauto | eapply IHT0; eauto].
   - revert k HwfLt HVB Hlen.
     induction T using type_list_ind with
       (Q := fun Ts => forall k,
@@ -861,11 +859,11 @@ Proof.
             apply (IHf B0 (S n0) HwfB0 (ctx_inv_all G n0 B0 E)). lia.
         -- apply LS_Refl. constructor.
     + rewrite subst_ty_fun_eq. rewrite !lt_of_ty_ctx_fun. apply LS_Refl.
-      eapply lt_wf_SubstTy_ctx; eauto.
+      eapply lt_wf_SubstTy; eauto.
     + rewrite subst_ty_ctor_eq. rewrite !lt_of_ty_ctx_ctor.
       rewrite VB_ctor in HVB. inversion HwfLt; subst.
-      apply lt_min_mono.
-      * apply LS_Refl. eapply lt_wf_SubstTy_ctx; eauto.
+      apply lt_join_mono.
+      * apply LS_Refl. eapply lt_wf_SubstTy; eauto.
       * eapply IHT; eauto.
     + rewrite subst_ty_ltall_eq. rewrite !lt_of_ty_ctx_ltall. apply LS_Refl. constructor.
     + rewrite subst_ty_tyall_eq. rewrite !lt_of_ty_ctx_tyall. apply LS_Refl. constructor.
@@ -873,7 +871,7 @@ Proof.
     + rewrite VBL_cons in HVB. destruct HVB as [Ha Hr].
       cbn [List.map]. rewrite !lt_of_ty_ctx_list_cons.
       inversion HwfLt; subst.
-      apply lt_min_mono; [eapply IHT; eauto | eapply IHT0; eauto].
+      apply lt_join_mono; [eapply IHT; eauto | eapply IHT0; eauto].
 Qed.
 
 Lemma lt_of_ty_G_SubstTy_le_wf : forall Sb n G G', SubstTy Sb n G G' ->
@@ -901,7 +899,7 @@ Proof.
     + inversion HwfCap; subst.
       rewrite (SubstTy_lookup_tm Sb n G G' HS x).
       destruct (ctx_lookup_tm G x) as [T|] eqn:Hlk; simpl.
-      * apply lt_min_mono.
+      * apply lt_join_mono.
         -- match goal with
           | Hh : lt_wf G (lt_of_ty_G G T) |-
             G' ⊢ₗ lt_of_ty_G G' (subst_ty n Sb T) <: lt_of_ty_G G T =>
@@ -910,7 +908,7 @@ Proof.
         -- match goal with
           | Ht : lt_wf G (fold_right _ _ xs) |- _ => apply IH; exact Ht
           end.
-      * apply lt_min_mono.
+      * apply lt_join_mono.
         -- apply LS_Refl. constructor.
         -- match goal with
           | Ht : lt_wf G (fold_right _ _ xs) |- _ => apply IH; exact Ht
@@ -923,7 +921,7 @@ Proof.
   intros G lts Hwf. induction Hwf; intros Sb n G' HS.
   - constructor.
   - constructor.
-    + eapply lt_wf_SubstTy_ctx; eauto.
+    + eapply lt_wf_SubstTy; eauto.
     + apply (IHHwf Sb n G' HS).
 Qed.
 
@@ -1226,7 +1224,7 @@ Proof.
     change ((fix go_list (Ts0 : list type) : lifetime :=
       match Ts0 with
       | [] => lt_free
-      | A :: rest => lt_min (lt_of_ty A) (go_list rest)
+      | A :: rest => lt_join (lt_of_ty A) (go_list rest)
       end) ((fix go (Ts0 : list type) : list type :=
         match Ts0 with
         | [] => []
@@ -1236,7 +1234,7 @@ Proof.
     change ((fix go_list (Ts0 : list type) : lifetime :=
       match Ts0 with
       | [] => lt_free
-      | A :: rest => lt_min (lt_of_ty A) (go_list rest)
+      | A :: rest => lt_join (lt_of_ty A) (go_list rest)
       end) Ts) with (lt_of_ty_list Ts).
     rewrite IHTs. reflexivity.
   - intros A IHA c R. simpl. reflexivity.
@@ -1355,13 +1353,13 @@ Proof.
     + rewrite List.length_map. exact Hlen_lts.
     + eapply lifetimes_wf_SubstLt; eauto.
     + subst rho_fields. symmetry.
-      change (subst_lt_in_ty_list n R Ts) with (List.map (subst_lt_in_ty n R) Ts).
+      change (map_subst_lt_in_ty n R Ts) with (List.map (subst_lt_in_ty n R) Ts).
       apply inst_ctor_type_list_subst_lt. exact Hlen_lts.
     + change (List.length (List.map (subst_lt_in_ty n R) Ts) = n_ty).
       rewrite List.length_map. exact Hlen_Ts.
     + eapply types_wf_SubstLt; eauto.
     + subst result_ty. symmetry.
-      change (subst_lt_in_ty_list n R Ts) with (List.map (subst_lt_in_ty n R) Ts).
+      change (map_subst_lt_in_ty n R Ts) with (List.map (subst_lt_in_ty n R) Ts).
       apply inst_ctor_type_subst_lt. exact Hlen_lts.
     + subst result_ty. rewrite Hshape. reflexivity.
     + rewrite (SubstLt_lookup_eff R n Γ G' HSub result_tag). rewrite Hresult_eff. reflexivity.
@@ -1440,7 +1438,7 @@ Proof.
         destruct osig as [[nβ sg] rt].
         unfold op_nb, op_sig_ty, op_ret_ty in *. simpl in *.
         unfold op_body_ctx.
-        try change (subst_lt_in_ty_list n R Ts) with (List.map (subst_lt_in_ty n R) Ts).
+        try change (map_subst_lt_in_ty n R Ts) with (List.map (subst_lt_in_ty n R) Ts).
         try change ((fix go (l : list type) : list type :=
                    match l with
                    | [] => []
@@ -1486,7 +1484,7 @@ Proof.
         destruct osig as [[nβ sg] rt].
         unfold op_nb, op_sig_ty, op_ret_ty in *. simpl in *.
         unfold op_body_ctx.
-        try change (subst_lt_in_ty_list n R Ts) with (List.map (subst_lt_in_ty n R) Ts).
+        try change (map_subst_lt_in_ty n R Ts) with (List.map (subst_lt_in_ty n R) Ts).
         try change ((fix go (l : list type) : list type :=
                    match l with
                    | [] => []
@@ -1662,46 +1660,14 @@ Proof.
 Qed.
 
 
-(* ================================================================== *)
-(* typing_SubstTy support: lifetime/no-local helpers under type subst *)
-(* (subst_ty never touches lifetime variables, so lt-judgements are   *)
-(* preserved verbatim).                                               *)
-(* ================================================================== *)
-
-Lemma lt_wf_SubstTy : forall G l,
-  lt_wf G l -> forall Sb n G', SubstTy Sb n G G' -> lt_wf G' l.
-Proof.
-  intros G l Hwf. induction Hwf; intros Sb n G' HS.
-  - eapply LWF_Var. rewrite (SubstTy_lookup_lt Sb n Γ G' HS x). exact H.
-  - apply LWF_Free.
-  - apply LWF_Local.
-  - apply LWF_Min; [eapply IHHwf1 | eapply IHHwf2]; eauto.
-Qed.
-
-Lemma lt_sub_SubstTy : forall G l1 l2, G ⊢ₗ l1 <: l2 ->
-  forall Sb n G', SubstTy Sb n G G' -> G' ⊢ₗ l1 <: l2.
-Proof.
-  intros G l1 l2 H.
-  induction H as [Γ l Hwf|Γ l Hwf|Γ x Δ Hlk Hwf|Γ l Hwf
-                 |Γ l1 l2 l3 H1 IH1 H2 IH2|Γ l1 l2 l H1 IH1 H2 IH2
-                 |Γ l l1 l2 H1 IH1 Hwf2|Γ l l1 l2 H1 IH1 Hwf1];
-    intros Sb n G' HS.
-  - apply LS_Free. eapply lt_wf_SubstTy; eauto.
-  - apply LS_Local. eapply lt_wf_SubstTy; eauto.
-  - apply LS_Var.
-    + rewrite (SubstTy_lookup_lt Sb n Γ G' HS x). exact Hlk.
-    + eapply lt_wf_SubstTy; eauto.
-  - apply LS_Refl. eapply lt_wf_SubstTy; eauto.
-  - eapply LS_Trans; [apply (IH1 Sb n G' HS) | apply (IH2 Sb n G' HS)].
-  - apply LS_MinL; [apply (IH1 Sb n G' HS) | apply (IH2 Sb n G' HS)].
-  - apply LS_MinR1; [apply (IH1 Sb n G' HS) | eapply lt_wf_SubstTy; eauto].
-  - apply LS_MinR2; [apply (IH1 Sb n G' HS) | eapply lt_wf_SubstTy; eauto].
-Qed.
+(* [lt_wf_SubstTy]/[lt_sub_SubstTy] (subst_ty never touches lifetime  *)
+(* variables, so lt-judgements are preserved verbatim) live in        *)
+(* SubstTy.v.                                                         *)
 
 (* Escape side-condition transport under type substitution.  Unlike the      *)
 (* lifetime/insertion cases this is a SUBTYPING (not an equality), but it     *)
 (* still composes by transitivity through [lt_of_ty_G_SubstTy_le] — and       *)
-(* needs NO [subst_nl] side condition (that is the whole point of the         *)
+(* needs NO no-local side condition (that is the whole point of the         *)
 (* [<: lt_free] relational formulation: it is monotone under substitution).   *)
 Lemma sub_free_SubstTy : forall Sb n G G' T,
   SubstTy Sb n G G' -> ty_wf G T -> G ⊢ₗ lt_of_ty_G G T <: lt_free ->
@@ -1724,39 +1690,6 @@ Proof.
 Qed.
 
 
-(* The no-local side condition threaded through typing_SubstTy: when the
-   substituted variable n is treated as no-local (its bound is Any@free),
-   the replacement Sb must itself be no-local.  This is exactly
-   ty_app_arg_no_local, supplied by T_TyApp at the use sites. *)
-(* [subst_nl] is retained as a now-trivial premise slot.  The escape side    *)
-(* condition [Γ ⊢ₗ lt_of_ty_G Γ T <: lt_free] is preserved UNCONDITIONALLY   *)
-(* under type substitution (see [sub_free_SubstTy], by monotonicity of        *)
-(* lt_of_ty_G), so the old "if the variable is no-local then Sb is no-local"  *)
-(* hypothesis is no longer needed.  (The slot is kept to avoid churn at every *)
-(* call site; it can be removed wholesale in a later cleanup.)                *)
-Definition subst_nl (Sb : type) (n : nat) (Γ G' : ctx) : Prop := True.
-
-Lemma subst_nl_bind_ty : forall Sb n Γ G' B,
-  subst_nl Sb n Γ G' ->
-  subst_nl (shift_ty 1 0 Sb) (S n) (bind_ty B :: Γ) (bind_ty (subst_ty n Sb B) :: G').
-Proof. intros; exact I. Qed.
-
-Lemma subst_nl_bind_lt : forall Sb n Γ G' D,
-  subst_nl Sb n Γ G' ->
-  subst_nl (shift_lt_in_ty 1 0 Sb) n (bind_lt D :: Γ) (bind_lt D :: G').
-Proof. intros; exact I. Qed.
-
-Lemma subst_nl_bind_tm : forall Sb n Γ G' A,
-  subst_nl Sb n Γ G' ->
-  subst_nl Sb n (bind_tm A :: Γ) (bind_tm (subst_ty n Sb A) :: G').
-Proof. intros; exact I. Qed.
-
-Lemma subst_nl_push_ty_vars : forall k Sb n Γ G',
-  subst_nl Sb n Γ G' ->
-  subst_nl (shift_ty k 0 Sb) (k + n)
-    (push_ty_vars k any_at_free Γ) (push_ty_vars k any_at_free G').
-Proof. intros; exact I. Qed.
-
 (* ================================================================== *)
 (* The T_Match case of [typing_SubstTy]: [rho_fields] uses the        *)
 (* inst_ctor_type_open (inst_ty_vars-only) form, so it lives          *)
@@ -1767,54 +1700,54 @@ Proof. intros; exact I. Qed.
 
 Lemma typing_SubstTy : forall Γ t T,
   Γ ⊢ₜ t : T ->
-  forall Sb n G', SubstTy Sb n Γ G' -> subst_nl Sb n Γ G' -> ctor_fields_closed Γ ->
+  forall Sb n G', SubstTy Sb n Γ G' -> ctor_fields_closed Γ ->
   G' ⊢ₜ subst_ty_in_tm n Sb t : subst_ty n Sb T.
 Proof.
   apply (typing_ind_forall2
-    (fun Γ t T => forall Sb n G', SubstTy Sb n Γ G' -> subst_nl Sb n Γ G' -> ctor_fields_closed Γ ->
+    (fun Γ t T => forall Sb n G', SubstTy Sb n Γ G' -> ctor_fields_closed Γ ->
        G' ⊢ₜ subst_ty_in_tm n Sb t : subst_ty n Sb T)).
   - (* T_Var *)
-    intros Γ x T Hlk HwfT Sb n G' HSub Hnl Hcfc.
+    intros Γ x T Hlk HwfT Sb n G' HSub Hcfc.
     simpl. apply T_Var.
     + rewrite (SubstTy_lookup_tm Sb n Γ G' HSub x). rewrite Hlk. reflexivity.
     + eapply ty_wf_SubstTy; eauto.
   - (* T_Sub *)
-    intros Γ t T U Ht IH Hsub Sb n G' HSub Hnl Hcfc.
+    intros Γ t T U Ht IH Hsub Sb n G' HSub Hcfc.
     eapply T_Sub.
-    + apply (IH Sb n G' HSub Hnl Hcfc).
+    + apply (IH Sb n G' HSub Hcfc).
     + eapply sub_SubstTy; eauto.
   - (* T_Lam *)
-    intros Γ body A l B HwfA HwfB Hbody IHbody Hcap Sb n G' HSub Hnl Hcfc.
+    intros Γ body A l B HwfA HwfB Hbody IHbody Hcap Sb n G' HSub Hcfc.
     simpl. apply T_Lam.
     + eapply ty_wf_SubstTy; eauto.
     + eapply ty_wf_SubstTy; eauto.
     + apply (IHbody Sb n (bind_tm (subst_ty n Sb A) :: G')
-        (SubstTy_tm Sb n Γ G' A HSub) (subst_nl_bind_tm Sb n Γ G' A Hnl)
+        (SubstTy_tm Sb n Γ G' A HSub)
         (ctor_fields_closed_bind_tm A Γ Hcfc)).
     + eapply LS_Trans.
       * apply (capture_lt_SubstTy_le Sb n Γ G' HSub body).
         apply (proj1 (lt_sub_wf Γ (capture_lt Γ body) l Hcap)).
       * eapply lt_sub_SubstTy; eauto.
   - (* T_App *)
-    intros Γ t1 t2 A l B Ht1 IH1 Ht2 IH2 Sb n G' HSub Hnl Hcfc.
+    intros Γ t1 t2 A l B Ht1 IH1 Ht2 IH2 Sb n G' HSub Hcfc.
     simpl. eapply T_App.
-    + apply (IH1 Sb n G' HSub Hnl Hcfc).
-    + apply (IH2 Sb n G' HSub Hnl Hcfc).
+    + apply (IH1 Sb n G' HSub Hcfc).
+    + apply (IH2 Sb n G' HSub Hcfc).
   - (* T_TyLam *)
-    intros Γ bound body T HwfBound HwfT HisAbs Hbody IHbody Sb n G' HSub Hnl Hcfc.
+    intros Γ bound body T HwfBound HwfT HisAbs Hbody IHbody Sb n G' HSub Hcfc.
     simpl. apply T_TyLam.
     + eapply ty_wf_SubstTy; eauto.
     + eapply ty_wf_SubstTy; [exact HwfT|]. apply SubstTy_ty. exact HSub.
     + rewrite is_abs_subst_ty_in_tm. exact HisAbs.
     + apply (IHbody (shift_ty 1 0 Sb) (S n) (bind_ty (subst_ty n Sb bound) :: G')
-        (SubstTy_ty Sb n Γ G' bound HSub) (subst_nl_bind_ty Sb n Γ G' bound Hnl)
+        (SubstTy_ty Sb n Γ G' bound HSub)
         (ctor_fields_closed_bind_ty bound Γ Hcfc)).
   - (* T_TyApp *)
-    intros Γ t B U S Ht IH HwfS Hsub Sb n G' HSub Hnl Hcfc.
+    intros Γ t B U S Ht IH HwfS Hsub Sb n G' HSub Hcfc.
     simpl. rewrite <- subst_ty_subst_ty_comm0.
     eapply T_TyApp.
     + eapply T_Sub.
-      * apply (IH Sb n G' HSub Hnl Hcfc).
+      * apply (IH Sb n G' HSub Hcfc).
       * apply type_ty_all_narrow_bound.
         -- eapply sub_SubstTy; eauto.
         -- pose proof (typing_implies_wf Γ t (type_ty_all B U) Ht) as HwfAll.
@@ -1824,28 +1757,28 @@ Proof.
     + eapply ty_wf_SubstTy; eauto.
     + apply SA_Refl. eapply ty_wf_SubstTy; eauto.
   - (* T_LtLam *)
-    intros Γ body T HwfT HisAbs Hbody IHbody Sb n G' HSub Hnl Hcfc.
+    intros Γ body T HwfT HisAbs Hbody IHbody Sb n G' HSub Hcfc.
     simpl. apply T_LtLam.
     + eapply ty_wf_SubstTy; [exact HwfT|]. apply SubstTy_lt. exact HSub.
     + rewrite is_abs_subst_ty_in_tm. exact HisAbs.
     + apply (IHbody (shift_lt_in_ty 1 0 Sb) n (bind_lt lt_local :: G')
-        (SubstTy_lt Sb n Γ G' lt_local HSub) (subst_nl_bind_lt Sb n Γ G' lt_local Hnl)
+        (SubstTy_lt Sb n Γ G' lt_local HSub)
         (ctor_fields_closed_bind_lt lt_local Γ Hcfc)).
   - (* T_LtApp *)
-    intros Γ t T l Ht IH Hwfl Sb n G' HSub Hnl Hcfc.
+    intros Γ t T l Ht IH Hwfl Sb n G' HSub Hcfc.
     simpl.
     replace (subst_ty n Sb (subst_lt_in_ty 0 l T))
       with (subst_lt_in_ty 0 l (subst_ty n (shift_lt_in_ty 1 0 Sb) T)).
     2:{ rewrite subst_lt_in_ty_subst_ty_comm. rewrite subst_lt_in_ty_shift_cancel. reflexivity. }
     eapply T_LtApp.
-    + apply (IH Sb n G' HSub Hnl Hcfc).
+    + apply (IH Sb n G' HSub Hcfc).
     + eapply lt_wf_SubstTy; eauto.
   - (* T_Ctor *)
     intros Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields
            result_ty result_tag l vs Hctor Heff Hlen_lts Hwflts Hrho Hlen_Ts HwfTs
            Hresult Hshape Hresult_eff Hwfl HltSub Hbounded Hlen_vs Hargs IHargs
-           Sb n G' HSub Hnl Hcfc.
-    cbn [subst_ty_in_tm]. rewrite subst_ty_in_tm_go_eq_map_local. unfold subst_ty_list.
+           Sb n G' HSub Hcfc.
+    cbn [subst_ty_in_tm]. rewrite subst_ty_in_tm_go_eq_map. unfold map_subst_ty.
     pose proof (SubstTy_replacement_wf Sb n Γ G' HSub) as HwfSb.
     assert (HwfSbl : lt_wf G' (lt_of_ty Sb)) by (apply lt_of_ty_wf; exact HwfSb).
     assert (HwfMTs : types_wf G' (List.map (subst_ty n Sb) Ts)) by (eapply types_wf_SubstTy; eauto).
@@ -1879,12 +1812,12 @@ Proof.
     + rewrite (SubstTy_lookup_eff Sb n Γ G' HSub result_tag). rewrite Hresult_eff. reflexivity.
     + exact Hwfl'.
     + (* ESCAPE PREMISE — the substitution-stability payoff *)
-      assert (HltSub' : G' ⊢ₗ lt_of_ty_list rho_fields <: lt_min l (lt_of_ty_list Ts)).
+      assert (HltSub' : G' ⊢ₗ lt_of_ty_list rho_fields <: lt_join l (lt_of_ty_list Ts)).
       { eapply lt_sub_SubstTy; [| exact HSub].
         rewrite Hshape in HltSub. rewrite lt_of_ty_ctor_eq in HltSub. exact HltSub. }
       rewrite Hshape. rewrite subst_ty_ctor_eq. rewrite lt_of_ty_ctor_eq.
       assert (Halign : G' ⊢ₗ lt_of_ty_list (List.map (subst_ty n Sb) rho_fields)
-                  <: lt_min (lt_of_ty_list rho_fields) (lt_of_ty_list (List.map (subst_ty n Sb) Ts))).
+                  <: lt_join (lt_of_ty_list rho_fields) (lt_of_ty_list (List.map (subst_ty n Sb) Ts))).
       { rewrite Hrho. rewrite <- Hlen_lts, <- Hlen_Ts.
         apply inst_ctor_fields_alignment.
         - destruct (Hcfc K n_lt n_ty sigma_fields result_ty_schema Hctor) as [HltCl HtyCl].
@@ -1893,24 +1826,24 @@ Proof.
         - exact HFTs.
         - apply lt_of_ty_list_wf. exact HwfMTs. }
       eapply LS_Trans; [exact Halign |].
-      apply LS_MinL.
+      apply LS_JoinL.
       * eapply LS_Trans; [exact HltSub' |].
-        apply lt_min_mono; [apply LS_Refl; exact Hwfl' |].
+        apply lt_join_mono; [apply LS_Refl; exact Hwfl' |].
         apply lt_of_ty_list_subst_ty_ge; [exact HwfSbl | exact HwfMTs].
-      * apply LS_MinR2; [apply LS_Refl; apply lt_of_ty_list_wf; exact HwfMTs | exact Hwfl'].
+      * apply LS_JoinR2; [apply LS_Refl; apply lt_of_ty_list_wf; exact HwfMTs | exact Hwfl'].
     + eapply Forall_impl; [| exact Hbounded].
       intros l0 Hl0. eapply lt_sub_SubstTy; [exact Hl0 | exact HSub].
     + rewrite !List.length_map. exact Hlen_vs.
-    + clear -IHargs HSub Hnl Hcfc.
+    + clear -IHargs HSub Hcfc.
       induction IHargs as [|v rho vs' rhos' Hv Hrest IH]; simpl; constructor.
-      * apply Hv; [exact HSub | exact Hnl | exact Hcfc].
+      * apply Hv; [exact HSub | exact Hcfc].
       * exact IH.
   - (* T_Match *)
     intros Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
            rho_fields scrut_result_ty result_tag result_l Γyes yes_body eta elim_result no_body
            HKne Hctor Heff Hlts Hrho Hlen_Ts HwfTs Hscrut_result Hscrut_shape
            Hresult_eff Hresult_ne HwfDelta Hresult_l Hscrut IHscrut Harity HΓyes
-           Hyes IHyes Helim Hno IHno Sb n G' HSub Hnl Hcfc.
+           Hyes IHyes Helim Hno IHno Sb n G' HSub Hcfc.
     subst Γyes. cbn [subst_ty_in_tm].
     eapply T_Match with
       (n_lt := n_lt) (n_ty := n_ty)
@@ -1940,7 +1873,7 @@ Proof.
     + exact Hresult_ne.
     + eapply lt_wf_SubstTy; eauto.
     + eapply lt_sub_SubstTy; eauto.
-    + apply (IHscrut Sb n G' HSub Hnl Hcfc).
+    + apply (IHscrut Sb n G' HSub Hcfc).
     + rewrite List.length_map. exact Harity.
     + reflexivity.
     + apply (IHyes (shift_lt_in_ty n_lt 0 Sb) n
@@ -1948,13 +1881,12 @@ Proof.
           (push_match_bound n_lt Delta G')
           (List.map (subst_ty n (shift_lt_in_ty n_lt 0 Sb)) rho_fields))).
       * apply SubstTy_fold_bind_tm_map. apply SubstTy_push_match_bound. exact HSub.
-      * exact I.
       * apply ctor_fields_closed_fold_bind_tm. apply ctor_fields_closed_push_match_bound. exact Hcfc.
     + apply elim_ty_n_subst_ty_shifted. exact Helim.
-    + apply (IHno Sb n G' HSub Hnl Hcfc).
+    + apply (IHno Sb n G' HSub Hcfc).
   - (* T_Cap *)
     intros Γ E_tag m Ts op_bodies n_α ops T_R
-           Heff Hlen HwfTs HwfTR Hfst Hops IHops Sb n G' HSub Hnl Hcfc.
+           Heff Hlen HwfTs HwfTR Hfst Hops IHops Sb n G' HSub Hcfc.
     simpl. rewrite subst_ty_in_tm_go_ops_eq_map.
     eapply T_Cap with
       (n_α := n_α)
@@ -1978,7 +1910,7 @@ Proof.
         unfold op_nb, op_sig_ty, op_ret_ty in *. simpl in *.
         rewrite Hnb.
         unfold op_body_ctx.
-        try change (subst_ty_list n Sb Ts) with (List.map (subst_ty n Sb) Ts).
+        try change (map_subst_ty n Sb Ts) with (List.map (subst_ty n Sb) Ts).
         try change ((fix go (l : list type) : list type :=
                    match l with
                    | [] => []
@@ -1996,13 +1928,12 @@ Proof.
         replace (n + nβ) with (nβ + n) by lia.
         eapply Hone.
         -- apply SubstTy_tm. apply SubstTy_tm. apply SubstTy_push_ty_vars_any_at_free. exact HSub.
-        -- apply subst_nl_bind_tm. apply subst_nl_bind_tm. apply subst_nl_push_ty_vars. exact Hnl.
         -- apply ctor_fields_closed_bind_tm. apply ctor_fields_closed_bind_tm.
            apply ctor_fields_closed_push_ty_vars. exact Hcfc.
   - (* T_Handle *)
     intros Γ E_tag Ts op_bodies body n_α ops T_B T_R
            Heff Hlen HwfTs HwfTB HwfTR HnoLocal Hsub Hfst Hops IHops Hbody IHbody
-           Sb n G' HSub Hnl Hcfc.
+           Sb n G' HSub Hcfc.
     simpl. rewrite subst_ty_in_tm_go_ops_eq_map.
     eapply T_Handle with
       (n_α := n_α)
@@ -2030,7 +1961,7 @@ Proof.
         unfold op_nb, op_sig_ty, op_ret_ty in *. simpl in *.
         rewrite Hnb.
         unfold op_body_ctx.
-        try change (subst_ty_list n Sb Ts) with (List.map (subst_ty n Sb) Ts).
+        try change (map_subst_ty n Sb Ts) with (List.map (subst_ty n Sb) Ts).
         try change ((fix go (l : list type) : list type :=
                    match l with
                    | [] => []
@@ -2048,17 +1979,15 @@ Proof.
         replace (n + nβ) with (nβ + n) by lia.
         eapply Hone.
         -- apply SubstTy_tm. apply SubstTy_tm. apply SubstTy_push_ty_vars_any_at_free. exact HSub.
-        -- apply subst_nl_bind_tm. apply subst_nl_bind_tm. apply subst_nl_push_ty_vars. exact Hnl.
         -- apply ctor_fields_closed_bind_tm. apply ctor_fields_closed_bind_tm.
            apply ctor_fields_closed_push_ty_vars. exact Hcfc.
     + apply (IHbody Sb n (bind_tm (subst_ty n Sb (type_ctor E_tag lt_local Ts)) :: G')
         (SubstTy_tm Sb n Γ G' (type_ctor E_tag lt_local Ts) HSub)
-        (subst_nl_bind_tm Sb n Γ G' (type_ctor E_tag lt_local Ts) Hnl)
         (ctor_fields_closed_bind_tm (type_ctor E_tag lt_local Ts) Γ Hcfc)).
   - (* T_Perform *)
     intros Γ recv op arg E_tag Delta Ts Ss n_α ops n_β sig ret sig_inst ret_inst
            Hrecv IHrecv Heff Hnth Hlen_Ts Hlen_Ss HwfSs HnoSs Hsig HnoSig Hret HwfRet Harg IHarg
-           Sb n G' HSub Hnl Hcfc.
+           Sb n G' HSub Hcfc.
     simpl. eapply T_Perform with
       (n_α := n_α)
       (ops := List.map (fun osig =>
@@ -2069,7 +1998,7 @@ Proof.
       (sig := subst_ty (n_α + n_β + n) (shift_ty (n_α + n_β) 0 Sb) sig)
       (ret := subst_ty (n_α + n_β + n) (shift_ty (n_α + n_β) 0 Sb) ret)
       (sig_inst := subst_ty n Sb sig_inst) (ret_inst := subst_ty n Sb ret_inst).
-    + apply (IHrecv Sb n G' HSub Hnl Hcfc).
+    + apply (IHrecv Sb n G' HSub Hcfc).
     + rewrite (SubstTy_lookup_eff Sb n Γ G' HSub E_tag). rewrite Heff. simpl.
       do 2 f_equal. apply List.map_ext. intros [[nβ sg] rt]. reflexivity.
     + rewrite (map_nth_error _ _ _ Hnth). reflexivity.
@@ -2083,15 +2012,15 @@ Proof.
     + eapply sub_free_SubstTy; [exact HSub | eapply typing_implies_wf; exact Harg | exact HnoSig].
     + subst ret_inst. symmetry. apply inst_op_all_args_subst_ty; assumption.
     + eapply ty_wf_SubstTy; eauto.
-    + apply (IHarg Sb n G' HSub Hnl Hcfc).
+    + apply (IHarg Sb n G' HSub Hcfc).
   - (* T_HandlerM *)
-    intros Γ m T_B T_R t HwfTB HwfTR HnoLocal Hsub Ht IH Sb n G' HSub Hnl Hcfc.
+    intros Γ m T_B T_R t HwfTB HwfTR HnoLocal Hsub Ht IH Sb n G' HSub Hcfc.
     simpl. apply T_HandlerM.
     + eapply ty_wf_SubstTy; eauto.
     + eapply ty_wf_SubstTy; eauto.
     + eapply sub_free_SubstTy; eauto.
     + eapply sub_SubstTy; eauto.
-    + apply (IH Sb n G' HSub Hnl Hcfc).
+    + apply (IH Sb n G' HSub Hcfc).
 Qed.
 
 (* ==================================================================== *)
@@ -2175,7 +2104,7 @@ Proof.
                                (bind_ty any_at_free :: PG) rhos)).
     { apply ctor_fields_closed_fold_bind_tm. apply ctor_fields_closed_bind_ty.
       apply ctor_fields_closed_push_ty_vars. exact Hcfc. }
-    pose proof (typing_SubstTy _ t U Hty _ _ _ HsubF I Hcfc') as Hstep.
+    pose proof (typing_SubstTy _ t U Hty _ _ _ HsubF Hcfc') as Hstep.
     rewrite fold_right_bind_tm_map in Hstep.
     specialize (IH (List.map (subst_ty 0 (shift_ty (List.length rest) 0 S0)) rhos)
                    (subst_ty_in_tm 0 (shift_ty (List.length rest) 0 S0) t)

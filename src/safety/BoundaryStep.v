@@ -6,7 +6,9 @@ Require Import Semantics.
 Require Import Typing.
 Require Import Subst.
 Require Import TypingInv.
-Require Import Markers.
+Require Import MarkerAnnots.
+Require Import WellScoped.
+Require Import WsRtLaws.
 Require Import Progress.
 Require Import Preservation.
 Require Import Soundness.

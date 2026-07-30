@@ -7,7 +7,9 @@ Require Import Semantics.
 Require Import Typing.
 Require Import Subst.
 Require Import TypingInv.
-Require Import Markers.
+Require Import MarkerAnnots.
+Require Import WellScoped.
+Require Import WsRtLaws.
 Require Import Progress.
 Require Import Preservation.
 Require Import Soundness.
@@ -125,6 +127,8 @@ Qed.
 (* constructor type, the crossing value is literally a constructor     *)
 (* whose own lifetime annotation carries no top-level `local` —        *)
 (* a local datum never crosses the boundary.                           *)
+(* PUBLIC API — terminal deliverable: no internal consumers; do not
+   mistake for dead code.  Gated by scripts/check_assumptions.py. *)
 Corollary source_boundary_value_non_local : forall Γ t T u v,
   eval_ctx Γ ->
   has_rt_cap t = false ->
@@ -153,7 +157,7 @@ Proof.
     destruct (lt_sub_wf _ _ _ Hnl) as [Hwfmin _].
     inversion Hwfmin; subst.
     eapply LS_Trans; [|exact Hnl].
-    apply LS_MinR1; [apply LS_Refl|]; assumption. }
+    apply LS_JoinR1; [apply LS_Refl|]; assumption. }
   eapply data_value_top_lifetime_non_local;
     [ exact Hec | exact Hdata | exact HK | exact HtyS
     | eapply boundary_crossing_value; exact Hbc | exact Hlfree ].

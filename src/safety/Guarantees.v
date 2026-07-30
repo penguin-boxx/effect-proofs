@@ -5,9 +5,10 @@ Require Import Substitution.
 Require Import Semantics.
 Require Import Typing.
 Require Import Subst.
-Require Import Markers.
+Require Import MarkerAnnots.
+Require Import WellScoped.
+Require Import WsRtLaws.
 Require Import Progress.
-Require Import Inversions.
 Require Import Preservation.
 Require Import Soundness.
 Require Import Escape.
@@ -141,7 +142,7 @@ Proof.
   intros Γ T t Hec [Hann [Hwr Hty]] Hnone.
   destruct Hann as [Hsafe _].
   destruct Hwr as [Hws _].
-  destruct (progress_safe _ _ _ Hec Hws Hsafe Hty) as [Hv | [t' Hs]].
+  destruct (progress _ _ _ Hec Hws Hsafe Hty) as [Hv | [t' Hs]].
   - exact Hv.
   - exfalso.
     destruct (stepf_complete_modulo_markers _ _ Hs) as [u' [Hsome _]].
@@ -151,6 +152,8 @@ Qed.
 (* Source-facing trace form: running a well-typed source program with  *)
 (* [stepf] can only halt at a value — the certified evaluator is a     *)
 (* decision procedure for "one more step exists" along any execution.  *)
+(* PUBLIC API — terminal deliverable: no internal consumers; do not
+   mistake for dead code.  Gated by scripts/check_assumptions.py. *)
 Corollary source_stepf_none_is_value : forall Γ t T u,
   eval_ctx Γ ->
   sourceb t = true ->

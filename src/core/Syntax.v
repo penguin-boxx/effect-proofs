@@ -3,17 +3,16 @@ Require Import Stdlib.Arith.PeanoNat.
 Import ListNotations.
 
 (* Lifetimes: Δ ::= free | local | Δ₁ + Δ₂                            *)
-(* `lt_min D1 D2` (written Δ₁ + Δ₂) is the SHORTER of the two         *)
-(* lifetimes — the minimum in duration terms.  In the subtyping       *)
-(* lattice, where `free <: local` (free at the bottom, local at the   *)
-(* top), the shorter lifetime is the more restrictive one, so lt_min  *)
-(* is the lattice JOIN (least upper bound): LS_MinL / LS_MinR1 /      *)
-(* LS_MinR2 in Typing.v place it above both operands.                 *)
+(* `lt_join D1 D2` (written Δ₁ + Δ₂) is the lattice JOIN (least upper *)
+(* bound) in the subtyping order, where `free <: local` (free at the  *)
+(* bottom, local at the top): LS_JoinL / LS_JoinR1 / LS_JoinR2 in     *)
+(* Typing.v place it above both operands.  Duration-wise the join is  *)
+(* the SHORTER of the two lifetimes — the more restrictive one.       *)
 Inductive lifetime : Type :=
   | lt_var   : nat -> lifetime  (* lifetime variable *)
   | lt_free  : lifetime  (* free — bottom of lattice *)
   | lt_local : lifetime  (* local — top of lattice *)
-  | lt_min   : lifetime -> lifetime -> lifetime  (* Δ₁ + Δ₂ *)
+  | lt_join  : lifetime -> lifetime -> lifetime  (* Δ₁ + Δ₂ *)
   .
 
 Definition ctor_tag := nat.
@@ -178,3 +177,10 @@ Fixpoint has_rt_cap (t : term) : bool :=
   | term_cap _ _ _ _ _          => true
   | term_handler_m _ _ _ _      => true
   end.
+
+(* [lang]: an opt-in hint database collecting the constructors of the
+   judgments of the calculus (registered here, in Semantics.v, and in
+   Typing.v).  New downstream proofs can use [eauto with lang] instead
+   of relying on the historical [core] registrations. *)
+Create HintDb lang.
+#[export] Hint Constructors value : lang.

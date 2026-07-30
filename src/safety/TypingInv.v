@@ -7,6 +7,8 @@ Require Import Substitution.
 Require Import Semantics.
 Require Import Typing.
 Require Import Subst.
+Require Import Narrowing.
+Require Import Narrowing.
 Require Import Variance.
 
 (* ================================================================== *)
@@ -16,7 +18,8 @@ Require Import Variance.
 (* shape inversions under an `eval_ctx`, principal-type inversions    *)
 (* for every term former (with the residual `<intro type> <:: T`),    *)
 (* canonical forms, and the evaluation-context inversion              *)
-(* `plug_typing_inv`.  Everything downstream (Markers, Progress,      *)
+(* `plug_typing_inv`.  Everything downstream (the marker-invariant    *)
+(* modules, Progress,                                                 *)
 (* Preservation, Escape) consumes these.                              *)
 (* ================================================================== *)
 
@@ -325,7 +328,7 @@ Qed.
 (* actual lifetimes [lts] (each <: Delta) for the n_lt match lt-vars    *)
 (* removes the push_match_bound block, leaving the field (bind_tm) binders     *)
 (* with their types lt-substituted.  Each step peels one lt-binder via  *)
-(* [typing_SubstLt] (now general) + [SubstLt_fold_bind_tm_map] over     *)
+(* [typing_SubstLt] + [SubstLt_fold_bind_tm_map] over                   *)
 (* [SubstLt_here], using [lt_sub_push_match_bound_weaken] for the bound.       *)
 Lemma typing_peel_push_match_bound_fold : forall lts Delta rhos t U Γ,
   Forall (fun l => Γ ⊢ₗ l <: Delta) lts ->
@@ -557,4 +560,66 @@ Proof.
   split.
   - eapply ty_wf_eval_ctx_ty_closed; eauto.
   - eapply ty_wf_eval_ctx_lt_closed; eauto.
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* Context conversion for the wf judgments.                           *)
+(* [ty_wf]/[lt_wf] depend only on the ty/lt-variable lookups, so they *)
+(* are invariant under any context change preserving those lookups —  *)
+(* in particular under dropping bind_tm binders (which they ignore).  *)
+(* ------------------------------------------------------------------ *)
+
+Lemma ctx_lookup_ty_fold_bind_tm : forall rhos G a,
+  ctx_lookup_ty (fold_right (fun rho G0 => bind_tm rho :: G0) G rhos) a = ctx_lookup_ty G a.
+Proof.
+  induction rhos as [|rho rhos IH]; intros G a; simpl; [reflexivity|apply IH].
+Qed.
+
+Lemma ctx_lookup_lt_fold_bind_tm : forall rhos G x,
+  ctx_lookup_lt (fold_right (fun rho G0 => bind_tm rho :: G0) G rhos) x = ctx_lookup_lt G x.
+Proof.
+  induction rhos as [|rho rhos IH]; intros G x; simpl; [reflexivity|apply IH].
+Qed.
+
+(* [lt_wf] context conversion is [lt_wf_lookup_eq] (Narrowing.v); the
+   [ty_wf] analogue below uses the [ty_wf_mutind] scheme (SubstTy.v). *)
+Lemma ty_wf_conv : forall G1 T, ty_wf G1 T ->
+  forall G2, (forall a, ctx_lookup_ty G1 a = ctx_lookup_ty G2 a) ->
+             (forall x, ctx_lookup_lt G1 x = ctx_lookup_lt G2 x) -> ty_wf G2 T.
+Proof.
+  apply (ty_wf_mutind
+    (fun G1 T (_ : ty_wf G1 T) =>
+       forall G2, (forall a, ctx_lookup_ty G1 a = ctx_lookup_ty G2 a) ->
+                  (forall x, ctx_lookup_lt G1 x = ctx_lookup_lt G2 x) -> ty_wf G2 T)
+    (fun G1 Ts (_ : types_wf G1 Ts) =>
+       forall G2, (forall a, ctx_lookup_ty G1 a = ctx_lookup_ty G2 a) ->
+                  (forall x, ctx_lookup_lt G1 x = ctx_lookup_lt G2 x) -> types_wf G2 Ts)).
+  - (* TWF_Var *) intros Γ α B Hlk Hsub IHB G2 Hty Hlt.
+    apply TWF_Var with (B := B). rewrite <- (Hty α). exact Hlk. apply IHB; assumption.
+  - (* TWF_Fun *) intros Γ A l B HA IHA Hl HB IHB G2 Hty Hlt.
+    apply TWF_Fun; [apply IHA | eapply lt_wf_lookup_eq; [exact Hl|exact Hlt] | apply IHB]; assumption.
+  - (* TWF_Ctor *) intros Γ K l Ts Hl HTs IHTs G2 Hty Hlt.
+    apply TWF_Ctor; [eapply lt_wf_lookup_eq; [exact Hl|exact Hlt] | apply IHTs; assumption].
+  - (* TWF_LtAll *) intros Γ A HA IHA G2 Hty Hlt.
+    apply TWF_LtAll. apply IHA.
+    + intros a. simpl. rewrite Hty. reflexivity.
+    + intros x. destruct x as [|x']; simpl; [reflexivity| rewrite Hlt; reflexivity].
+  - (* TWF_TyAll *) intros Γ B A HB IHB HA IHA G2 Hty Hlt.
+    apply TWF_TyAll.
+    + apply IHB; assumption.
+    + apply IHA.
+      * intros a. destruct a as [|a']; simpl; [reflexivity| rewrite Hty; reflexivity].
+      * intros x. simpl. rewrite Hlt. reflexivity.
+  - (* TWFs_nil *) intros Γ G2 Hty Hlt. apply TWFs_nil.
+  - (* TWFs_cons *) intros Γ T Ts HT IHT HTs IHTs G2 Hty Hlt.
+    apply TWFs_cons; [apply IHT | apply IHTs]; assumption.
+Qed.
+
+Lemma ty_wf_fold_bind_tm_inv : forall rhos G T,
+  ty_wf (fold_right (fun rho G0 => bind_tm rho :: G0) G rhos) T -> ty_wf G T.
+Proof.
+  intros rhos G T H.
+  eapply ty_wf_conv; [exact H| |].
+  - intros a. apply ctx_lookup_ty_fold_bind_tm.
+  - intros x. apply ctx_lookup_lt_fold_bind_tm.
 Qed.

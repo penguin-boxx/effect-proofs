@@ -8,7 +8,9 @@ Require Import Semantics.
 Require Import Typing.
 Require Import Subst.
 Require Import TypingInv.
-Require Import Markers.
+Require Import MarkerAnnots.
+Require Import WellScoped.
+Require Import WsRtLaws.
 
 (* The third disjunct of the open-scope progress result: [t] is a      *)
 (* perform of a live capability whose matching delimiter lies OUTSIDE  *)
@@ -233,7 +235,7 @@ Proof.
     + right. right. exists (@nil term), v, vs. repeat split; auto.
 Qed.
 
-Theorem progress_open_safe : forall Γ ms t T,
+Theorem progress_open : forall Γ ms t T,
   eval_ctx Γ ->
   well_scoped ms t ->
   marker_types_safe t ->
@@ -412,21 +414,6 @@ Proof.
         repeat split; auto.
 Qed.
 
-Theorem progress_safe : forall Γ t T,
-  eval_ctx Γ ->
-  well_scoped [] t ->
-  marker_types_safe t ->
-  Γ ⊢ₜ t : T ->
-  value t \/ exists t', t ==> t'.
-Proof.
-  intros Γ t T Hec Hmok Hsafe Hty.
-  destruct (progress_open_safe _ _ _ _ Hec Hmok Hsafe Hty) as [Hv | [[t' Hs] | Hesc]].
-  - left. exact Hv.
-  - right. exists t'. exact Hs.
-  - destruct Hesc as (Et & m & Ts & T_R & op_bodies & opx & Ss & A0 & v & P & Hin & Hp & Hwf & Hv & Hnth & Heq).
-    inversion Hin.
-Qed.
-
 Theorem progress : forall Γ t T,
   eval_ctx Γ ->
   well_scoped [] t ->
@@ -435,5 +422,9 @@ Theorem progress : forall Γ t T,
   value t \/ exists t', t ==> t'.
 Proof.
   intros Γ t T Hec Hmok Hsafe Hty.
-  eapply progress_safe; eauto.
+  destruct (progress_open _ _ _ _ Hec Hmok Hsafe Hty) as [Hv | [[t' Hs] | Hesc]].
+  - left. exact Hv.
+  - right. exists t'. exact Hs.
+  - destruct Hesc as (Et & m & Ts & T_R & op_bodies & opx & Ss & A0 & v & P & Hin & Hp & Hwf & Hv & Hnth & Heq).
+    inversion Hin.
 Qed.

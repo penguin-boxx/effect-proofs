@@ -40,7 +40,7 @@ Definition sname := string.
 (*   slt_name n      — reference to a named entity (term param,       *)
 (*                     named ctor-arg, or generic name)                *)
 (*   slt_plus ls     — 'l1+l2+... (interpreted as the minimum         *)
-(*                     lifetime, encoded with [lt_min])                *)
+(*                     lifetime, encoded with [lt_join])                *)
 Inductive surface_lt : Type :=
   | slt_local : surface_lt
   | slt_free  : surface_lt
@@ -180,7 +180,7 @@ Fixpoint elab_lt (env : name_env) (l : surface_lt) : lifetime :=
       end
   | slt_plus []   => lt_local
   | slt_plus (l0 :: rest) =>
-      fold_left (fun acc x => lt_min acc (elab_lt env x))
+      fold_left (fun acc x => lt_join acc (elab_lt env x))
                 rest (elab_lt env l0)
   end.
 
@@ -211,7 +211,7 @@ Definition slots_from_args
        end) [] args.
 
 Definition combine_lt (base : lifetime) (extras : list lifetime) : lifetime :=
-  fold_left lt_min extras base.
+  fold_left lt_join extras base.
 
 Fixpoint elab_ty (tag_of : tag_resolver) (env : name_env) (t : surface_ty)
   : type :=
@@ -291,7 +291,7 @@ Definition desugar_sig (tag_of : tag_resolver) (s : surface_sig) : type :=
 (*                                                                    *)
 (* Proving that every well-formed surface signature desugars to a     *)
 (* type schema that is well-formed in Core_Δ requires substantial     *)
-(* machinery (well-formed ctor tags, bound monotonicity, no_local_ty  *)
+(* machinery (well-formed ctor tags, bound monotonicity, nolocb (Decide.v)  *)
 (* checks), so it is kept as a Conjecture (unproven).                 *)
 (* ================================================================== *)
 
@@ -376,7 +376,7 @@ Example lazyMap_shape :
           (type_fun (type_var 1) lt_local (type_var 0))
           lt_local
           (type_ctor LazyList_tag
-            (lt_min (lt_var 0) (lt_var 1))
+            (lt_join (lt_var 0) (lt_var 1))
             [type_var 0])))))).
 Proof. reflexivity. Qed.
 
@@ -408,7 +408,7 @@ Example compose_shape :
           (type_fun (type_var 2) lt_local (type_var 1)) (* g: (a)->b *)
           lt_local
           (type_fun (type_var 2)                        (* (a)        *)
-                    (lt_min (lt_var 1) (lt_var 0))
+                    (lt_join (lt_var 1) (lt_var 0))
                     (type_var 0)))))))).                (* -> c       *)
 Proof. reflexivity. Qed.
 
@@ -436,7 +436,7 @@ Example extractFile_shape :
   extractFile_ty =
   type_lt_all (type_lt_all (
     type_fun
-      (type_ctor Map_tag (lt_min lt_local (lt_var 0))
+      (type_ctor Map_tag (lt_join lt_local (lt_var 0))
                  [type_ctor Key_tag  lt_local [];
                   type_ctor File_tag lt_local []])
       lt_local
@@ -464,7 +464,7 @@ Example makeRepository_shape :
     type_fun (type_ctor File_tag lt_local []) lt_local
       (type_fun (type_ctor Connection_tag lt_local []) lt_local
         (type_ctor Repository_tag
-                   (lt_min (lt_var 1) (lt_var 0)) [])))).
+                   (lt_join (lt_var 1) (lt_var 0)) [])))).
 Proof. reflexivity. Qed.
 
 End SugarExamples.

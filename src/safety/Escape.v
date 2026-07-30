@@ -8,10 +8,11 @@ Require Import Semantics.
 Require Import Typing.
 Require Import Subst.
 Require Import TypingInv.
-Require Import Markers.
+Require Import MarkerAnnots.
+Require Import WellScoped.
+Require Import WsRtLaws.
 Require Import Progress.
 Require Import Variance.
-Require Import Inversions.
 Require Import Soundness.
 
 (* ================================================================== *)
@@ -118,6 +119,8 @@ Qed.
 (* the typing-along-the-trace premise is discharged by the             *)
 (* step-preserved runtime invariants (subject reduction), so the       *)
 (* guarantee needs only the initial typing.                            *)
+(* PUBLIC API — terminal deliverable: no internal consumers; do not
+   mistake for dead code.  Gated by scripts/check_assumptions.py. *)
 Corollary source_free_data_result_top_lifetime : forall Γ t K Ts v,
   eval_ctx Γ ->
   ctx_lookup_eff Γ K = None ->
@@ -149,8 +152,8 @@ Qed.
 (* well-typed solely in a context that *binds* the effect tag `E`.    *)
 (* Capabilities are minted by `S_Handle`, which wraps each one        *)
 (* immediately inside its own `handler_m m` delimiter.  Under the     *)
-(* full effectful calculus, typing alone no longer rules out visible  *)
-(* capabilities; the runtime `marker_ok` invariant does.              *)
+(* full effectful calculus, typing alone does not rule out visible    *)
+(* capabilities; the runtime `well_scoped` invariant does.            *)
 (* ================================================================== *)
 
 Lemma well_scoped_plug_cap_pure_in : forall ms E E_tag m Ts T_R op_bodies,
@@ -199,7 +202,7 @@ Qed.
 
 
 (* Source-facing form: for a program with no runtime marker constructs *)
-(* the marker_ok trace premise is discharged by the step-preserved     *)
+(* the well-scopedness trace premise is discharged by the step-preserved *)
 (* runtime invariants, so confinement needs only the initial typing.   *)
 Corollary source_capability_never_exposed :
   forall Γ t E E_tag m Ts T_R op_bodies T,

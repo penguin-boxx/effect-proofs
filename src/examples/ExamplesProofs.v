@@ -7,188 +7,9 @@ Require Import Semantics.
 Require Import Typing.
 Require Import Decide.
 Require Import Examples.
+Require Import ExamplesTactics.
 
 Import CoreNotation.
-
-(* ================================================================== *)
-(* Multi-step plumbing                                                *)
-(* ================================================================== *)
-
-Lemma ms_one : forall t t', t ==> t' -> t ==>> t'.
-Proof. intros t t' H. eapply MS_Step; [exact H | apply MS_Refl]. Qed.
-
-Lemma ms_trans : forall t1 t2 t3, t1 ==>> t2 -> t2 ==>> t3 -> t1 ==>> t3.
-Proof.
-  intros t1 t2 t3 H12. revert t3.
-  induction H12 as [|? ? ? Hs ? IH]; intros u H23; auto.
-  eapply MS_Step; eauto.
-Qed.
-
-(* ================================================================== *)
-(* Evaluation-context congruence for multi-step reduction.            *)
-(*                                                                    *)
-(* Reduction lifts through an application/ty-/lt-application frame.   *)
-(* For [ty_app]/[lt_app] the frame carries no marker, so the lift is  *)
-(* unconditional.  For [app] the sibling operand's markers join the   *)
-(* term, so a [S_HandleCtx] (handler allocation) step would need a    *)
-(* marker fresh in the sibling too — we require the sibling to be     *)
-(* marker-free, which holds for every closed value/argument here.     *)
-(* ================================================================== *)
-
-Lemma step_ty_app : forall t t' S, t ==> t' -> term_ty_app t S ==> term_ty_app t' S.
-Proof.
-  intros t t' S H. inversion H; subst.
-  - apply (S_step (EC_ty_app E S)); [ apply wf_ty_app; assumption | assumption ].
-  - apply (S_HandleCtx (EC_ty_app E S)); [ apply wf_ty_app; assumption | cbn; assumption ].
-Qed.
-
-Lemma step_lt_app : forall t t' l, t ==> t' -> term_lt_app t l ==> term_lt_app t' l.
-Proof.
-  intros t t' l H. inversion H; subst.
-  - apply (S_step (EC_lt_app E l)); [ apply wf_lt_app; assumption | assumption ].
-  - apply (S_HandleCtx (EC_lt_app E l)); [ apply wf_lt_app; assumption | cbn; assumption ].
-Qed.
-
-Lemma step_app1 : forall t t' u, markers_in u = [] -> t ==> t' -> term_app t u ==> term_app t' u.
-Proof.
-  intros t t' u Hu H. inversion H; subst.
-  - apply (S_step (EC_app1 E u)); [ apply wf_app1; assumption | assumption ].
-  - apply (S_HandleCtx (EC_app1 E u)); [ apply wf_app1; assumption | ].
-    cbn. rewrite Hu. rewrite app_nil_r. assumption.
-Qed.
-
-Lemma step_app2 : forall v t t', value v -> markers_in v = [] -> t ==> t' ->
-  term_app v t ==> term_app v t'.
-Proof.
-  intros v t t' Hv Hm H. inversion H; subst.
-  - apply (S_step (EC_app2 v E)); [ apply wf_app2; assumption | assumption ].
-  - apply (S_HandleCtx (EC_app2 v E)); [ apply wf_app2; assumption | ].
-    cbn. rewrite Hm. cbn. assumption.
-Qed.
-
-Lemma ms_ty_app : forall t t' S, t ==>> t' -> term_ty_app t S ==>> term_ty_app t' S.
-Proof.
-  intros t t' S H. induction H; [ apply MS_Refl |].
-  eapply MS_Step; [ apply step_ty_app; eassumption | assumption ].
-Qed.
-
-Lemma ms_lt_app : forall t t' l, t ==>> t' -> term_lt_app t l ==>> term_lt_app t' l.
-Proof.
-  intros t t' l H. induction H; [ apply MS_Refl |].
-  eapply MS_Step; [ apply step_lt_app; eassumption | assumption ].
-Qed.
-
-Lemma ms_app1 : forall t t' u, markers_in u = [] -> t ==>> t' -> term_app t u ==>> term_app t' u.
-Proof.
-  intros t t' u Hu H. induction H; [ apply MS_Refl |].
-  eapply MS_Step; [ apply step_app1; eassumption | assumption ].
-Qed.
-
-Lemma ms_app2 : forall v t t', value v -> markers_in v = [] -> t ==>> t' ->
-  term_app v t ==>> term_app v t'.
-Proof.
-  intros v t t' Hv Hm H. induction H; [ apply MS_Refl |].
-  eapply MS_Step; [ apply step_app2; eassumption | assumption ].
-Qed.
-
-Lemma unit_v_value : value unit_v.
-Proof. unfold unit_v. constructor. constructor. Qed.
-
-Lemma file_v_value : value file_v.
-Proof. unfold file_v. constructor. constructor. Qed.
-
-Lemma two_v_value : value two_v.
-Proof. unfold two_v, suc_v, zero_v. repeat constructor. Qed.
-
-Lemma three_v_value : value three_v.
-Proof. unfold three_v, suc_v, zero_v. repeat constructor. Qed.
-
-Lemma some_three_value : value (some_v (T_Nat `Lf) three_v).
-Proof. unfold some_v. constructor. repeat constructor; apply three_v_value. Qed.
-
-Hint Resolve unit_v_value file_v_value two_v_value three_v_value some_three_value : core.
-
-(* [solve_wf] discharges well-formedness side conditions ([ty_wf],
-   [types_wf], [lt_wf], [lifetimes_wf]) and the context-lookup equations
-   they spawn.  For a [type_var] it picks TWF_Var, resolves the lookup by
-   computation, and recurses into the bound's well-formedness (the [cbn]
-   on the second branch forces a stuck [shift_ty .. any_at_free] back to a
-   concrete [type_ctor] so the generic [constructor] arm can fire). *)
-Ltac solve_wf :=
-  repeat match goal with
-  | |- ty_wf _ (type_var _) => econstructor; [cbn; reflexivity | cbn]
-  | |- lt_wf _ (lt_var _) => econstructor; [cbn; reflexivity]
-  | |- ty_wf _ _ => constructor
-  | |- types_wf _ _ => constructor
-  | |- lifetimes_wf _ _ => constructor
-  | |- lt_wf _ _ => constructor
-  | |- ctx_lookup_ty _ _ = Some _ => cbn; reflexivity
-  | |- ctx_lookup_lt _ _ = Some _ => cbn; reflexivity
-  end.
-
-(* [solve_var] types a de Bruijn variable: it applies T_Var, resolves the
-   term-context lookup by computation, and proves the bound is well-formed.
-   [cbn] is required before [reflexivity] because [full_ctx] is built with
-   list append ([++]). *)
-Ltac solve_var :=
-  apply T_Var; [cbn; reflexivity | solve_wf].
-
-Ltac solve_free_sub :=
-  apply LS_Free; solve_wf.
-
-Ltac solve_lt_sub :=
-  match goal with
-  | |- _ ⊢ₗ lt_min _ _ <: _ => apply LS_MinL; solve_lt_sub
-  | |- _ ⊢ₗ lt_free <: _ => apply LS_Free; solve_wf
-  | |- _ ⊢ₗ ?l <: ?l => apply LS_Refl; solve_wf
-  | |- _ ⊢ₗ _ <: lt_local => apply LS_Local; solve_wf
-  end.
-
-(* [solve_lt] proves a lifetime-subtyping goal whose endpoints are built
-   from [lt_free], [lt_local], [lt_var] and [lt_min] (joins).  It tries the
-   reflexive/bottom/join introduction rules and recurses through [lt_min]
-   on either side. *)
-Ltac solve_lt :=
-  solve [ apply LS_Refl; solve_wf
-        | apply LS_Free; solve_wf
-        | apply LS_MinR1; [solve_lt | solve_wf]
-        | apply LS_MinR2; [solve_lt | solve_wf]
-        | apply LS_MinL; [solve_lt | solve_lt] ].
-
-Ltac solve_nullary_ctor :=
-  eapply T_Ctor with (lts := []) (Ts := []) (rho_fields := []);
-  cbn; try reflexivity;
-  try solve [ repeat constructor
-            | apply LS_Free; repeat constructor
-            | apply LS_Refl; repeat constructor ].
-
-(* [solve_ctor] discharges a general constructor-application typing goal
-   ([T_Ctor]).  [eapply] leaves the field/lifetime/type arguments as
-   evars; the equational premises are closed by [reflexivity] (which
-   instantiates those evars), and the loop then proves the remaining
-   well-formedness, lifetime-subtyping and [Forall]/[Forall2] obligations.
-   The [progress cbn] alternative re-normalises field types of the form
-   [inst_ctor_type ..] that only become reducible once the argument evars
-   have been resolved. *)
-Ltac solve_ctor :=
-  eapply T_Ctor; cbn; try reflexivity;
-  repeat first
-    [ solve_var | solve_lt | progress solve_wf | progress cbn
-    | apply Forall2_nil | apply Forall_nil
-    | apply Forall2_cons | apply Forall_cons ].
-
-(* [solve_nat] types a Peano numeral [Suc (Suc ... Zero)] at [T_Nat `Lf] in
-   any context whose constructor table is computable by [cbn].  It is
-   [solve_ctor] with the constructor rule itself added as a fallback, so the
-   nested [Suc]-fields (themselves constructor applications) are typed
-   recursively rather than left for [solve_var]. *)
-Ltac solve_nat :=
-  unfold two_v, three_v, suc_v, zero_v;
-  repeat first
-    [ solve_var | solve_lt | progress solve_wf | progress cbn
-    | apply Forall2_nil | apply Forall_nil
-    | apply Forall2_cons | apply Forall_cons
-    | eapply T_Ctor; cbn; try reflexivity ].
 
 (* ================================================================== *)
 (* Constructor/value typing statements                                *)
@@ -303,40 +124,23 @@ Theorem red_id_example_proof : red_id_example.
 Proof.
   unfold red_id_example, id_example, id_poly, unit_v.
   eapply ms_trans. { apply ms_app1; [ reflexivity | ]. apply ms_one. apply S_TyBeta. } cbn.
-  apply ms_one. apply S_Beta. repeat constructor.
+  apply ms_one. apply S_Beta. solve_value.
 Qed.
 
 Theorem red_downcast_example_proof : red_downcast_example.
 Proof.
   unfold red_downcast_example, downcast_example, downcast, unit_v.
   eapply ms_trans. { apply ms_app1; [ reflexivity | ]. apply ms_one. apply S_TyBeta. } cbn.
-  apply ms_one. apply S_Beta. repeat constructor.
+  apply ms_one. apply S_Beta. solve_value.
 Qed.
 
 Theorem red_withFile_example_proof : red_withFile_example.
 Proof.
   unfold red_withFile_example, withFile_example, withFile, unit_v, file_v.
   eapply ms_trans. { apply ms_app1; [ reflexivity | ]. apply ms_one. apply S_TyBeta. } cbn.
-  eapply ms_trans. { apply ms_one. apply S_Beta. repeat constructor. } cbn.
-  apply ms_one. apply S_Beta. repeat constructor.
+  eapply ms_trans. { apply ms_one. apply S_Beta. solve_value. } cbn.
+  apply ms_one. apply S_Beta. solve_value.
 Qed.
-
-(* [solve_cmd] types a State command [get]/[put n] : Cmd<Nat> (the [put] field
-   is a Nat numeral, typed by [solve_nat]). *)
-Ltac solve_cmd :=
-  eapply T_Ctor; cbn; try reflexivity;
-  repeat first
-    [ progress solve_wf | solve_lt
-    | apply Forall_nil | apply Forall2_nil
-    | apply Forall2_cons; [ solve_nat | ] ].
-
-(* [solve_state_perform] discharges a [perform st.<cmd>() : Nat] goal (the 11
-   premises of T_Perform for the single State operation [Cmd<Nat> -> Nat]). *)
-Ltac solve_state_perform :=
-  eapply T_Perform with (Ss := (@nil type));
-  [ solve_var | cbn; reflexivity | cbn; reflexivity | reflexivity | reflexivity
-  | solve_wf | constructor | cbn; reflexivity | cbn; solve_lt_sub | cbn; reflexivity
-  | solve_wf | solve_cmd ].
 
 
 Theorem typed_cons_proof : typed_cons.
@@ -444,27 +248,27 @@ Proof.
   eapply ms_trans.
   { apply ms_app1; [ reflexivity | ].
     apply ms_app1; [ reflexivity | ].
-    apply ms_one. apply S_Beta. repeat constructor. }
+    apply ms_one. apply S_Beta. solve_value. }
   cbn.
   eapply ms_trans.
   { apply ms_app1; [ reflexivity | ].
-    apply ms_one. apply S_Beta. repeat constructor. }
+    apply ms_one. apply S_Beta. solve_value. }
   cbn.
-  eapply ms_trans. { apply ms_one. apply S_Beta. repeat constructor. } cbn.
+  eapply ms_trans. { apply ms_one. apply S_Beta. solve_value. } cbn.
   (* now [succ (succ Zero)] — reduce the inner argument under [succ]. *)
   eapply ms_trans.
-  { apply ms_app2; [ repeat constructor | reflexivity | ].
-    apply ms_one. apply S_Beta. repeat constructor. }
+  { apply ms_app2; [ solve_value | reflexivity | ].
+    apply ms_one. apply S_Beta. solve_value. }
   cbn.
-  apply ms_one. apply S_Beta. repeat constructor.
+  apply ms_one. apply S_Beta. solve_value.
 Qed.
 
 (* The following effect-heavy statements exercise the handler typing rules.
-   [readerExample] and [exampleOptionality] are fully closed; the remaining
+   [reader_example] and [optionality_example] are fully closed; the remaining
    polymorphic-handler statements document the intended typing targets. *)
-Theorem typed_readerExample_proof : typed_readerExample.
+Theorem typed_reader_example_proof : typed_reader_example.
 Proof.
-  unfold typed_readerExample, readerExample, readerExample_op_body.
+  unfold typed_reader_example, reader_example, reader_example_op_body.
   eapply T_Handle; try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
   - apply SA_Refl. solve_wf.
   - constructor; [| constructor].
@@ -512,12 +316,6 @@ Proof.
       * solve_var.
       * solve_var.
 Qed.
-
-Ltac solve_state_k_app :=
-  eapply T_App with (A := `T 1) (l := `Ll) (B := `T 0);
-  [ eapply T_App with (A := `T 1) (l := `Ll) (B := `T 1 -{ `Ll }-> `T 0);
-    [ solve_var | solve_var ]
-  | solve_var ].
 
 Theorem typed_withState_proof : typed_withState.
 Proof.
@@ -598,9 +396,9 @@ Proof.
     eapply T_App; [ solve_var | solve_var ].
 Qed.
 
-Theorem typed_exampleException_proof : typed_exampleException.
+Theorem typed_exception_example_proof : typed_exception_example.
 Proof.
-  unfold typed_exampleException, exampleException, exampleException_body.
+  unfold typed_exception_example, exception_example, exception_example_body.
   eapply T_App with
     (A := T_Exception `Ll (T_Nat `Lf) -{ `Lf }-> T_File `Lf)
     (l := `Lf)
@@ -649,9 +447,9 @@ Proof.
   - cbn. eapply T_App; [ solve_var | solve_var ].
 Qed.
 
-Theorem typed_exampleOptionality_proof : typed_exampleOptionality.
+Theorem typed_optionality_example_proof : typed_optionality_example.
 Proof.
-  unfold typed_exampleOptionality, exampleOptionality, optionality_op_body.
+  unfold typed_optionality_example, optionality_example, optionality_op_body.
   eapply T_Handle; try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
   - apply SA_Refl. solve_wf.
   - constructor; [| constructor].
@@ -670,19 +468,6 @@ Proof.
     + solve_wf.
     + solve_nat.
 Qed.
-
-(* [solve_lt_var] extends [solve_lt] with one more move: descend through
-   a lifetime variable's declared bound (LS_Trans + LS_Var).  Needed for
-   match-fresh lifetime variables, whose bound is the (shifted) scrutinee
-   lifetime. *)
-Ltac solve_lt_var :=
-  solve [ apply LS_Refl; solve_wf
-        | apply LS_Free; solve_wf
-        | eapply LS_Trans;
-          [ eapply LS_Var; [ cbn; reflexivity | solve_wf ] | solve_lt_var ]
-        | apply LS_MinR1; [ solve_lt_var | solve_wf ]
-        | apply LS_MinR2; [ solve_lt_var | solve_wf ]
-        | apply LS_MinL; [ solve_lt_var | solve_lt_var ] ].
 
 Theorem typed_lazyMap_body_proof : typed_lazyMap_body.
 Proof.
@@ -850,9 +635,9 @@ Proof.
   cbn. apply MS_Refl.
 Qed.
 
-Theorem red_readerExample_proof : red_readerExample.
+Theorem red_reader_example_proof : red_reader_example.
 Proof.
-  unfold red_readerExample, readerExample, readerExample_op_body.
+  unfold red_reader_example, reader_example, reader_example_op_body.
   eapply MS_Step.
   { apply (S_Handle Reader_tag [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) [(0, ($$ 1) @· two_v)]
              (term_perform ($$ 0) 0 [] (T_Nat `Lf) unit_v) 0).
@@ -871,9 +656,9 @@ Proof.
   apply MS_Refl.
 Qed.
 
-Theorem red_exampleOptionality_proof : red_exampleOptionality.
+Theorem red_optionality_example_proof : red_optionality_example.
 Proof.
-  unfold red_exampleOptionality, exampleOptionality, optionality_op_body, some_v.
+  unfold red_optionality_example, optionality_example, optionality_op_body, some_v.
   eapply MS_Step.
   { apply (S_Handle Optionality_tag [] (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf (T_Nat `Lf))
              [(1, ($$ 1) @· term_ctor some_tag `Lf [] [`T 0] [$$ 0])]
@@ -890,18 +675,18 @@ Proof.
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole). constructor.
-    apply H_Beta. repeat constructor. }
+    apply H_Beta. solve_value. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole). constructor.
-    apply H_Return. repeat constructor. }
+    apply H_Return. solve_value. }
   cbn. apply MS_Refl.
 Qed.
 
-Theorem red_exampleException_proof : red_exampleException.
+Theorem red_exception_example_proof : red_exception_example.
 Proof.
-  unfold red_exampleException, exampleException, withException,
-         withException_op_body, exampleException_body, ok_v, error_v.
+  unfold red_exception_example, exception_example, withException,
+         withException_op_body, exception_example_body, ok_v, error_v.
   eapply MS_Step.
   { apply (S_step (EC_app1 (EC_ty_app EC_hole (T_File `Lf))
                      (λ: T_Exception `Ll (T_Nat `Lf) \\
@@ -919,7 +704,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step EC_hole).
     - constructor.
-    - apply H_Beta. constructor. }
+    - apply H_Beta. solve_value. }
   cbn.
   eapply MS_Step.
   { eapply (S_Handle _ _ _ _ _ _ 0).
@@ -930,7 +715,7 @@ Proof.
                      (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
                      (EC_ctor ok_tag `Lf [] [T_Nat `Lf; T_File `Lf] [] EC_hole []))).
     - repeat constructor.
-    - apply H_Beta. constructor. }
+    - apply H_Beta. solve_value. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole).
@@ -967,7 +752,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole two_v)).
     - repeat constructor.
-    - apply H_Beta. unfold withState_prog. constructor. }
+    - apply H_Beta. solve_value. }
   cbn.
   eapply MS_Step.
   { apply (S_HandleCtx (EC_app1 EC_hole two_v) State_tag [T_Nat `Lf] _ _ _ _ 0).
@@ -977,7 +762,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 (EC_handler_m 0 _ _ (EC_app2 _ EC_hole)) two_v)).
     - repeat constructor.
-    - apply H_Beta. constructor. }
+    - apply H_Beta. solve_value. }
   cbn.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole two_v)).
@@ -1092,7 +877,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole three_v)).
     - repeat constructor.
-    - apply H_Return. constructor. }
+    - apply H_Return. solve_value. }
   cbn.
   (* final application: (λs. 3) 3 *)
   eapply MS_Step.
@@ -1101,12 +886,6 @@ Proof.
     - apply H_Beta. apply three_v_value. }
   cbn. apply MS_Refl.
 Qed.
-
-Lemma four_v_value : value four_v.
-Proof. unfold four_v, three_v, suc_v, zero_v. repeat constructor. Qed.
-
-Lemma endoi_v_value : value endoi_v.
-Proof. unfold endoi_v. constructor. constructor; [ constructor | constructor ]. Qed.
 
 (* Pair<Nat,Nat>(x, y) typing helper. *)
 Lemma typed_pair_nat : forall x y,
@@ -1190,7 +969,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step EC_hole).
     - constructor.
-    - apply H_Beta. repeat constructor. }
+    - apply H_Beta. solve_value. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole).
@@ -1260,7 +1039,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step EC_hole).
     - constructor.
-    - apply H_Beta. constructor. }
+    - apply H_Beta. solve_value. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole).
@@ -1352,7 +1131,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole two_v)).
     - repeat constructor.
-    - apply H_Beta. constructor. }
+    - apply H_Beta. solve_value. }
   cbn.
   eapply MS_Step.
   { apply (S_HandleCtx (EC_app1 EC_hole two_v) Reader_tag [T_Nat `Lf] _ _ _ _ 0).
@@ -1362,7 +1141,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 (EC_handler_m 0 _ _ (EC_app2 _ EC_hole)) two_v)).
     - repeat constructor.
-    - apply H_Beta. constructor. }
+    - apply H_Beta. solve_value. }
   cbn.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole two_v)).
@@ -1391,7 +1170,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole two_v)).
     - repeat constructor.
-    - apply H_Return. constructor. }
+    - apply H_Return. solve_value. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole).
@@ -1412,7 +1191,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step EC_hole).
     - constructor.
-    - apply H_Beta. constructor. }
+    - apply H_Beta. solve_value. }
   cbn.
   eapply MS_Step.
   { eapply (S_Handle _ _ _ _ _ _ 0).
@@ -1421,7 +1200,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_handler_m 0 (T_Nat `Lf) (T_Nat `Lf) EC_hole)).
     - repeat constructor.
-    - apply H_Beta. constructor. }
+    - apply H_Beta. solve_value. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole).
@@ -1501,9 +1280,9 @@ Proof.
     constructor.
 Qed.
 
-Theorem typed_multishotExample_proof : typed_multishotExample.
+Theorem typed_multishot_example_proof : typed_multishot_example.
 Proof.
-  unfold typed_multishotExample, multishotExample, multishot_op_body.
+  unfold typed_multishot_example, multishot_example, multishot_op_body.
   eapply T_Handle; try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
   - apply SA_Refl. solve_wf.
   - constructor; [| constructor].
@@ -1526,9 +1305,9 @@ Proof.
     + unfold unit_v. solve_ctor.
 Qed.
 
-Theorem typed_forwardExample_proof : typed_forwardExample.
+Theorem typed_forward_example_proof : typed_forward_example.
 Proof.
-  unfold typed_forwardExample, forwardExample, forward_inner_body,
+  unfold typed_forward_example, forward_example, forward_inner_body,
          error_v, ok_v.
   eapply T_Handle; try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
   - apply SA_Refl. solve_wf.
@@ -1595,12 +1374,12 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole (term_ctor some_tag `Lf [] [T_Nat `Lf] [three_v]))).
     - repeat constructor.
-    - apply H_Beta. repeat constructor. }
+    - apply H_Beta. solve_value. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole).
     - constructor.
-    - apply H_Beta. repeat constructor. }
+    - apply H_Beta. solve_value. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole).
@@ -1621,12 +1400,12 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole (term_ctor none_tag `Lf [] [T_Nat `Lf] []))).
     - repeat constructor.
-    - apply H_Beta. repeat constructor. }
+    - apply H_Beta. solve_value. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole).
     - constructor.
-    - apply H_Beta. repeat constructor. }
+    - apply H_Beta. solve_value. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole).
@@ -1655,13 +1434,13 @@ Proof.
   eapply MS_Step.
   { apply (S_step EC_hole).
     - constructor.
-    - apply H_Beta. repeat constructor. }
+    - apply H_Beta. solve_value. }
   cbn. apply MS_Refl.
 Qed.
 
-Theorem red_multishotExample_proof : red_multishotExample.
+Theorem red_multishot_example_proof : red_multishot_example.
 Proof.
-  unfold red_multishotExample, multishotExample, multishot_op_body.
+  unfold red_multishot_example, multishot_example, multishot_op_body.
   eapply MS_Step.
   { eapply (S_Handle _ _ _ _ _ _ 0).
     cbn. intros H. inversion H. }
@@ -1702,9 +1481,9 @@ Proof.
   apply MS_Refl.
 Qed.
 
-Theorem red_forwardExample_proof : red_forwardExample.
+Theorem red_forward_example_proof : red_forward_example.
 Proof.
-  unfold red_forwardExample, forwardExample, forward_inner_body, error_v, ok_v.
+  unfold red_forward_example, forward_example, forward_inner_body, error_v, ok_v.
   eapply MS_Step.
   { eapply (S_Handle _ _ _ _ _ _ 0).
     cbn. intros H. inversion H. }
@@ -1760,7 +1539,7 @@ Qed.
 
 (* ================================================================== *)
 (* MULTI-OPERATION SHOWCASE PROOFS.                                   *)
-(* [statemExample] uses the honest two-operation declaration          *)
+(* [statem_example] uses the honest two-operation declaration          *)
 (*   effect StateM<s> { op get(): s ; op put(s): Unit }               *)
 (* The typing exercises T_Handle's per-operation Forall2 (two         *)
 (* clauses); the reduction fires H_Perform three times — get (index   *)
@@ -1768,9 +1547,9 @@ Qed.
 (* nth_error.                                                         *)
 (* ================================================================== *)
 
-Theorem typed_statemExample_proof : typed_statemExample.
+Theorem typed_statem_example_proof : typed_statem_example.
 Proof.
-  unfold typed_statemExample, statemExample, statemExample_handler,
+  unfold typed_statem_example, statem_example, statem_example_handler,
          statem_get_body, statem_put_body.
   eapply T_App with (A := T_Nat `Lf) (l := `Ll) (B := T_Nat `Lf); [ | solve_nat ].
   eapply T_Handle with
@@ -1827,9 +1606,9 @@ Proof.
         | solve_wf | unfold unit_v; solve_ctor ].
 Qed.
 
-Theorem red_statemExample_proof : red_statemExample.
+Theorem red_statem_example_proof : red_statem_example.
 Proof.
-  unfold red_statemExample, statemExample, statemExample_handler,
+  unfold red_statem_example, statem_example, statem_example_handler,
          statem_get_body, statem_put_body.
   (* allocate the capability (fresh marker 0) under the state application *)
   eapply MS_Step.
@@ -1885,13 +1664,13 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole three_v)).
     - repeat constructor.
-    - apply H_Beta. repeat constructor. }
+    - apply H_Beta. solve_value. }
   cbn.
   (* continue the body with _ = Unit() *)
   eapply MS_Step.
   { apply (S_step (EC_app1 (EC_handler_m 0 _ _ EC_hole) three_v)).
     - repeat constructor.
-    - apply H_Beta. repeat constructor. }
+    - apply H_Beta. solve_value. }
   cbn.
   (* second get fires: operation index 0 again *)
   eapply MS_Step.
@@ -1925,7 +1704,7 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole three_v)).
     - repeat constructor.
-    - apply H_Return. constructor. }
+    - apply H_Return. solve_value. }
   cbn.
   (* final application: (λs. 3) 3 *)
   eapply MS_Step.

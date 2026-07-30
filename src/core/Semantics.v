@@ -27,7 +27,7 @@ Require Import Substitution.
 
 (* ------------------------------------------------------------------- *)
 (* Evaluation contexts (defined first so head_step can reference plug, *)
-(* pure_ectx and shift_ectx_tm in the H_Perform rule).                 *)
+(* pure_ectx_m and shift_ectx_tm in the H_Perform rule).               *)
 (* ------------------------------------------------------------------- *)
 
 Inductive ectx : Type :=
@@ -157,12 +157,6 @@ Fixpoint markers_in_list (ts : list term) : list marker :=
   | u :: rest => markers_in u ++ markers_in_list rest
   end.
 
-Fixpoint markers_in_ops (obs : list (nat * term)) : list marker :=
-  match obs with
-  | []              => []
-  | (_, ob) :: rest => markers_in ob ++ markers_in_ops rest
-  end.
-
 
 Definition marker_bound (t : term) : marker :=
   S (fold_right Nat.max 0 (markers_in t)).
@@ -202,25 +196,25 @@ Qed.
 (* head_step because H_Perform requires the captured context to be    *)
 (* value-disciplined too: capture may not skip a pending redex.       *)
 Inductive ectx_wf : ectx -> Prop :=
-  | wf_hole       : ectx_wf EC_hole
-  | wf_app1       : forall E t,
+  | EWF_Hole       : ectx_wf EC_hole
+  | EWF_App1       : forall E t,
       ectx_wf E -> ectx_wf (EC_app1 E t)
-  | wf_app2       : forall v E,
+  | EWF_App2       : forall v E,
       value v -> ectx_wf E -> ectx_wf (EC_app2 v E)
-  | wf_ty_app     : forall E T,
+  | EWF_TyApp     : forall E T,
       ectx_wf E -> ectx_wf (EC_ty_app E T)
-  | wf_lt_app     : forall E l,
+  | EWF_LtApp     : forall E l,
       ectx_wf E -> ectx_wf (EC_lt_app E l)
-  | wf_ctor       : forall K l lts Ts vs E ts,
+  | EWF_Ctor       : forall K l lts Ts vs E ts,
       Forall value vs -> ectx_wf E ->
       ectx_wf (EC_ctor K l lts Ts vs E ts)
-  | wf_match      : forall E K nlt ar y n,
+  | EWF_Match      : forall E K nlt ar y n,
       ectx_wf E -> ectx_wf (EC_match E K nlt ar y n)
-    | wf_handler_m  : forall m T_B T_R E,
+    | EWF_HandlerM  : forall m T_B T_R E,
       ectx_wf E -> ectx_wf (EC_handler_m m T_B T_R E)
-  | wf_perform_r  : forall E op Ss A arg,
+  | EWF_PerformR  : forall E op Ss A arg,
       ectx_wf E -> ectx_wf (EC_perform_r E op Ss A arg)
-  | wf_perform_a  : forall v op Ss A E,
+  | EWF_PerformA  : forall v op Ss A E,
       value v -> ectx_wf E ->
       ectx_wf (EC_perform_a v op Ss A E).
 
@@ -475,3 +469,5 @@ Inductive multi_step : term -> term -> Prop :=
   | MS_Refl : forall t, multi_step t t
   | MS_Step : forall t1 t2 t3,
       t1 ==> t2 -> multi_step t2 t3 -> multi_step t1 t3.
+
+#[export] Hint Constructors pure_ectx_m ectx_wf head_step step multi_step : lang.

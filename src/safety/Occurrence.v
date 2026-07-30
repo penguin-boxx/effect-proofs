@@ -6,7 +6,9 @@ Require Import Substitution.
 Require Import Semantics.
 Require Import Typing.
 Require Import Subst.
-Require Import Markers.
+Require Import MarkerAnnots.
+Require Import WellScoped.
+Require Import WsRtLaws.
 Require Import Soundness.
 Require Import Escape.
 
@@ -16,7 +18,7 @@ Require Import Escape.
 (*                                                                    *)
 (* Escape.v's [capability_confined] speaks only about a capability    *)
 (* sitting in an evaluation-context hole — an *active* position.      *)
-(* The invariant it consumes, [well_scoped] (Markers.v), is           *)
+(* The invariant it consumes, [well_scoped] (WellScoped.v), is        *)
 (* structurally stronger: it traverses lambda bodies, constructor     *)
 (* arguments, match branches, handler op-bodies, and even the         *)
 (* op-bodies stored inside capabilities themselves.  This file        *)
@@ -130,6 +132,7 @@ Fixpoint scope_at (ms : list marker) (t : term) (p : path) : option (list marker
 
 (* [scope_at] is defined exactly where [subterm_at] is: both recurse  *)
 (* through the same [child_at] spine.                                 *)
+(* Sanity check for the path semantics (documentation; no consumers). *)
 Lemma scope_at_defined_iff_subterm_at : forall p t ms,
   (exists ms', scope_at ms t p = Some ms') <-> (exists u, subterm_at t p = Some u).
 Proof.
@@ -339,6 +342,8 @@ Qed.
 (* The formal bridge: Escape.v's [capability_confined], re-derived as *)
 (* the empty-scope, eval-ctx-path instance of                         *)
 (* [well_scoped_occurrence_delimited].                                *)
+(* PUBLIC API — terminal deliverable: no internal consumers; do not
+   mistake for dead code.  Gated by scripts/check_assumptions.py. *)
 Theorem capability_confined_from_occurrence :
   forall E E_tag m Ts T_R op_bodies,
   well_scoped [] (plug E (term_cap E_tag m Ts T_R op_bodies)) ->

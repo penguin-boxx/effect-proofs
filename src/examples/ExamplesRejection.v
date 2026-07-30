@@ -9,7 +9,7 @@ Require Import Subst.
 Require Import TypingInv.
 Require Import Decide.
 Require Import Examples.
-Require Import ExamplesProofs.
+Require Import ExamplesTactics.
 
 Import CoreNotation.
 

@@ -254,6 +254,14 @@ Lemma subst_tm_go_ops_eq_map : forall var replacement obs,
   = List.map (fun p => (fst p, subst_tm (var + 2) (shift_tm 2 0 replacement) (snd p))) obs.
 Proof. intros; induction obs as [|[nb ob] rest IH]; simpl; congruence. Qed.
 
+Lemma subst_ty_in_tm_go_eq_map : forall n Sb ts,
+  (fix go ts := match ts with [] => [] | u :: rest => subst_ty_in_tm n Sb u :: go rest end) ts =
+  List.map (subst_ty_in_tm n Sb) ts.
+Proof.
+  intros n Sb ts. induction ts as [|t ts IH]; simpl; [reflexivity|].
+  rewrite IH. reflexivity.
+Qed.
+
 Lemma subst_ty_in_tm_go_ops_eq_map : forall var replacement obs,
   (fix go_ops (obs : list (nat * term)) : list (nat * term) :=
      match obs with
@@ -384,23 +392,23 @@ Proof.
   - intros t l H c; simpl; rewrite H; reflexivity.
   - intros body H c; simpl; rewrite H; reflexivity.
   - intros K l lts Ts ts Hts c; simpl.
-    unfold shift_ty_list. rewrite List.map_ext with (g := id).
+    unfold map_shift_ty. rewrite List.map_ext with (g := id).
     + rewrite List.map_id, shift_ty_in_tm_go_eq_map; f_equal; apply Hts.
     + intro T; apply shift_ty_zero.
   - intros scrut tag n_lt arity yes_body no_body Hs Hy Hn c; simpl;
     rewrite Hs, Hy, Hn; reflexivity.
   - intros E Ts T_B T_R op_bodies body Hops Hb c; simpl.
     rewrite shift_ty_in_tm_go_ops_eq_map.
-    unfold shift_ty_list. rewrite List.map_ext with (g := id).
+    unfold map_shift_ty. rewrite List.map_ext with (g := id).
     + rewrite List.map_id, !shift_ty_zero, Hops, Hb; reflexivity.
     + intro T; apply shift_ty_zero.
   - intros t op Ss A_ret arg Ht Ha c; simpl.
-    unfold shift_ty_list. rewrite List.map_ext with (g := id).
+    unfold map_shift_ty. rewrite List.map_ext with (g := id).
     + rewrite List.map_id, shift_ty_zero, Ht, Ha; reflexivity.
     + intro T; apply shift_ty_zero.
   - intros E m Ts T_R op_bodies Hops c; simpl.
     rewrite shift_ty_in_tm_go_ops_eq_map.
-    unfold shift_ty_list. rewrite List.map_ext with (g := id).
+    unfold map_shift_ty. rewrite List.map_ext with (g := id).
     + rewrite List.map_id, shift_ty_zero, Hops; reflexivity.
     + intro T; apply shift_ty_zero.
   - intros m T_B T_R t H c; simpl; rewrite !shift_ty_zero, H; reflexivity.
@@ -431,7 +439,7 @@ Proof.
     rewrite shift_lt_zero.
     rewrite List.map_ext with (g := id).
     + rewrite List.map_id.
-      unfold shift_lt_in_ty_list. rewrite List.map_ext with (g := id).
+      unfold map_shift_lt_in_ty. rewrite List.map_ext with (g := id).
       * rewrite List.map_id, shift_lt_in_tm_go_eq_map; f_equal; apply Hts.
       * intro T; apply shift_lt_in_ty_zero.
     + intro l0; apply shift_lt_zero.
@@ -439,16 +447,16 @@ Proof.
     rewrite Hs, Hy, Hn; reflexivity.
   - intros E Ts T_B T_R op_bodies body Hops Hb c; simpl.
     rewrite shift_lt_in_tm_go_ops_eq_map.
-    unfold shift_lt_in_ty_list. rewrite List.map_ext with (g := id).
+    unfold map_shift_lt_in_ty. rewrite List.map_ext with (g := id).
     + rewrite List.map_id, !shift_lt_in_ty_zero, Hops, Hb; reflexivity.
     + intro T; apply shift_lt_in_ty_zero.
   - intros t op Ss A_ret arg Ht Ha c; simpl.
-    unfold shift_lt_in_ty_list. rewrite List.map_ext with (g := id).
+    unfold map_shift_lt_in_ty. rewrite List.map_ext with (g := id).
     + rewrite List.map_id, shift_lt_in_ty_zero, Ht, Ha; reflexivity.
     + intro T; apply shift_lt_in_ty_zero.
   - intros E m Ts T_R op_bodies Hops c; simpl.
     rewrite shift_lt_in_tm_go_ops_eq_map.
-    unfold shift_lt_in_ty_list. rewrite List.map_ext with (g := id).
+    unfold map_shift_lt_in_ty. rewrite List.map_ext with (g := id).
     + rewrite List.map_id, shift_lt_in_ty_zero, Hops; reflexivity.
     + intro T; apply shift_lt_in_ty_zero.
   - intros m T_B T_R t H c; simpl; rewrite !shift_lt_in_ty_zero, H; reflexivity.
@@ -593,7 +601,7 @@ Proof.
   - intros t l H a b c; simpl; rewrite H; reflexivity.
   - intros body H a b c; simpl; rewrite H; reflexivity.
   - intros K l lts Ts ts Hts a b c; simpl.
-    unfold shift_ty_list.
+    unfold map_shift_ty.
     f_equal.
     + rewrite List.map_map.
       apply List.map_ext; intro T; apply shift_ty_fuse.
@@ -605,18 +613,18 @@ Proof.
     rewrite Hs, Hy, Hn; reflexivity.
   - intros E Ts T_B T_R op_bodies body Hops Hb a b c; simpl.
     rewrite !shift_ty_in_tm_go_ops_eq_map.
-    unfold shift_ty_list.
+    unfold map_shift_ty.
     rewrite List.map_map.
     rewrite List.map_ext with (g := shift_ty (a + b) c) by (intro T; apply shift_ty_fuse).
     rewrite !shift_ty_fuse, Hops, Hb; reflexivity.
   - intros t op Ss A_ret arg Ht Ha a b c; simpl.
-    unfold shift_ty_list.
+    unfold map_shift_ty.
     rewrite List.map_map.
     rewrite List.map_ext with (g := shift_ty (a + b) c) by (intro T; apply shift_ty_fuse).
     rewrite shift_ty_fuse, Ht, Ha; reflexivity.
   - intros E m Ts T_R op_bodies Hops a b c; simpl.
     rewrite !shift_ty_in_tm_go_ops_eq_map.
-    unfold shift_ty_list.
+    unfold map_shift_ty.
     rewrite List.map_map.
     rewrite List.map_ext with (g := shift_ty (a + b) c) by (intro T; apply shift_ty_fuse).
     rewrite shift_ty_fuse, Hops; reflexivity.
@@ -651,7 +659,7 @@ Proof.
     + apply shift_lt_fuse.
     + rewrite List.map_map.
       apply List.map_ext; intro l0; apply shift_lt_fuse.
-    + unfold shift_lt_in_ty_list.
+    + unfold map_shift_lt_in_ty.
       rewrite List.map_map.
       apply List.map_ext; intro T; apply shift_lt_in_ty_fuse.
     + rewrite (shift_lt_in_tm_go_eq_map b c ts).
@@ -662,18 +670,18 @@ Proof.
     rewrite Hs, Hy, Hn; reflexivity.
   - intros E Ts T_B T_R op_bodies body Hops Hb a b c; simpl.
     rewrite !shift_lt_in_tm_go_ops_eq_map.
-    unfold shift_lt_in_ty_list.
+    unfold map_shift_lt_in_ty.
     rewrite List.map_map.
     rewrite List.map_ext with (g := shift_lt_in_ty (a + b) c) by (intro T; apply shift_lt_in_ty_fuse).
     rewrite !shift_lt_in_ty_fuse, Hops, Hb; reflexivity.
   - intros t op Ss A_ret arg Ht Ha a b c; simpl.
-    unfold shift_lt_in_ty_list.
+    unfold map_shift_lt_in_ty.
     rewrite List.map_map.
     rewrite List.map_ext with (g := shift_lt_in_ty (a + b) c) by (intro T; apply shift_lt_in_ty_fuse).
     rewrite shift_lt_in_ty_fuse, Ht, Ha; reflexivity.
   - intros E m Ts T_R op_bodies Hops a b c; simpl.
     rewrite !shift_lt_in_tm_go_ops_eq_map.
-    unfold shift_lt_in_ty_list.
+    unfold map_shift_lt_in_ty.
     rewrite List.map_map.
     rewrite List.map_ext with (g := shift_lt_in_ty (a + b) c) by (intro T; apply shift_lt_in_ty_fuse).
     rewrite shift_lt_in_ty_fuse, Hops; reflexivity.
@@ -824,7 +832,7 @@ Fixpoint lt_lt_closed (c : nat) (l : lifetime) : Prop :=
   | lt_var x => x < c
   | lt_free => True
   | lt_local => True
-  | lt_min l1 l2 => lt_lt_closed c l1 /\ lt_lt_closed c l2
+  | lt_join l1 l2 => lt_lt_closed c l1 /\ lt_lt_closed c l2
   end.
 
 Fixpoint ty_lt_closed (c : nat) (T : type) : Prop :=
@@ -927,30 +935,30 @@ Lemma shift_ty_in_ty_closed : forall T c a,
 Proof.
   apply (type_list_ind
     (fun T => forall c a, ty_ty_closed c T -> shift_ty a c T = T)
-    (fun Ts => forall c a, tys_ty_closed c Ts -> shift_ty_list a c Ts = Ts)); simpl; intros; try reflexivity.
+    (fun Ts => forall c a, tys_ty_closed c Ts -> map_shift_ty a c Ts = Ts)); simpl; intros; try reflexivity.
   - destruct (Nat.leb c n) eqn:Hle; [apply Nat.leb_le in Hle; lia|reflexivity].
   - destruct H1 as [HA HB]. rewrite H by exact HA. rewrite H0 by exact HB. reflexivity.
-  - rewrite shift_ty_go_eq_map. f_equal. unfold shift_ty_list in H. apply H. exact H0.
+  - rewrite shift_ty_go_eq_map. f_equal. unfold map_shift_ty in H. apply H. exact H0.
   - rewrite H by exact H0. reflexivity.
   - destruct H1 as [HB HA]. rewrite H by exact HB. rewrite H0 by exact HA. reflexivity.
-  - destruct H1 as [HA HTs]. cbn [shift_ty_list List.map].
+  - destruct H1 as [HA HTs]. cbn [map_shift_ty List.map].
     rewrite H by exact HA.
     f_equal.
     match goal with
     | |- List.map (shift_ty ?amount ?cutoff) ?tail = ?tail =>
-        change (List.map (shift_ty amount cutoff) tail) with (shift_ty_list amount cutoff tail)
-    | |- shift_ty_list _ _ _ = _ => idtac
+        change (List.map (shift_ty amount cutoff) tail) with (map_shift_ty amount cutoff tail)
+    | |- map_shift_ty _ _ _ = _ => idtac
     end.
     rewrite H0 by exact HTs. reflexivity.
 Qed.
 
-Lemma shift_ty_list_closed : forall Ts c a,
-  tys_ty_closed c Ts -> shift_ty_list a c Ts = Ts.
+Lemma map_shift_ty_closed : forall Ts c a,
+  tys_ty_closed c Ts -> map_shift_ty a c Ts = Ts.
 Proof.
   induction Ts as [|T Ts IH]; intros c a H; simpl in *; [reflexivity|].
-  destruct H as [HT HTs]. cbn [shift_ty_list List.map].
+  destruct H as [HT HTs]. cbn [map_shift_ty List.map].
   rewrite shift_ty_in_ty_closed by exact HT.
-  change (List.map (shift_ty a c) Ts) with (shift_ty_list a c Ts).
+  change (List.map (shift_ty a c) Ts) with (map_shift_ty a c Ts).
   rewrite IH by exact HTs. reflexivity.
 Qed.
 
@@ -967,31 +975,31 @@ Lemma shift_lt_in_type_closed : forall T c a,
 Proof.
   apply (type_list_ind
     (fun T => forall c a, ty_lt_closed c T -> shift_lt_in_ty a c T = T)
-    (fun Ts => forall c a, tys_lt_closed c Ts -> shift_lt_in_ty_list a c Ts = Ts)); simpl; intros; try reflexivity.
+    (fun Ts => forall c a, tys_lt_closed c Ts -> map_shift_lt_in_ty a c Ts = Ts)); simpl; intros; try reflexivity.
   - destruct H1 as [HA [Hl HB]]. rewrite H by exact HA. rewrite H0 by exact HB.
     rewrite shift_lt_closed_lifetime by exact Hl. reflexivity.
   - destruct H0 as [Hl HTs]. rewrite shift_lt_closed_lifetime by exact Hl.
-    rewrite shift_lt_in_ty_go_eq_map. f_equal. unfold shift_lt_in_ty_list in H. apply H. exact HTs.
+    rewrite shift_lt_in_ty_go_eq_map. f_equal. unfold map_shift_lt_in_ty in H. apply H. exact HTs.
   - rewrite H by exact H0. reflexivity.
   - destruct H1 as [HB HA]. rewrite H by exact HB. rewrite H0 by exact HA. reflexivity.
-  - destruct H1 as [HA HTs]. cbn [shift_lt_in_ty_list List.map].
+  - destruct H1 as [HA HTs]. cbn [map_shift_lt_in_ty List.map].
     rewrite H by exact HA.
     f_equal.
     match goal with
     | |- List.map (shift_lt_in_ty ?amount ?cutoff) ?tail = ?tail =>
-        change (List.map (shift_lt_in_ty amount cutoff) tail) with (shift_lt_in_ty_list amount cutoff tail)
-    | |- shift_lt_in_ty_list _ _ _ = _ => idtac
+        change (List.map (shift_lt_in_ty amount cutoff) tail) with (map_shift_lt_in_ty amount cutoff tail)
+    | |- map_shift_lt_in_ty _ _ _ = _ => idtac
     end.
     rewrite H0 by exact HTs. reflexivity.
 Qed.
 
-Lemma shift_lt_in_ty_list_closed : forall Ts c a,
-  tys_lt_closed c Ts -> shift_lt_in_ty_list a c Ts = Ts.
+Lemma map_shift_lt_in_ty_closed : forall Ts c a,
+  tys_lt_closed c Ts -> map_shift_lt_in_ty a c Ts = Ts.
 Proof.
   induction Ts as [|T Ts IH]; intros c a H; simpl in *; [reflexivity|].
-  destruct H as [HT HTs]. cbn [shift_lt_in_ty_list List.map].
+  destruct H as [HT HTs]. cbn [map_shift_lt_in_ty List.map].
   rewrite shift_lt_in_type_closed by exact HT.
-  change (List.map (shift_lt_in_ty a c) Ts) with (shift_lt_in_ty_list a c Ts).
+  change (List.map (shift_lt_in_ty a c) Ts) with (map_shift_lt_in_ty a c Ts).
   rewrite IH by exact HTs. reflexivity.
 Qed.
 
@@ -1506,18 +1514,18 @@ Proof.
   - destruct H0 as [HB Hb]. rewrite shift_ty_in_ty_closed by exact HB. rewrite H by exact Hb. reflexivity.
   - rewrite H by exact H0. reflexivity.
   - rewrite H by exact H0. reflexivity.
-  - destruct H0 as [HTs Hts]. rewrite shift_ty_list_closed by exact HTs.
+  - destruct H0 as [HTs Hts]. rewrite map_shift_ty_closed by exact HTs.
     rewrite shift_ty_in_tm_go_eq_map. rewrite H by exact Hts. reflexivity.
   - destruct H2 as [Hs [Hy Hn]]. rewrite H by exact Hs. rewrite H0 by exact Hy. rewrite H1 by exact Hn. reflexivity.
-  - destruct H1 as [HTs [HTB [HTR [Hops Hb]]]]. rewrite shift_ty_list_closed by exact HTs.
+  - destruct H1 as [HTs [HTB [HTR [Hops Hb]]]]. rewrite map_shift_ty_closed by exact HTs.
     rewrite shift_ty_in_ty_closed by exact HTB. rewrite shift_ty_in_ty_closed by exact HTR.
     rewrite shift_ty_in_tm_go_ops_eq_map.
     rewrite H by exact Hops. rewrite H0 by exact Hb. reflexivity.
   - destruct H1 as [Ht [HSs [HA Ha]]]. rewrite H by exact Ht.
-    rewrite shift_ty_list_closed by exact HSs.
+    rewrite map_shift_ty_closed by exact HSs.
     rewrite shift_ty_in_ty_closed by exact HA.
     rewrite H0 by exact Ha. reflexivity.
-  - destruct H0 as [HTs [HTR Hops]]. rewrite shift_ty_list_closed by exact HTs.
+  - destruct H0 as [HTs [HTR Hops]]. rewrite map_shift_ty_closed by exact HTs.
     rewrite shift_ty_in_ty_closed by exact HTR.
     rewrite shift_ty_in_tm_go_ops_eq_map. rewrite H by exact Hops. reflexivity.
   - destruct H0 as [HTB [HTR Ht]]. rewrite shift_ty_in_ty_closed by exact HTB.
@@ -1556,18 +1564,18 @@ Proof.
   - destruct H0 as [Ht Hl]. rewrite H by exact Ht. rewrite shift_lt_closed_lifetime by exact Hl. reflexivity.
   - rewrite H by exact H0. reflexivity.
   - destruct H0 as [Hl [Hlts [HTs Hts]]]. rewrite shift_lt_closed_lifetime by exact Hl.
-    rewrite shift_lt_list_closed by exact Hlts. rewrite shift_lt_in_ty_list_closed by exact HTs.
+    rewrite shift_lt_list_closed by exact Hlts. rewrite map_shift_lt_in_ty_closed by exact HTs.
     rewrite shift_lt_in_tm_go_eq_map. rewrite H by exact Hts. reflexivity.
   - destruct H2 as [Hs [Hy Hn]]. rewrite H by exact Hs. rewrite H0 by exact Hy. rewrite H1 by exact Hn. reflexivity.
-  - destruct H1 as [HTs [HTB [HTR [Hops Hb]]]]. rewrite shift_lt_in_ty_list_closed by exact HTs.
+  - destruct H1 as [HTs [HTB [HTR [Hops Hb]]]]. rewrite map_shift_lt_in_ty_closed by exact HTs.
     rewrite shift_lt_in_type_closed by exact HTB. rewrite shift_lt_in_type_closed by exact HTR.
     rewrite shift_lt_in_tm_go_ops_eq_map.
     rewrite H by exact Hops. rewrite H0 by exact Hb. reflexivity.
   - destruct H1 as [Ht [HSs [HA Ha]]]. rewrite H by exact Ht.
-    rewrite shift_lt_in_ty_list_closed by exact HSs.
+    rewrite map_shift_lt_in_ty_closed by exact HSs.
     rewrite shift_lt_in_type_closed by exact HA.
     rewrite H0 by exact Ha. reflexivity.
-  - destruct H0 as [HTs [HTR Hops]]. rewrite shift_lt_in_ty_list_closed by exact HTs.
+  - destruct H0 as [HTs [HTR Hops]]. rewrite map_shift_lt_in_ty_closed by exact HTs.
     rewrite shift_lt_in_type_closed by exact HTR.
     rewrite shift_lt_in_tm_go_ops_eq_map. rewrite H by exact Hops. reflexivity.
   - destruct H0 as [HTB [HTR Ht]]. rewrite shift_lt_in_type_closed by exact HTB.
@@ -1640,7 +1648,7 @@ Proof.
         -- destruct (Nat.ltb_spec (S x) (y + 1)) as [Hlt2 | _].
            ++ exfalso. lia.
            ++ reflexivity.
-  - (* lt_min *)
+  - (* lt_join *)
     simpl. rewrite IH1, IH2. reflexivity.
 Qed.
 
@@ -1701,13 +1709,13 @@ Qed.
 
 (* External per-field minimum, matching the internal field fold. *)
 Definition lt_of_ty_ctx_list (f : nat) (G : ctx) (Ts : list type) : lifetime :=
-  fold_right (fun A acc => lt_min (lt_of_ty_ctx f G A) acc) lt_free Ts.
+  fold_right (fun A acc => lt_join (lt_of_ty_ctx f G A) acc) lt_free Ts.
 
 Lemma lt_of_ty_ctx_list_nil : forall f G, lt_of_ty_ctx_list f G [] = lt_free.
 Proof. reflexivity. Qed.
 Lemma lt_of_ty_ctx_list_cons : forall f G A Ts,
   lt_of_ty_ctx_list f G (A :: Ts)
-  = lt_min (lt_of_ty_ctx f G A) (lt_of_ty_ctx_list f G Ts).
+  = lt_join (lt_of_ty_ctx f G A) (lt_of_ty_ctx_list f G Ts).
 Proof. reflexivity. Qed.
 
 (* Clean rewrite equations for each head constructor. *)
@@ -1731,7 +1739,7 @@ Lemma lt_of_ty_ctx_tyall : forall f G B A, lt_of_ty_ctx f G (type_ty_all B A) = 
 Proof. intros f G B A. destruct f; reflexivity. Qed.
 
 Lemma lt_of_ty_ctx_ctor : forall f G K l Ts,
-  lt_of_ty_ctx f G (type_ctor K l Ts) = lt_min l (lt_of_ty_ctx_list f G Ts).
+  lt_of_ty_ctx f G (type_ctor K l Ts) = lt_join l (lt_of_ty_ctx_list f G Ts).
 Proof.
   intros f G K l Ts. unfold lt_of_ty_ctx_list.
   destruct f as [|f']; simpl; f_equal;
@@ -1938,8 +1946,8 @@ Proof.
       reflexivity.
 Qed.
 
-Lemma shift_lt_min_eq : forall a c l1 l2,
-  shift_lt a c (lt_min l1 l2) = lt_min (shift_lt a c l1) (shift_lt a c l2).
+Lemma shift_lt_join_eq : forall a c l1 l2,
+  shift_lt a c (lt_join l1 l2) = lt_join (shift_lt a c l1) (shift_lt a c l2).
 Proof. reflexivity. Qed.
 Lemma shift_lt_in_ty_fun_eq : forall a c A l B,
   shift_lt_in_ty a c (type_fun A l B)
@@ -1958,12 +1966,12 @@ Proof.
                       = shift_lt 1 0 (lt_of_ty_ctx_list 0 G Ts)).
     + rewrite shift_lt_in_ty_var_eq. rewrite !(lt_of_ty_ctx_var 0). reflexivity.
     + rewrite shift_lt_in_ty_fun_eq. rewrite !lt_of_ty_ctx_fun. reflexivity.
-    + rewrite shift_lt_in_ty_ctor_eq. rewrite !lt_of_ty_ctx_ctor. rewrite shift_lt_min_eq.
+    + rewrite shift_lt_in_ty_ctor_eq. rewrite !lt_of_ty_ctx_ctor. rewrite shift_lt_join_eq.
       f_equal. exact IHT.
     + rewrite !lt_of_ty_ctx_ltall. reflexivity.
     + rewrite !lt_of_ty_ctx_tyall. reflexivity.
     + reflexivity.
-    + cbn [List.map]. rewrite !lt_of_ty_ctx_list_cons. rewrite shift_lt_min_eq.
+    + cbn [List.map]. rewrite !lt_of_ty_ctx_list_cons. rewrite shift_lt_join_eq.
       rewrite IHT, IHT0. reflexivity.
   - induction T using type_list_ind with
       (Q := fun Ts => lt_of_ty_ctx_list (S f') (bind_lt D::G) (List.map (shift_lt_in_ty 1 0) Ts)
@@ -1975,12 +1983,12 @@ Proof.
       * apply IHf.
       * reflexivity.
     + rewrite shift_lt_in_ty_fun_eq. rewrite !lt_of_ty_ctx_fun. reflexivity.
-    + rewrite shift_lt_in_ty_ctor_eq. rewrite !lt_of_ty_ctx_ctor. rewrite shift_lt_min_eq.
+    + rewrite shift_lt_in_ty_ctor_eq. rewrite !lt_of_ty_ctx_ctor. rewrite shift_lt_join_eq.
       f_equal. exact IHT.
     + rewrite !lt_of_ty_ctx_ltall. reflexivity.
     + rewrite !lt_of_ty_ctx_tyall. reflexivity.
     + reflexivity.
-    + cbn [List.map]. rewrite !lt_of_ty_ctx_list_cons. rewrite shift_lt_min_eq.
+    + cbn [List.map]. rewrite !lt_of_ty_ctx_list_cons. rewrite shift_lt_join_eq.
       rewrite IHT, IHT0. reflexivity.
 Qed.
 
@@ -2018,12 +2026,12 @@ Proof.
         (let fix gol (Ts : list type) : lifetime :=
            match Ts with
            | [] => lt_free
-           | T :: rest => lt_min (lt_of_ty_ctx 0 (bind_tm A :: G) T) (gol rest)
+           | T :: rest => lt_join (lt_of_ty_ctx 0 (bind_tm A :: G) T) (gol rest)
            end in gol Ts) =
         (let fix gol (Ts : list type) : lifetime :=
            match Ts with
            | [] => lt_free
-           | T :: rest => lt_min (lt_of_ty_ctx 0 G T) (gol rest)
+           | T :: rest => lt_join (lt_of_ty_ctx 0 G T) (gol rest)
           end in gol Ts)); intros; simpl; try reflexivity;
         try (f_equal; match goal with H : forall _ _, _ = _ |- _ => apply H end).
   - intros G A T. revert G A.
@@ -2034,12 +2042,12 @@ Proof.
         (let fix gol (Ts : list type) : lifetime :=
            match Ts with
            | [] => lt_free
-           | T :: rest => lt_min (lt_of_ty_ctx (S f) (bind_tm A :: G) T) (gol rest)
+           | T :: rest => lt_join (lt_of_ty_ctx (S f) (bind_tm A :: G) T) (gol rest)
            end in gol Ts) =
         (let fix gol (Ts : list type) : lifetime :=
            match Ts with
            | [] => lt_free
-           | T :: rest => lt_min (lt_of_ty_ctx (S f) G T) (gol rest)
+           | T :: rest => lt_join (lt_of_ty_ctx (S f) G T) (gol rest)
               end in gol Ts)); intros; simpl; try reflexivity;
             try (f_equal; match goal with H : forall _ _, _ = _ |- _ => apply H end).
             destruct (ctx_lookup_ty G n) as [B|]; [apply IHf|reflexivity].

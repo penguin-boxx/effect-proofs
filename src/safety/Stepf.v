@@ -5,7 +5,7 @@ Require Import Syntax.
 Require Import Substitution.
 Require Import Semantics.
 Require Import ShiftLaws.
-Require Import Markers.
+Require Import Eqb.
 
 (* ================================================================== *)
 (* A certified executable evaluator for the step relation.            *)
@@ -16,7 +16,7 @@ Require Import Markers.
 (* function [stepf : term -> option term] implementing the canonical  *)
 (* left-to-right call-by-value strategy, with the delimiter marker of *)
 (* a reducing handle chosen as [marker_bound <whole program>] — the   *)
-(* same canonical witness Progress.v uses (progress_open_safe,        *)
+(* same canonical witness Progress.v uses (progress_open,        *)
 (* T_Handle case).                                                    *)
 (*                                                                    *)
 (* Soundness ([stepf_sound]) says every Some-result is a real step;   *)
@@ -33,101 +33,8 @@ Require Import Markers.
 (* marker renaming is developed on top of MarkerRename.v.             *)
 (* ================================================================== *)
 
-(* ------------------------------------------------------------------ *)
-(* Boolean equality on lifetimes and types                            *)
-(*                                                                    *)
-(* H_Perform only fires when the capability's answer-type annotation  *)
-(* coincides syntactically with the delimiter's T_R (on reachable     *)
-(* terms marker_types_safe guarantees this; the evaluator must check  *)
-(* it on arbitrary terms).  Only the soundness direction              *)
-(* (eqb = true -> eq) is needed by stepf_sound.                       *)
-(* ------------------------------------------------------------------ *)
-
-Fixpoint lt_eqb (l1 l2 : lifetime) : bool :=
-  match l1, l2 with
-  | lt_var n1, lt_var n2 => Nat.eqb n1 n2
-  | lt_free, lt_free => true
-  | lt_local, lt_local => true
-  | lt_min a1 b1, lt_min a2 b2 => andb (lt_eqb a1 a2) (lt_eqb b1 b2)
-  | _, _ => false
-  end.
-
-Lemma lt_eqb_eq : forall l1 l2, lt_eqb l1 l2 = true -> l1 = l2.
-Proof.
-  induction l1 as [n| | |a IHa b IHb]; destruct l2; simpl; intros H;
-    try discriminate H; try reflexivity.
-  - apply Nat.eqb_eq in H. subst. reflexivity.
-  - apply Bool.andb_true_iff in H as [H1 H2].
-    rewrite (IHa _ H1), (IHb _ H2). reflexivity.
-Qed.
-
-Fixpoint ty_eqb (T1 T2 : type) : bool :=
-  let fix go (Ts1 Ts2 : list type) : bool :=
-    match Ts1, Ts2 with
-    | [], [] => true
-    | A :: r1, B :: r2 => andb (ty_eqb A B) (go r1 r2)
-    | _, _ => false
-    end
-  in
-  match T1, T2 with
-  | type_var n1, type_var n2 => Nat.eqb n1 n2
-  | type_fun A1 l1 B1, type_fun A2 l2 B2 =>
-      andb (ty_eqb A1 A2) (andb (lt_eqb l1 l2) (ty_eqb B1 B2))
-  | type_ctor K1 l1 Ts1, type_ctor K2 l2 Ts2 =>
-      andb (Nat.eqb K1 K2) (andb (lt_eqb l1 l2) (go Ts1 Ts2))
-  | type_lt_all A1, type_lt_all A2 => ty_eqb A1 A2
-  | type_ty_all B1 A1, type_ty_all B2 A2 =>
-      andb (ty_eqb B1 B2) (ty_eqb A1 A2)
-  | _, _ => false
-  end.
-
-Fixpoint ty_list_eqb (Ts1 Ts2 : list type) : bool :=
-  match Ts1, Ts2 with
-  | [], [] => true
-  | A :: r1, B :: r2 => andb (ty_eqb A B) (ty_list_eqb r1 r2)
-  | _, _ => false
-  end.
-
-(* go_eq lemma in the style of shift_tm_go_eq_map (ShiftLaws.v). *)
-Lemma ty_eqb_go_eq : forall Ts1 Ts2,
-  (fix go (Ts1 Ts2 : list type) : bool :=
-     match Ts1, Ts2 with
-     | [], [] => true
-     | A :: r1, B :: r2 => andb (ty_eqb A B) (go r1 r2)
-     | _, _ => false
-     end) Ts1 Ts2 = ty_list_eqb Ts1 Ts2.
-Proof.
-  intros Ts1 Ts2. reflexivity.
-Qed.
-
-Lemma ty_eqb_eq : forall T1 T2, ty_eqb T1 T2 = true -> T1 = T2.
-Proof.
-  apply (type_list_ind
-    (fun T1 => forall T2, ty_eqb T1 T2 = true -> T1 = T2)
-    (fun Ts1 => forall Ts2, ty_list_eqb Ts1 Ts2 = true -> Ts1 = Ts2)).
-  - intros n T2 H; destruct T2; simpl in H; try discriminate.
-    apply Nat.eqb_eq in H; subst; reflexivity.
-  - intros A l B IHA IHB T2 H; destruct T2; simpl in H; try discriminate.
-    apply Bool.andb_true_iff in H as [H1 H23].
-    apply Bool.andb_true_iff in H23 as [H2 H3].
-    rewrite (IHA _ H1), (lt_eqb_eq _ _ H2), (IHB _ H3). reflexivity.
-  - intros K l Ts IHTs T2 H; destruct T2 as [| |K2 l2 Ts2| |]; simpl in H;
-      try discriminate.
-    rewrite ty_eqb_go_eq in H.
-    apply Bool.andb_true_iff in H as [H1 H23].
-    apply Bool.andb_true_iff in H23 as [H2 H3].
-    apply Nat.eqb_eq in H1.
-    rewrite H1, (lt_eqb_eq _ _ H2), (IHTs _ H3). reflexivity.
-  - intros A IHA T2 H; destruct T2; simpl in H; try discriminate.
-    rewrite (IHA _ H). reflexivity.
-  - intros B A IHB IHA T2 H; destruct T2; simpl in H; try discriminate.
-    apply Bool.andb_true_iff in H as [H1 H2].
-    rewrite (IHB _ H1), (IHA _ H2). reflexivity.
-  - intros Ts2 H; destruct Ts2; simpl in H; [reflexivity | discriminate].
-  - intros A Ts IHA IHTs Ts2 H; destruct Ts2; simpl in H; try discriminate.
-    apply Bool.andb_true_iff in H as [H1 H2].
-    rewrite (IHA _ H1), (IHTs _ H2). reflexivity.
-Qed.
+(* Boolean equality on lifetimes/types ([lt_eqb]/[ty_eqb]) and its    *)
+(* spec lemmas live in Eqb.v.                                          *)
 
 (* ------------------------------------------------------------------ *)
 (* Evaluator verdicts                                                 *)
@@ -433,6 +340,42 @@ Ltac lspec_absurd :=
          | split; [let H := fresh in intros ? H; discriminate H
                   | let H := fresh in intros ? ? ? ? H; discriminate H]].
 
+(* The verdict is SR_step: dismiss the other conjuncts and introduce  *)
+(* the reduct equation.                                               *)
+Ltac sg_step_intro :=
+  split; [let H := fresh in intros H; discriminate H|];
+  split; [|let H := fresh in intros ? ? H; discriminate H];
+  let u := fresh "u" in let Hu := fresh "Hu" in
+  intros u Hu; injection Hu as Hu; subst u.
+
+(* The verdict is SR_esc: dismiss the other conjuncts and introduce   *)
+(* the escape-info/context equations.                                 *)
+Ltac sg_esc_intro :=
+  split; [let H := fresh in intros H; discriminate H|];
+  split; [let H := fresh in intros ? H; discriminate H|];
+  let e := fresh "e" in let P := fresh "P" in let He := fresh "He" in
+  intros e P He; injection He as He1 He2; subst e P.
+
+(* Close a step conjunct whose redex sits under frame [F]: both plug  *)
+(* equations of the subterm's IH have been rewritten into the goal.   *)
+Ltac sg_frame F r r' Hred :=
+  exists F, r, r';
+  split; [constructor; assumption|];
+  split; [simpl; reflexivity|];
+  split; [simpl; reflexivity|]; exact Hred.
+
+(* Close an escape conjunct: the composite context inherits purity    *)
+(* and well-formedness by one constructor application each.           *)
+Ltac sg_esc Hpure Hv :=
+  split; [split; [constructor; exact Hpure
+                 |split; [constructor; assumption|exact Hv]]|];
+  simpl; reflexivity.
+
+(* A head redex fires at the hole; continue with the head rule.       *)
+Ltac sg_head r r' :=
+  sg_step_intro; exists EC_hole, r, r';
+  split; [constructor|]; split; [reflexivity|]; split; [reflexivity|]; left.
+
 Lemma stepf_go_sound : forall fresh t, go_spec fresh t.
 Proof.
   intros fresh.
@@ -452,47 +395,25 @@ Proof.
                        |rc opx Ss' A' ag|Et mm Ts' TR ob|mm TB TR bd];
           try spec_absurd.
         (* t1 = term_lam body T1 *)
-        split; [intros H; discriminate H|].
-        split; [|intros ? ? H; discriminate H].
-        intros u Hu. injection Hu as Hu. subst u.
-        exists EC_hole, (term_app (term_lam body T1) t2), (subst_tm 0 t2 body).
-        split; [constructor|]. split; [reflexivity|]. split; [reflexivity|].
-        left. apply H_Beta. exact IH2v.
+        sg_head (term_app (term_lam body T1) t2) (subst_tm 0 t2 body).
+        apply H_Beta. exact IH2v.
       * (* t2 stepped *)
-        split; [intros H; discriminate H|].
-        split; [|intros ? ? H; discriminate H].
-        intros u Hu. injection Hu as Hu. subst u.
-        destruct (IH2s _ eq_refl) as (E & r & r' & HE & Ht2 & Ht2' & Hred).
-        exists (EC_app2 t1 E), r, r'.
-        split; [constructor; assumption|].
-        split; [simpl; rewrite <- Ht2; reflexivity|].
-        split; [simpl; rewrite <- Ht2'; reflexivity|]. exact Hred.
+        sg_step_intro.
+        destruct (IH2s _ eq_refl) as (E & r & r' & HE & -> & -> & Hred).
+        sg_frame (EC_app2 t1 E) r r' Hred.
       * (* t2 escapes *)
-        split; [intros H; discriminate H|].
-        split; [intros ? H; discriminate H|].
-        intros e P He. injection He as He1 He2. subst e P.
-        destruct (IH2e _ _ eq_refl) as [[Hpure [Hwf Hv]] Heq].
-        split; [split; [constructor; exact Hpure
-                       |split; [constructor; assumption|exact Hv]]|].
-        simpl. rewrite <- Heq. reflexivity.
+        sg_esc_intro.
+        destruct (IH2e _ _ eq_refl) as [[Hpure [Hwf Hv]] ->].
+        sg_esc Hpure Hv.
       * spec_absurd.
     + (* t1 stepped *)
-      split; [intros H; discriminate H|].
-      split; [|intros ? ? H; discriminate H].
-      intros u Hu. injection Hu as Hu. subst u.
-      destruct (IH1s _ eq_refl) as (E & r & r' & HE & Ht1 & Ht1' & Hred).
-      exists (EC_app1 E t2), r, r'.
-      split; [constructor; assumption|].
-      split; [simpl; rewrite <- Ht1; reflexivity|].
-      split; [simpl; rewrite <- Ht1'; reflexivity|]. exact Hred.
+      sg_step_intro.
+      destruct (IH1s _ eq_refl) as (E & r & r' & HE & -> & -> & Hred).
+      sg_frame (EC_app1 E t2) r r' Hred.
     + (* t1 escapes *)
-      split; [intros H; discriminate H|].
-      split; [intros ? H; discriminate H|].
-      intros e P He. injection He as He1 He2. subst e P.
-      destruct (IH1e _ _ eq_refl) as [[Hpure [Hwf Hv]] Heq].
-      split; [split; [constructor; exact Hpure
-                     |split; [constructor; assumption|exact Hv]]|].
-      simpl. rewrite <- Heq. reflexivity.
+      sg_esc_intro.
+      destruct (IH1e _ _ eq_refl) as [[Hpure [Hwf Hv]] ->].
+      sg_esc Hpure Hv.
     + spec_absurd.
   - (* term_lam *)
     intros body T _. unfold go_spec. simpl.
@@ -508,28 +429,14 @@ Proof.
                      |rc opx Ss' A' ag|Et mm Ts' TR ob|mm TB TR bd];
         try spec_absurd.
       (* t1 = term_ty_lam bound bd *)
-      split; [intros H; discriminate H|].
-      split; [|intros ? ? H; discriminate H].
-      intros u Hu. injection Hu as Hu. subst u.
-      exists EC_hole, (term_ty_app (term_ty_lam bound bd) T),
-             (subst_ty_in_tm 0 T bd).
-      split; [constructor|]. split; [reflexivity|]. split; [reflexivity|].
-      left. apply H_TyBeta.
-    + split; [intros H; discriminate H|].
-      split; [|intros ? ? H; discriminate H].
-      intros u Hu. injection Hu as Hu. subst u.
-      destruct (IH1s _ eq_refl) as (E & r & r' & HE & Ht1 & Ht1' & Hred).
-      exists (EC_ty_app E T), r, r'.
-      split; [constructor; assumption|].
-      split; [simpl; rewrite <- Ht1; reflexivity|].
-      split; [simpl; rewrite <- Ht1'; reflexivity|]. exact Hred.
-    + split; [intros H; discriminate H|].
-      split; [intros ? H; discriminate H|].
-      intros e P He. injection He as He1 He2. subst e P.
-      destruct (IH1e _ _ eq_refl) as [[Hpure [Hwf Hv]] Heq].
-      split; [split; [constructor; exact Hpure
-                     |split; [constructor; assumption|exact Hv]]|].
-      simpl. rewrite <- Heq. reflexivity.
+      sg_head (term_ty_app (term_ty_lam bound bd) T) (subst_ty_in_tm 0 T bd).
+      apply H_TyBeta.
+    + sg_step_intro.
+      destruct (IH1s _ eq_refl) as (E & r & r' & HE & -> & -> & Hred).
+      sg_frame (EC_ty_app E T) r r' Hred.
+    + sg_esc_intro.
+      destruct (IH1e _ _ eq_refl) as [[Hpure [Hwf Hv]] ->].
+      sg_esc Hpure Hv.
     + spec_absurd.
   - (* term_ty_lam *)
     intros bound body _. unfold go_spec. simpl.
@@ -545,27 +452,14 @@ Proof.
                      |rc opx Ss' A' ag|Et mm Ts' TR ob|mm TB TR bd];
         try spec_absurd.
       (* t1 = term_lt_lam bd *)
-      split; [intros H; discriminate H|].
-      split; [|intros ? ? H; discriminate H].
-      intros u Hu. injection Hu as Hu. subst u.
-      exists EC_hole, (term_lt_app (term_lt_lam bd) l), (subst_lt_in_tm 0 l bd).
-      split; [constructor|]. split; [reflexivity|]. split; [reflexivity|].
-      left. apply H_LtBeta.
-    + split; [intros H; discriminate H|].
-      split; [|intros ? ? H; discriminate H].
-      intros u Hu. injection Hu as Hu. subst u.
-      destruct (IH1s _ eq_refl) as (E & r & r' & HE & Ht1 & Ht1' & Hred).
-      exists (EC_lt_app E l), r, r'.
-      split; [constructor; assumption|].
-      split; [simpl; rewrite <- Ht1; reflexivity|].
-      split; [simpl; rewrite <- Ht1'; reflexivity|]. exact Hred.
-    + split; [intros H; discriminate H|].
-      split; [intros ? H; discriminate H|].
-      intros e P He. injection He as He1 He2. subst e P.
-      destruct (IH1e _ _ eq_refl) as [[Hpure [Hwf Hv]] Heq].
-      split; [split; [constructor; exact Hpure
-                     |split; [constructor; assumption|exact Hv]]|].
-      simpl. rewrite <- Heq. reflexivity.
+      sg_head (term_lt_app (term_lt_lam bd) l) (subst_lt_in_tm 0 l bd).
+      apply H_LtBeta.
+    + sg_step_intro.
+      destruct (IH1s _ eq_refl) as (E & r & r' & HE & -> & -> & Hred).
+      sg_frame (EC_lt_app E l) r r' Hred.
+    + sg_esc_intro.
+      destruct (IH1e _ _ eq_refl) as [[Hpure [Hwf Hv]] ->].
+      sg_esc Hpure Hv.
     + spec_absurd.
   - (* term_lt_lam *)
     intros body _. unfold go_spec. simpl.
@@ -577,22 +471,13 @@ Proof.
     destruct (stepf_list fresh ts) as [|ts'|e vsl P vsr|] eqn:Hl.
     + split; [intros _; constructor; exact (IHv eq_refl)|].
       split; [intros ? H; discriminate H|intros ? ? H; discriminate H].
-    + split; [intros H; discriminate H|].
-      split; [|intros ? ? H; discriminate H].
-      intros u Hu. injection Hu as Hu. subst u.
+    + sg_step_intro.
       destruct (IHs _ eq_refl)
-        as (vsl & E & r & r' & vsr & Hvvsl & HE & Hts & Hts' & Hred).
-      exists (EC_ctor K l lts Ts vsl E vsr), r, r'.
-      split; [constructor; assumption|].
-      split; [simpl; rewrite Hts; reflexivity|].
-      split; [simpl; rewrite Hts'; reflexivity|]. exact Hred.
-    + split; [intros H; discriminate H|].
-      split; [intros ? H; discriminate H|].
-      intros e' P' He'. injection He' as He1 He2. subst e' P'.
-      destruct (IHe _ _ _ _ eq_refl) as [[Hpure [Hwf Hv]] [Hvvsl Hts]].
-      split; [split; [constructor; exact Hpure
-                     |split; [constructor; assumption|exact Hv]]|].
-      simpl. rewrite Hts. reflexivity.
+        as (vsl & E & r & r' & vsr & Hvvsl & HE & -> & -> & Hred).
+      sg_frame (EC_ctor K l lts Ts vsl E vsr) r r' Hred.
+    + sg_esc_intro.
+      destruct (IHe _ _ _ _ eq_refl) as [[Hpure [Hwf Hv]] [Hvvsl ->]].
+      sg_esc Hpure Hv.
     + spec_absurd.
   - (* term_match *)
     intros scrut K n_lt arity yes_body no_body [IHv [IHs IHe]] _ _.
@@ -609,49 +494,30 @@ Proof.
       * apply Nat.eqb_eq in HK. subst K'.
         destruct (Nat.eqb arity (List.length vs)) eqn:Har.
         -- apply Nat.eqb_eq in Har. subst arity.
-           split; [intros H; discriminate H|].
-           split; [|intros ? ? H; discriminate H].
-           intros u Hu. injection Hu as Hu. subst u.
-           exists EC_hole,
+           sg_head
              (term_match (term_ctor K l' lts' Ts' vs) K n_lt (List.length vs)
-                yes_body no_body),
+                yes_body no_body)
              (subst_list_tm vs (subst_list_lt_in_tm lts' yes_body)).
-           split; [constructor|]. split; [reflexivity|]. split; [reflexivity|].
-           left. apply H_MatchYes. assumption.
+           apply H_MatchYes. assumption.
         -- spec_absurd.
       * apply Nat.eqb_neq in HK.
-        split; [intros H; discriminate H|].
-        split; [|intros ? ? H; discriminate H].
-        intros u Hu. injection Hu as Hu. subst u.
-        exists EC_hole,
+        sg_head
           (term_match (term_ctor K' l' lts' Ts' vs) K n_lt arity
-             yes_body no_body),
+             yes_body no_body)
           no_body.
-        split; [constructor|]. split; [reflexivity|]. split; [reflexivity|].
-        left. apply H_MatchNo; [assumption|].
+        apply H_MatchNo; [assumption|].
         intros Heq. apply HK. symmetry. exact Heq.
-    + split; [intros H; discriminate H|].
-      split; [|intros ? ? H; discriminate H].
-      intros u Hu. injection Hu as Hu. subst u.
-      destruct (IHs _ eq_refl) as (E & r & r' & HE & Hsce & Hsce' & Hred).
-      exists (EC_match E K n_lt arity yes_body no_body), r, r'.
-      split; [constructor; assumption|].
-      split; [simpl; rewrite <- Hsce; reflexivity|].
-      split; [simpl; rewrite <- Hsce'; reflexivity|]. exact Hred.
-    + split; [intros H; discriminate H|].
-      split; [intros ? H; discriminate H|].
-      intros e' P' He'. injection He' as He1 He2. subst e' P'.
-      destruct (IHe _ _ eq_refl) as [[Hpure [Hwf Hv]] Heq].
-      split; [split; [constructor; exact Hpure
-                     |split; [constructor; assumption|exact Hv]]|].
-      simpl. rewrite <- Heq. reflexivity.
+    + sg_step_intro.
+      destruct (IHs _ eq_refl) as (E & r & r' & HE & -> & -> & Hred).
+      sg_frame (EC_match E K n_lt arity yes_body no_body) r r' Hred.
+    + sg_esc_intro.
+      destruct (IHe _ _ eq_refl) as [[Hpure [Hwf Hv]] ->].
+      sg_esc Hpure Hv.
     + spec_absurd.
   - (* term_handle: allocate the fresh delimiter marker *)
     intros E_tag Ts T_B T_R op_bodies body _ _.
     unfold go_spec. simpl.
-    split; [intros H; discriminate H|].
-    split; [|intros ? ? H; discriminate H].
-    intros u Hu. injection Hu as Hu. subst u.
+    sg_step_intro.
     exists EC_hole, (term_handle E_tag Ts T_B T_R op_bodies body),
       (term_handler_m fresh T_B T_R
         (subst_tm 0 (term_cap E_tag fresh Ts T_R op_bodies) body)).
@@ -672,42 +538,22 @@ Proof.
                          |Et mm Ts' TR ob|mm TB TR bd];
           try spec_absurd.
         (* recv = term_cap Et mm nb Ts' TR ob *)
-        split; [intros H; discriminate H|].
-        split; [intros ? H; discriminate H|].
-        intros e P He. injection He as He1 He2. subst e P.
+        sg_esc_intro.
         split; [split; [constructor|split; [constructor|exact IHav]]|].
         reflexivity.
-      * split; [intros H; discriminate H|].
-        split; [|intros ? ? H; discriminate H].
-        intros u Hu. injection Hu as Hu. subst u.
-        destruct (IHas _ eq_refl) as (E & r & r'' & HE & Harg & Harg' & Hred).
-        exists (EC_perform_a recv op Ss A E), r, r''.
-        split; [constructor; assumption|].
-        split; [simpl; rewrite <- Harg; reflexivity|].
-        split; [simpl; rewrite <- Harg'; reflexivity|]. exact Hred.
-      * split; [intros H; discriminate H|].
-        split; [intros ? H; discriminate H|].
-        intros e' P' He'. injection He' as He1 He2. subst e' P'.
-        destruct (IHae _ _ eq_refl) as [[Hpure [Hwf Hv]] Heq].
-        split; [split; [constructor; exact Hpure
-                       |split; [constructor; assumption|exact Hv]]|].
-        simpl. rewrite <- Heq. reflexivity.
+      * sg_step_intro.
+        destruct (IHas _ eq_refl) as (E & r & r'' & HE & -> & -> & Hred).
+        sg_frame (EC_perform_a recv op Ss A E) r r'' Hred.
+      * sg_esc_intro.
+        destruct (IHae _ _ eq_refl) as [[Hpure [Hwf Hv]] ->].
+        sg_esc Hpure Hv.
       * spec_absurd.
-    + split; [intros H; discriminate H|].
-      split; [|intros ? ? H; discriminate H].
-      intros u Hu. injection Hu as Hu. subst u.
-      destruct (IHrs _ eq_refl) as (E & r & r'' & HE & Hrecv & Hrecv' & Hred).
-      exists (EC_perform_r E op Ss A arg), r, r''.
-      split; [constructor; assumption|].
-      split; [simpl; rewrite <- Hrecv; reflexivity|].
-      split; [simpl; rewrite <- Hrecv'; reflexivity|]. exact Hred.
-    + split; [intros H; discriminate H|].
-      split; [intros ? H; discriminate H|].
-      intros e' P' He'. injection He' as He1 He2. subst e' P'.
-      destruct (IHre _ _ eq_refl) as [[Hpure [Hwf Hv]] Heq].
-      split; [split; [constructor; exact Hpure
-                     |split; [constructor; assumption|exact Hv]]|].
-      simpl. rewrite <- Heq. reflexivity.
+    + sg_step_intro.
+      destruct (IHrs _ eq_refl) as (E & r & r'' & HE & -> & -> & Hred).
+      sg_frame (EC_perform_r E op Ss A arg) r r'' Hred.
+    + sg_esc_intro.
+      destruct (IHre _ _ eq_refl) as [[Hpure [Hwf Hv]] ->].
+      sg_esc Hpure Hv.
     + spec_absurd.
   - (* term_cap *)
     intros E m Ts T_R op_bodies _. unfold go_spec. simpl.
@@ -719,21 +565,12 @@ Proof.
     destruct (stepf_go fresh body) as [|b'|e P|] eqn:Hb.
     + (* value body: H_Return *)
       specialize (IHv eq_refl).
-      split; [intros H; discriminate H|].
-      split; [|intros ? ? H; discriminate H].
-      intros u Hu. injection Hu as Hu. subst u.
-      exists EC_hole, (term_handler_m m0 T_B T_R body), body.
-      split; [constructor|]. split; [reflexivity|]. split; [reflexivity|].
-      left. apply H_Return. exact IHv.
+      sg_head (term_handler_m m0 T_B T_R body) body.
+      apply H_Return. exact IHv.
     + (* body stepped *)
-      split; [intros H; discriminate H|].
-      split; [|intros ? ? H; discriminate H].
-      intros u Hu. injection Hu as Hu. subst u.
-      destruct (IHs _ eq_refl) as (E & r & r' & HE & Hbody & Hbody' & Hred).
-      exists (EC_handler_m m0 T_B T_R E), r, r'.
-      split; [constructor; assumption|].
-      split; [simpl; rewrite <- Hbody; reflexivity|].
-      split; [simpl; rewrite <- Hbody'; reflexivity|]. exact Hred.
+      sg_step_intro.
+      destruct (IHs _ eq_refl) as (E & r & r' & HE & -> & -> & Hred).
+      sg_frame (EC_handler_m m0 T_B T_R E) r r' Hred.
     + (* body escapes *)
       destruct (Nat.eqb (esc_mk e) m0) eqn:Hm.
       * apply Nat.eqb_eq in Hm.
@@ -742,9 +579,7 @@ Proof.
            apply ty_eqb_eq in HTR.
            destruct (nth_error (esc_ops e) (esc_opix e)) as [[nb ob]|] eqn:Hnth;
              [|spec_absurd].
-           split; [intros H; discriminate H|].
-           split; [|intros ? ? H; discriminate H].
-           intros u Hu. injection Hu as Hu. subst u.
+           sg_step_intro.
            destruct (IHe _ _ eq_refl) as [[Hpure [Hwf Hv]] Heq].
            exists EC_hole, (term_handler_m m0 T_B T_R body),
              (subst_list_tm
@@ -762,13 +597,11 @@ Proof.
         -- spec_absurd.
       * (* different marker: forward the escape one delimiter out *)
         apply Nat.eqb_neq in Hm.
-        split; [intros H; discriminate H|].
-        split; [intros ? H; discriminate H|].
-        intros e' P' He'. injection He' as He1 He2. subst e' P'.
-        destruct (IHe _ _ eq_refl) as [[Hpure [Hwf Hv]] Heq].
+        sg_esc_intro.
+        destruct (IHe _ _ eq_refl) as [[Hpure [Hwf Hv]] ->].
         split; [split; [constructor; [exact Hm|exact Hpure]
                        |split; [constructor; assumption|exact Hv]]|].
-        simpl. rewrite <- Heq. reflexivity.
+        simpl. reflexivity.
     + spec_absurd.
   - (* nil *)
     unfold go_list_spec. simpl.
@@ -786,36 +619,32 @@ Proof.
         split; [|intros ? ? ? ? H; discriminate H].
         intros ts' Hts'. injection Hts' as Hts'. subst ts'.
         destruct (IHrs _ eq_refl)
-          as (vsl & E & r & r' & vsr & Hvvsl & HE & Hre & Hre' & Hred).
+          as (vsl & E & r & r' & vsr & Hvvsl & HE & -> & -> & Hred).
         exists (u :: vsl), E, r, r', vsr.
         split; [constructor; assumption|]. split; [assumption|].
-        split; [simpl; rewrite Hre; reflexivity|].
-        split; [simpl; rewrite Hre'; reflexivity|]. exact Hred.
+        split; [reflexivity|]. split; [reflexivity|]. exact Hred.
       * split; [intros H; discriminate H|].
         split; [intros ? H; discriminate H|].
         intros e' vsl' P' vsr' He'.
         injection He' as He1 He2 He3 He4. subst e' vsl' P' vsr'.
-        destruct (IHre _ _ _ _ eq_refl) as [Hok [Hvvsl Hre]].
+        destruct (IHre _ _ _ _ eq_refl) as [Hok [Hvvsl ->]].
         split; [exact Hok|].
-        split; [constructor; assumption|].
-        simpl. rewrite Hre. reflexivity.
+        split; [constructor; assumption|]. reflexivity.
       * lspec_absurd.
     + split; [intros H; discriminate H|].
       split; [|intros ? ? ? ? H; discriminate H].
       intros ts' Hts'. injection Hts' as Hts'. subst ts'.
-      destruct (IHus _ eq_refl) as (E & r & r' & HE & Hueq & Hu'eq & Hred).
+      destruct (IHus _ eq_refl) as (E & r & r' & HE & -> & -> & Hred).
       exists [], E, r, r', rest.
       split; [constructor|]. split; [assumption|].
-      split; [simpl; rewrite <- Hueq; reflexivity|].
-      split; [simpl; rewrite <- Hu'eq; reflexivity|]. exact Hred.
+      split; [reflexivity|]. split; [reflexivity|]. exact Hred.
     + split; [intros H; discriminate H|].
       split; [intros ? H; discriminate H|].
       intros e' vsl' P' vsr' He'.
       injection He' as He1 He2 He3 He4. subst e' vsl' P' vsr'.
-      destruct (IHue _ _ eq_refl) as [Hok Hueq].
+      destruct (IHue _ _ eq_refl) as [Hok ->].
       split; [exact Hok|].
-      split; [constructor|].
-      simpl. rewrite <- Hueq. reflexivity.
+      split; [constructor|]. reflexivity.
     + lspec_absurd.
   - exact I.
   - intros. exact I.
@@ -873,6 +702,8 @@ Proof.
   - intros; exact I.
 Qed.
 
+(* PUBLIC API — terminal deliverable: no internal consumers; do not
+   mistake for dead code.  Gated by scripts/check_assumptions.py. *)
 Theorem stepf_value_none : forall t, value t -> stepf t = None.
 Proof.
   intros t Hv. unfold stepf.
@@ -893,6 +724,8 @@ Fixpoint stepf_run (n : nat) (t : term) : term :=
       end
   end.
 
+(* PUBLIC API — terminal deliverable: no internal consumers; do not
+   mistake for dead code.  Gated by scripts/check_assumptions.py. *)
 Theorem stepf_run_sound : forall n t, multi_step t (stepf_run n t).
 Proof.
   induction n as [|k IH]; intros t; simpl.

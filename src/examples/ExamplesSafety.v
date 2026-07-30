@@ -7,9 +7,10 @@ Require Import Substitution.
 Require Import Semantics.
 Require Import Typing.
 Require Import Subst.
-Require Import Markers.
+Require Import MarkerAnnots.
+Require Import WellScoped.
+Require Import WsRtLaws.
 Require Import Progress.
-Require Import Inversions.
 Require Import Preservation.
 Require Import Soundness.
 Require Import Escape.
@@ -76,14 +77,14 @@ Proof.
 Qed.
 
 (* A second witness, on the Reader example. *)
-Theorem readerExample_safe : forall u,
-  multi_step readerExample u -> ~ stuck u.
+Theorem reader_example_safe : forall u,
+  multi_step reader_example u -> ~ stuck u.
 Proof.
   intros u Hms.
-  apply (source_type_soundness full_ctx readerExample u (T_Nat `Lf)
+  apply (source_type_soundness full_ctx reader_example u (T_Nat `Lf)
            eval_ctx_full_ctx).
   - vm_compute; reflexivity.
-  - exact typed_readerExample_proof.
+  - exact typed_reader_example_proof.
   - exact Hms.
 Qed.
 
@@ -117,17 +118,17 @@ Qed.
 (* Reader example, every value crossing a handler boundary — the       *)
 (* operation argument entering, or the delimiter's result leaving —    *)
 (* is typed at an escapable (noloc) type.                              *)
-Theorem readerExample_boundary_noloc : forall u v,
-  multi_step readerExample u ->
+Theorem reader_example_boundary_noloc : forall u v,
+  multi_step reader_example u ->
   boundary_crossing u v ->
   exists S,
     full_ctx ⊢ₜ v : S /\ full_ctx ⊢ₗ lt_of_ty_G full_ctx S <: lt_free.
 Proof.
   intros u v Hms Hbc.
-  apply (source_handler_boundary_noloc full_ctx readerExample (T_Nat `Lf) u v
+  apply (source_handler_boundary_noloc full_ctx reader_example (T_Nat `Lf) u v
            eval_ctx_full_ctx).
   - vm_compute; reflexivity.
-  - exact typed_readerExample_proof.
+  - exact typed_reader_example_proof.
   - exact Hms.
   - exact Hbc.
 Qed.

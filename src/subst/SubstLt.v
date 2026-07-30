@@ -9,7 +9,12 @@ Require Import ShiftLaws.
 Require Import Weakening.
 
 (* ================================================================== *)
-(* SubstLt : substitute a lifetime for an lt-binder at depth n        *)
+(* SubstLt : substitute a lifetime for an lt-binder at depth n.       *)
+(*                                                                    *)
+(* Also home to the lt/ty WEAKENING payloads [typing_InsTy] /         *)
+(* [typing_InsLt] (their T_Match cases need this file's elim and      *)
+(* multi_subst theory — see the Weakening.v header) and to the        *)
+(* elim-shift commutation family they rest on.                        *)
 (* ================================================================== *)
 
 Definition subst_lt_var (n a : nat) : nat := if Nat.ltb n a then pred a else a.
@@ -367,11 +372,11 @@ Proof.
       * eapply lt_wf_SubstLt; eauto.
   - apply LS_Refl. eapply lt_wf_SubstLt; eauto.
   - eapply LS_Trans; [apply (IH1 R n G' HS) | apply (IH2 R n G' HS)].
-  - apply LS_MinL; [apply (IH1 R n G' HS) | apply (IH2 R n G' HS)].
-  - apply LS_MinR1.
+  - apply LS_JoinL; [apply (IH1 R n G' HS) | apply (IH2 R n G' HS)].
+  - apply LS_JoinR1.
     + apply (IH1 R n G' HS).
     + eapply lt_wf_SubstLt; eauto.
-  - apply LS_MinR2.
+  - apply LS_JoinR2.
     + apply (IH1 R n G' HS).
     + eapply lt_wf_SubstLt; eauto.
 Qed.
@@ -937,7 +942,7 @@ Proof.
     rewrite HA by exact Hlen. f_equal. apply HTs. exact Hlen.
 Qed.
 
-(* Deprecated specialized shape kept via the generalized theorem. *)
+(* Specialized zero-cutoff shapes, derived from the generalized theorem. *)
 Lemma multi_subst_lt_shift_cancel0 : forall k lts l,
   List.length lts = k ->
   multi_subst_lt 0 lts (shift_lt k 0 l) = l.
@@ -1169,19 +1174,19 @@ Proof.
   - reflexivity.
   - reflexivity.
   - intros K l Ts HTs c. rewrite shift_lt_in_ty_ctor_eq. simpl.
-    rewrite HTs. rewrite <- shift_lt_min_eq. reflexivity.
+    rewrite HTs. rewrite <- shift_lt_join_eq. reflexivity.
   - reflexivity.
   - reflexivity.
   - reflexivity.
   - intros A Ts HA HTs c. cbn [List.map]. unfold lt_of_ty_list in *. simpl.
-    rewrite HA, HTs. rewrite <- shift_lt_min_eq. reflexivity.
+    rewrite HA, HTs. rewrite <- shift_lt_join_eq. reflexivity.
 Qed.
 
 Lemma lt_of_ty_list_shift_lt : forall Ts c,
   lt_of_ty_list (List.map (shift_lt_in_ty 1 c) Ts) = shift_lt 1 c (lt_of_ty_list Ts).
 Proof.
   intros Ts c. induction Ts as [|T Ts IH]; simpl; [reflexivity|].
-  rewrite lt_of_ty_shift_lt, IH. rewrite <- shift_lt_min_eq. reflexivity.
+  rewrite lt_of_ty_shift_lt, IH. rewrite <- shift_lt_join_eq. reflexivity.
 Qed.
 
 Lemma elim_ty_shift_ty : forall T lvar bound p c,
@@ -1469,7 +1474,7 @@ Proof.
   - intros Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields
            result_ty result_tag l vs
            Hctor Heff Hlts Hwflts Hrho HTs HwfTs Hresult Hshape Hresult_eff Hwfl Hlt Hbounded Hlen Hargs IHargs c G' HIns.
-    simpl. unfold shift_ty_list. rewrite shift_ty_in_tm_go_eq_map.
+    simpl. unfold map_shift_ty. rewrite shift_ty_in_tm_go_eq_map.
     eapply T_Ctor with
       (n_lt := n_lt) (n_ty := n_ty)
       (sigma_fields := List.map (shift_ty 1 (n_ty + c)) sigma_fields)
@@ -1500,7 +1505,7 @@ Proof.
            rho_fields scrut_result_ty result_tag result_l Γyes yes_body eta elim_result no_body
            Hneq Hctor Heff Hlts Hrho HTs HwfTs Hscrut_result Hscrut_shape Hresult_eff Hresult_ne
            HwfDelta Hresult_l Hscrut IHscrut Harity HΓyes Hyes IHyes Helim Hno IHno c G' HIns.
-    simpl. unfold shift_ty_list. subst Γyes.
+    simpl. unfold map_shift_ty. subst Γyes.
     eapply T_Match with
       (n_lt := n_lt) (n_ty := n_ty)
       (sigma_fields := List.map (shift_ty 1 (n_ty + c)) sigma_fields)
@@ -1535,7 +1540,7 @@ Proof.
     + apply IHno. exact HIns.
   - intros Γ E_tag m Ts op_bodies n_α ops T_R
            Heff HTs HwfTs HwfTR Hfst Hops IHops c G' HIns.
-    simpl. rewrite shift_ty_go_eq_map. unfold shift_ty_list.
+    simpl. rewrite shift_ty_go_eq_map. unfold map_shift_ty.
     rewrite shift_ty_in_tm_go_ops_eq_map.
     eapply T_Cap with
       (n_α := n_α)
@@ -1567,7 +1572,7 @@ Proof.
         apply InsTy_tm. apply InsTy_tm. apply InsTy_push_ty_vars_any_at_free. exact HIns.
   - intros Γ E_tag Ts op_bodies body n_α ops T_B T_R
            Heff HTs HwfTs HwfTB HwfTR Hnolocal Hsub Hfst Hops IHops Hbody IHbody c G' HIns.
-    simpl. unfold shift_ty_list.
+    simpl. unfold map_shift_ty.
     rewrite shift_ty_in_tm_go_ops_eq_map.
     eapply T_Handle with
       (n_α := n_α)
@@ -1604,7 +1609,7 @@ Proof.
     + apply IHbody. apply InsTy_tm. exact HIns.
   - intros Γ recv op arg E_tag Delta Ts Ss n_α ops n_β sig ret sig_inst ret_inst
            Hrecv IHrecv Heff Hnth HTs HSs HwfSs HnoSs Hsig HnoSig Hret HwfRet Harg IHarg c G' HIns.
-    simpl. unfold shift_ty_list.
+    simpl. unfold map_shift_ty.
     eapply T_Perform with
       (n_α := n_α)
       (ops := List.map (fun osig =>
@@ -1648,7 +1653,7 @@ Proof.
     + apply IH. exact HIns.
 Qed.
 
-Lemma shift_lt_in_ty_subst_ty_comm_for_typing_InsLt : forall T c n Sb,
+Lemma shift_lt_in_ty_subst_ty_comm : forall T c n Sb,
   shift_lt_in_ty 1 c (subst_ty n Sb T)
   = subst_ty n (shift_lt_in_ty 1 c Sb) (shift_lt_in_ty 1 c T).
 Proof.
@@ -1690,7 +1695,7 @@ Proof.
     cbn [List.map]. rewrite HA. f_equal. apply HTs.
 Qed.
 
-Lemma inst_ty_vars_shift_lt_for_typing_InsLt : forall n Ts T c,
+Lemma inst_ty_vars_shift_lt : forall n Ts T c,
   List.length Ts = n ->
   inst_ty_vars n (List.map (shift_lt_in_ty 1 c) Ts) (shift_lt_in_ty 1 c T) =
   shift_lt_in_ty 1 c (inst_ty_vars n Ts T).
@@ -1701,7 +1706,7 @@ Proof.
   - destruct Ts as [|U rest]; [simpl in Hlen; discriminate|].
     simpl in Hlen. injection Hlen as Hlen.
     simpl. rewrite shift_ty_shift_lt_in_ty_commute.
-    rewrite <- shift_lt_in_ty_subst_ty_comm_for_typing_InsLt.
+    rewrite <- shift_lt_in_ty_subst_ty_comm.
     rewrite IH by exact Hlen. reflexivity.
 Qed.
 
@@ -1718,7 +1723,7 @@ Proof.
   intros n_lt n_ty Ts T c Hlen. unfold inst_ctor_type_open.
   replace (List.map (shift_lt_in_ty n_lt 0) (List.map (shift_lt_in_ty 1 c) Ts))
     with (List.map (shift_lt_in_ty 1 (n_lt + c)) (List.map (shift_lt_in_ty n_lt 0) Ts)).
-  - rewrite (inst_ty_vars_shift_lt_for_typing_InsLt n_ty
+  - rewrite (inst_ty_vars_shift_lt n_ty
       (List.map (shift_lt_in_ty n_lt 0) Ts) T (n_lt + c)
       ltac:(rewrite List.length_map; exact Hlen)).
     reflexivity.
@@ -1727,7 +1732,7 @@ Proof.
     apply shift_lt_in_ty_lift_many_swap.
 Qed.
 
-Lemma inst_ctor_type_shift_lt_for_typing_InsLt : forall n_lt n_ty lts Ts T c,
+Lemma inst_ctor_type_shift_lt : forall n_lt n_ty lts Ts T c,
   List.length lts = n_lt ->
   List.length Ts = n_ty ->
   inst_ctor_type n_lt n_ty (List.map (shift_lt 1 c) lts)
@@ -1739,7 +1744,7 @@ Proof.
   unfold inst_ctor_type, inst_lt_vars.
   rewrite <- (map_shift_lt_in_ty_lift_many_swap n_lt c Ts).
   replace (c + n_lt) with (n_lt + c) by lia.
-  rewrite (inst_ty_vars_shift_lt_for_typing_InsLt n_ty
+  rewrite (inst_ty_vars_shift_lt n_ty
     (List.map (shift_lt_in_ty n_lt 0) Ts) T (n_lt + c)).
   2:{ rewrite List.length_map. exact Hlen_Ts. }
   rewrite multi_subst_lt_in_ty_shift_lt_comm with (k := n_lt) by exact Hlen_lts.
@@ -1747,7 +1752,7 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma inst_op_ty_args_shift_lt_for_typing_InsLt : forall n_α Ts n_β T c,
+Lemma inst_op_ty_args_shift_lt : forall n_α Ts n_β T c,
   List.length Ts = n_α ->
   inst_op_ty_args n_α (List.map (shift_lt_in_ty 1 c) Ts) n_β
     (shift_lt_in_ty 1 c T) =
@@ -1756,13 +1761,13 @@ Proof.
   intros n_α Ts n_β T c Hlen. unfold inst_op_ty_args.
   replace (List.map (shift_ty n_β 0) (List.map (shift_lt_in_ty 1 c) Ts)) with
     (List.map (shift_lt_in_ty 1 c) (List.map (shift_ty n_β 0) Ts)).
-  - rewrite inst_ty_vars_shift_lt_for_typing_InsLt by (rewrite List.length_map; exact Hlen).
+  - rewrite inst_ty_vars_shift_lt by (rewrite List.length_map; exact Hlen).
     reflexivity.
   - rewrite !List.map_map. apply List.map_ext. intro U.
     symmetry. apply shift_ty_shift_lt_in_ty_commute.
 Qed.
 
-Lemma inst_op_all_args_shift_lt_for_typing_InsLt : forall n_α Ts n_β Ss T c,
+Lemma inst_op_all_args_shift_lt : forall n_α Ts n_β Ss T c,
   List.length Ts = n_α ->
   List.length Ss = n_β ->
   inst_op_all_args n_α (List.map (shift_lt_in_ty 1 c) Ts)
@@ -1771,8 +1776,8 @@ Lemma inst_op_all_args_shift_lt_for_typing_InsLt : forall n_α Ts n_β Ss T c,
   shift_lt_in_ty 1 c (inst_op_all_args n_α Ts n_β Ss T).
 Proof.
   intros n_α Ts n_β Ss T c HlenTs HlenSs. unfold inst_op_all_args.
-  rewrite inst_op_ty_args_shift_lt_for_typing_InsLt by exact HlenTs.
-  rewrite inst_ty_vars_shift_lt_for_typing_InsLt by exact HlenSs.
+  rewrite inst_op_ty_args_shift_lt by exact HlenTs.
+  rewrite inst_ty_vars_shift_lt by exact HlenSs.
   reflexivity.
 Qed.
 
@@ -1824,7 +1829,7 @@ Proof.
     + rewrite is_abs_shift_lt_in_tm. exact HisAbs.
     + apply IHbody. apply InsLt_ty. exact HIns.
   - intros Γ t B U S Ht IH HwfS Hsub c G' HIns. simpl.
-    rewrite shift_lt_in_ty_subst_ty_comm_for_typing_InsLt.
+    rewrite shift_lt_in_ty_subst_ty_comm.
     eapply T_TyApp.
     + apply IH. exact HIns.
     + eapply ty_wf_InsLt; eauto.
@@ -1842,7 +1847,7 @@ Proof.
   - intros Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields
            result_ty result_tag l vs
            Hctor Heff Hlts Hwflts Hrho HTs HwfTs Hresult Hshape Hresult_eff Hwfl Hlt Hbounded Hlen Hargs IHargs c G' HIns.
-    simpl. rewrite shift_lt_in_tm_go_eq_map. unfold shift_lt_in_ty_list.
+    simpl. rewrite shift_lt_in_tm_go_eq_map. unfold map_shift_lt_in_ty.
     eapply T_Ctor with
       (n_lt := n_lt) (n_ty := n_ty)
       (sigma_fields := List.map (shift_lt_in_ty 1 (n_lt + c)) sigma_fields)
@@ -1856,11 +1861,11 @@ Proof.
     + rewrite List.length_map. exact Hlts.
     + eapply lifetimes_wf_InsLt; eauto.
     + rewrite Hrho. rewrite !List.map_map. apply List.map_ext. intro sigma.
-      exact (eq_sym (inst_ctor_type_shift_lt_for_typing_InsLt n_lt n_ty lts Ts sigma c Hlts HTs)).
+      exact (eq_sym (inst_ctor_type_shift_lt n_lt n_ty lts Ts sigma c Hlts HTs)).
     + rewrite List.length_map. exact HTs.
     + eapply types_wf_InsLt; eauto.
     + rewrite Hresult.
-      exact (eq_sym (inst_ctor_type_shift_lt_for_typing_InsLt n_lt n_ty lts Ts result_ty_schema c Hlts HTs)).
+      exact (eq_sym (inst_ctor_type_shift_lt n_lt n_ty lts Ts result_ty_schema c Hlts HTs)).
     + rewrite Hshape. reflexivity.
     + rewrite (InsLt_lookup_eff c Γ G' HIns result_tag). rewrite Hresult_eff. reflexivity.
     + eapply lt_wf_InsLt; eauto.
@@ -1874,7 +1879,7 @@ Proof.
            rho_fields scrut_result_ty result_tag result_l Γyes yes_body eta elim_result no_body
            HKne Hctor Heff Hlts Hrho HTs HwfTs Hscrut_result Hscrut_shape Hresult_eff Hresult_ne
            HwfDelta Hresult_l Hscrut IHscrut Harity HΓyes Hyes IHyes Helim Hno IHno c G' HIns.
-    simpl. subst Γyes. unfold shift_lt_in_ty_list.
+    simpl. subst Γyes. unfold map_shift_lt_in_ty.
     eapply T_Match with
       (n_lt := n_lt) (n_ty := n_ty)
       (sigma_fields := List.map (shift_lt_in_ty 1 (n_lt + c)) sigma_fields)
@@ -1894,7 +1899,7 @@ Proof.
     + rewrite List.length_map. exact HTs.
     + eapply types_wf_InsLt; eauto.
     + rewrite Hscrut_result.
-      rewrite <- (inst_ctor_type_shift_lt_for_typing_InsLt n_lt n_ty (List.repeat Delta n_lt) Ts result_ty_schema c
+      rewrite <- (inst_ctor_type_shift_lt n_lt n_ty (List.repeat Delta n_lt) Ts result_ty_schema c
         (List.repeat_length Delta n_lt) HTs).
       rewrite List.map_repeat. reflexivity.
     + rewrite Hscrut_shape. reflexivity.
@@ -1918,7 +1923,7 @@ Proof.
     + apply IHno. exact HIns.
   - intros Γ E_tag m Ts op_bodies n_α ops T_R
            Heff HTs HwfTs HwfTR Hfst Hops IHops c G' HIns.
-    simpl. rewrite shift_lt_in_ty_go_eq_map. unfold shift_lt_in_ty_list.
+    simpl. rewrite shift_lt_in_ty_go_eq_map. unfold map_shift_lt_in_ty.
     rewrite shift_lt_in_tm_go_ops_eq_map.
     eapply T_Cap with
       (n_α := n_α)
@@ -1940,14 +1945,14 @@ Proof.
         constructor; [| apply IHrest; exact Hfstrest ].
         destruct osig as [[nβ sg] rt].
         unfold op_nb, op_sig_ty, op_ret_ty in *. simpl in *.
-        rewrite (inst_op_ty_args_shift_lt_for_typing_InsLt n_α Ts nβ sg c HTs).
-        rewrite (inst_op_ty_args_shift_lt_for_typing_InsLt n_α Ts nβ rt c HTs).
+        rewrite (inst_op_ty_args_shift_lt n_α Ts nβ sg c HTs).
+        rewrite (inst_op_ty_args_shift_lt n_α Ts nβ rt c HTs).
         unfold op_body_ctx.
         rewrite !shift_ty_shift_lt_in_ty_commute.
         apply Hone. apply InsLt_tm. apply InsLt_tm. apply InsLt_push_ty_vars_any_at_free. exact HIns.
   - intros Γ E_tag Ts op_bodies body n_α ops T_B T_R
            Heff HTs HwfTs HwfTB HwfTR HnoLocal Hsub Hfst Hops IHops Hbody IHbody c G' HIns.
-    simpl. unfold shift_lt_in_ty_list.
+    simpl. unfold map_shift_lt_in_ty.
     rewrite shift_lt_in_tm_go_ops_eq_map.
     eapply T_Handle with
       (n_α := n_α)
@@ -1972,15 +1977,15 @@ Proof.
         constructor; [| apply IHrest; exact Hfstrest ].
         destruct osig as [[nβ sg] rt].
         unfold op_nb, op_sig_ty, op_ret_ty in *. simpl in *.
-        rewrite (inst_op_ty_args_shift_lt_for_typing_InsLt n_α Ts nβ sg c HTs).
-        rewrite (inst_op_ty_args_shift_lt_for_typing_InsLt n_α Ts nβ rt c HTs).
+        rewrite (inst_op_ty_args_shift_lt n_α Ts nβ sg c HTs).
+        rewrite (inst_op_ty_args_shift_lt n_α Ts nβ rt c HTs).
         unfold op_body_ctx.
         rewrite !shift_ty_shift_lt_in_ty_commute.
         apply Hone. apply InsLt_tm. apply InsLt_tm. apply InsLt_push_ty_vars_any_at_free. exact HIns.
     + apply IHbody. apply InsLt_tm. exact HIns.
   - intros Γ recv op arg E_tag Delta Ts Ss n_α ops n_β sig ret sig_inst ret_inst
            Hrecv IHrecv Heff Hnth HTs HSs HwfSs HnoSs Hsig HnoSig Hret HwfRet Harg IHarg c G' HIns.
-    simpl. unfold shift_lt_in_ty_list.
+    simpl. unfold map_shift_lt_in_ty.
     eapply T_Perform with
       (n_α := n_α)
       (ops := List.map (fun osig =>
@@ -1998,9 +2003,9 @@ Proof.
     + rewrite ?shift_lt_in_ty_go_eq_map, List.length_map. exact HSs.
     + eapply types_wf_InsLt; eauto.
     + eapply sub_free_list_InsLt; eauto.
-    + rewrite Hsig. symmetry. apply inst_op_all_args_shift_lt_for_typing_InsLt; assumption.
+    + rewrite Hsig. symmetry. apply inst_op_all_args_shift_lt; assumption.
     + eapply sub_free_InsLt; eauto.
-    + rewrite Hret. symmetry. apply inst_op_all_args_shift_lt_for_typing_InsLt; assumption.
+    + rewrite Hret. symmetry. apply inst_op_all_args_shift_lt; assumption.
     + eapply ty_wf_InsLt; eauto.
     + apply IHarg. exact HIns.
   - intros Γ m T_B T_R t HwfTB HwfTR HnoLocal Hsub Ht IH c G' HIns. simpl.
@@ -2010,48 +2015,6 @@ Proof.
     + eapply sub_free_InsLt; eauto.
     + apply (sub_InsLt Γ T_B T_R Hsub c G' HIns).
     + apply IH. exact HIns.
-Qed.
-
-Lemma shift_lt_in_ty_subst_ty_comm : forall T c n Sb,
-  shift_lt_in_ty 1 c (subst_ty n Sb T)
-  = subst_ty n (shift_lt_in_ty 1 c Sb) (shift_lt_in_ty 1 c T).
-Proof.
-  intros T. apply (type_list_ind
-    (fun T => forall c n Sb,
-       shift_lt_in_ty 1 c (subst_ty n Sb T)
-       = subst_ty n (shift_lt_in_ty 1 c Sb) (shift_lt_in_ty 1 c T))
-    (fun Ts => forall c n Sb,
-       List.map (shift_lt_in_ty 1 c) (List.map (subst_ty n Sb) Ts)
-       = List.map (subst_ty n (shift_lt_in_ty 1 c Sb)) (List.map (shift_lt_in_ty 1 c) Ts))).
-  - intros m c n Sb. rewrite subst_ty_var_eq.
-    destruct (Nat.eqb_spec m n).
-    + subst m. rewrite shift_lt_in_ty_var_eq. rewrite subst_ty_var_eq.
-      rewrite Nat.eqb_refl. reflexivity.
-    + destruct (Nat.ltb_spec n m).
-      * rewrite shift_lt_in_ty_var_eq, shift_lt_in_ty_var_eq, subst_ty_var_eq.
-        destruct (Nat.eqb_spec m n); [lia|].
-        destruct (Nat.ltb_spec n m); [reflexivity|lia].
-      * rewrite !shift_lt_in_ty_var_eq, subst_ty_var_eq.
-        destruct (Nat.eqb_spec m n); [lia|].
-        destruct (Nat.ltb_spec n m); [lia|reflexivity].
-  - intros A l B HA HB c n Sb.
-    rewrite subst_ty_fun_eq, shift_lt_in_ty_fun_eq, shift_lt_in_ty_fun_eq, subst_ty_fun_eq.
-    rewrite HA, HB. reflexivity.
-  - intros K l Ts HTs c n Sb.
-    rewrite subst_ty_ctor_eq, shift_lt_in_ty_ctor_eq, shift_lt_in_ty_ctor_eq, subst_ty_ctor_eq.
-    f_equal. apply HTs.
-  - intros A HA c n Sb.
-    rewrite subst_ty_ltall_eq, shift_lt_in_ty_ltall_eq, shift_lt_in_ty_ltall_eq, subst_ty_ltall_eq.
-    f_equal. rewrite HA. f_equal.
-    symmetry. apply shift_lt_in_ty_swap_0.
-  - intros B A HB HA c n Sb.
-    rewrite subst_ty_tyall_eq, shift_lt_in_ty_tyall_eq, shift_lt_in_ty_tyall_eq, subst_ty_tyall_eq.
-    rewrite HB. f_equal.
-    rewrite HA. f_equal.
-    symmetry. apply shift_ty_shift_lt_in_ty_commute.
-  - intros c n Sb. reflexivity.
-  - intros A Ts HA HTs c n Sb.
-    cbn [List.map]. rewrite HA. f_equal. apply HTs.
 Qed.
 
 Lemma shift_lt_in_ty_subst_ty_comm0 : forall T n Sb,

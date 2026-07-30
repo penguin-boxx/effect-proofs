@@ -150,31 +150,14 @@ Proof.
     + eapply lt_wf_lookup_eq; eauto.
   - apply LS_Refl. eapply lt_wf_lookup_eq; eauto.
   - eapply LS_Trans; eauto.
-  - apply LS_MinL; eauto.
-  - apply LS_MinR1; eauto. eapply lt_wf_lookup_eq; eauto.
-  - apply LS_MinR2; eauto. eapply lt_wf_lookup_eq; eauto.
+  - apply LS_JoinL; eauto.
+  - apply LS_JoinR1; eauto. eapply lt_wf_lookup_eq; eauto.
+  - apply LS_JoinR2; eauto. eapply lt_wf_lookup_eq; eauto.
 Qed.
 
 
-(* ------------------------------------------------------------------ *)
-(* Lattice helper: `lt_min` is monotone in both arguments.            *)
-(* ------------------------------------------------------------------ *)
-Lemma lt_min_mono : forall G a a' b b',
-  G ⊢ₗ a <: a' -> G ⊢ₗ b <: b' -> G ⊢ₗ lt_min a b <: lt_min a' b'.
-Proof.
-  intros G a a' b b' Ha Hb.
-  destruct (lt_sub_wf _ _ _ Ha) as [_ Hwfa'].
-  destruct (lt_sub_wf _ _ _ Hb) as [_ Hwfb'].
-  apply LS_MinL.
-  - eapply LS_Trans; [exact Ha |].
-    apply LS_MinR1.
-    + apply LS_Refl. exact Hwfa'.
-    + exact Hwfb'.
-  - eapply LS_Trans; [exact Hb |].
-    apply LS_MinR2.
-    + apply LS_Refl. exact Hwfb'.
-    + exact Hwfa'.
-Qed.
+(* `lt_join_mono` (lt_join is monotone in both arguments) lives in      *)
+(* SubstTy.v and is in scope via Subst.                               *)
 
 (* ------------------------------------------------------------------ *)
 (* `lt_of_ty_ctx` is monotone in its fuel argument: with more fuel,   *)
@@ -224,14 +207,14 @@ Proof.
       * rewrite Hlk. apply LS_Free. eapply lt_of_ty_ctx_wf; eauto. lia.
       * rewrite Hlk. apply IHB. lia.
     + rewrite !lt_of_ty_ctx_fun. apply LS_Refl. exact Hwfl.
-    + rewrite !lt_of_ty_ctx_ctor. apply lt_min_mono.
+    + rewrite !lt_of_ty_ctx_ctor. apply lt_join_mono.
       * apply LS_Refl. exact Hwfl.
       * eapply lt_of_ty_ctx_list_fuel_mono_S; eauto.
     + rewrite !lt_of_ty_ctx_ltall. apply LS_Refl. constructor.
     + rewrite !lt_of_ty_ctx_tyall. apply LS_Refl. constructor.
   - intros f G Ts Hwf. induction Hwf; intros Hf.
     + rewrite !lt_of_ty_ctx_list_nil. apply LS_Refl. constructor.
-    + rewrite !lt_of_ty_ctx_list_cons. apply lt_min_mono.
+    + rewrite !lt_of_ty_ctx_list_cons. apply lt_join_mono.
       * eapply lt_of_ty_ctx_fuel_mono_S; eauto.
       * apply IHHwf. exact Hf.
 Qed.
@@ -275,14 +258,14 @@ Proof.
     + apply LS_Free. apply (lt_of_ty_ctx_wf 0 Γ B HwfB). lia.
     + rewrite Hlk. apply lt_of_ty_ctx_fuel_mono_S; [exact HwfB|lia].
   - (* SA_Data *)
-    rewrite !lt_of_ty_ctx_ctor. apply lt_min_mono; [exact Hls|].
+    rewrite !lt_of_ty_ctx_ctor. apply lt_join_mono; [exact Hls|].
     apply LS_Refl. eapply lt_of_ty_ctx_list_wf; eauto.
   - (* SA_Any *)
     (* lt_of_ty_ctx f Γ T <: Δ <: lt_of_ty_ctx f Γ (any Δ []).          *)
     unfold lt_of_ty_G in Hls.
     eapply LS_Trans.
     + eapply LS_Trans; [ apply lt_of_ty_ctx_fuel_mono; [exact HwfT|apply Nat.le_refl|exact Hf] | exact Hls ].
-    + rewrite lt_of_ty_ctx_ctor. apply LS_MinR1.
+    + rewrite lt_of_ty_ctx_ctor. apply LS_JoinR1.
       * apply LS_Refl. exact HwfD.
       * constructor.
   - (* SA_Fun *) destruct f as [|f']; simpl; assumption.
@@ -290,69 +273,15 @@ Proof.
   - (* SA_TyAll *) destruct f as [|f']; simpl; apply LS_Refl; constructor.
 Qed.
 
-(* `G` is the wider (sup) context, `G'` the narrowed (sub) context. *)
-Inductive NarrowTy : type -> type -> ctx -> ctx -> Prop :=
-| NT_here : forall Bsub Bsup Γ,
-    Γ ⊢ Bsub <:: Bsup ->
-    NarrowTy Bsub Bsup (bind_ty Bsup :: Γ) (bind_ty Bsub :: Γ)
-| NT_ty : forall Bsub Bsup G G' A,
-    NarrowTy Bsub Bsup G G' ->
-  ty_wf G A ->
-  ty_wf G' A ->
-    NarrowTy Bsub Bsup (bind_ty A :: G) (bind_ty A :: G')
-| NT_lt : forall Bsub Bsup G G' D,
-    NarrowTy Bsub Bsup G G' ->
-  lt_wf G D ->
-  lt_wf G' D ->
-    NarrowTy Bsub Bsup (bind_lt D :: G) (bind_lt D :: G').
+(* The [NarrowTy] relation itself (`G` wider/sup context, `G'` the    *)
+(* narrowed/sub context), its lookup lemmas, and the wf-transport     *)
+(* lemmas [lt_wf_NT]/[ty_wf_NT]/[ty_wf_NT_all] are defined in         *)
+(* SubstTy.v (needed there for [type_ty_all_narrow_bound]) and are in *)
+(* scope via Subst.  This file develops the rest of the theory.       *)
 
 Lemma NT_length : forall Bsub Bsup G G',
   NarrowTy Bsub Bsup G G' -> length G = length G'.
 Proof. intros Bsub Bsup G G' H. induction H; simpl; lia. Qed.
-
-(* lt-lookups are unchanged by narrowing a `bind_ty` slot *)
-Lemma NT_lookup_lt : forall Bsub Bsup G G',
-  NarrowTy Bsub Bsup G G' ->
-  forall x, ctx_lookup_lt G x = ctx_lookup_lt G' x.
-Proof.
-  intros Bsub Bsup G G' H. induction H; intro x.
-  - simpl. reflexivity.
-  - simpl. apply IHNarrowTy.
-  - destruct x as [|x']; simpl.
-    + reflexivity.
-    + rewrite (IHNarrowTy x'). reflexivity.
-Qed.
-
-Lemma ty_wf_unshift_ty : forall Γ B S T,
-  Γ ⊢ S <:: B ->
-  ty_wf (bind_ty B :: Γ) (shift_ty 1 0 T) ->
-  ty_wf Γ T.
-Proof.
-  intros Γ B S T Hsub Hwf.
-  pose proof (ty_wf_SubstTy (bind_ty B :: Γ) (shift_ty 1 0 T) Hwf
-               S 0 Γ (SubstTy_here Γ B S Hsub)) as HwfSub.
-  rewrite subst_ty_shift_cancel in HwfSub. exact HwfSub.
-Qed.
-
-Lemma ty_wf_unshift_lt : forall Γ D R T,
-  Γ ⊢ₗ R <: D ->
-  ty_wf (bind_lt D :: Γ) (shift_lt_in_ty 1 0 T) ->
-  ty_wf Γ T.
-Proof.
-  intros Γ D R T Hsub Hwf.
-  pose proof (ty_wf_SubstLt (bind_lt D :: Γ) (shift_lt_in_ty 1 0 T) Hwf
-               R 0 Γ (SubstLt_here Γ D R Hsub)) as HwfSub.
-  rewrite subst_lt_in_ty_shift_cancel in HwfSub. exact HwfSub.
-Qed.
-
-Lemma lt_wf_NT : forall Bsub Bsup G G',
-  NarrowTy Bsub Bsup G G' ->
-  forall l, lt_wf G l -> lt_wf G' l.
-Proof.
-  intros Bsub Bsup G G' HN l Hwf.
-  eapply lt_wf_lookup_eq; [exact Hwf|].
-  intros x. apply (NT_lookup_lt Bsub Bsup G G' HN x).
-Qed.
 
 Lemma lt_sub_NT : forall Bsub Bsup G G',
   NarrowTy Bsub Bsup G G' ->
@@ -362,64 +291,6 @@ Proof.
   eapply lt_sub_lookup_eq; [exact H |].
   intros x. apply (NT_lookup_lt Bsub Bsup G G' HN x).
 Qed.
-
-(* ty-lookup narrowing: the narrowed bound is a subtype, in both ctxs *)
-Lemma NT_lookup_sub : forall Bsub Bsup G G',
-  NarrowTy Bsub Bsup G G' ->
-  forall α U, ctx_lookup_ty G α = Some U -> ty_wf G U ->
-    exists U', ctx_lookup_ty G' α = Some U'
-            /\ G ⊢ U' <:: U
-            /\ G' ⊢ U' <:: U.
-Proof.
-  intros Bsub Bsup G G' HN.
-  induction HN as [Bsub Bsup Γ Hsub
-                  |Bsub Bsup G G' A HN IH HwfA HwfA'
-                  |Bsub Bsup G G' D HN IH HwfD HwfD']; intros α U Hlk HwfU.
-  - (* NT_here *) destruct α as [|n].
-    + simpl in Hlk. injection Hlk; intros; subst U.
-      exists (shift_ty 1 0 Bsub). split; [reflexivity|]. split.
-      * apply (sub_weaken_ty_shift Γ Bsup Bsub Bsup Hsub).
-      * apply (sub_weaken_ty_shift Γ Bsub Bsub Bsup Hsub).
-    + simpl in Hlk.
-      destruct (ctx_lookup_ty Γ n) as [W|] eqn:E; simpl in Hlk; [|discriminate].
-      injection Hlk; intros; subst U.
-      assert (HwfW : ty_wf Γ W).
-      { eapply ty_wf_unshift_ty; [exact Hsub|exact HwfU]. }
-      assert (HwfTarget : ty_wf (bind_ty Bsub :: Γ) (shift_ty 1 0 W)).
-      { eapply ty_wf_InsTy; [exact HwfW|apply InsTy_here]. }
-      exists (shift_ty 1 0 W). split; [simpl; rewrite E; reflexivity|].
-      split; apply SA_Refl; assumption.
-  - (* NT_ty *) destruct α as [|n].
-    + simpl in Hlk. injection Hlk; intros; subst U.
-      assert (HwfTarget : ty_wf (bind_ty A :: G') (shift_ty 1 0 A)).
-      { eapply ty_wf_InsTy; [exact HwfA'|apply InsTy_here]. }
-      exists (shift_ty 1 0 A). simpl. split; [reflexivity|]. split; apply SA_Refl; assumption.
-    + simpl in Hlk. destruct (ctx_lookup_ty G n) as [W|] eqn:E; simpl in Hlk;
-        [|discriminate].
-      injection Hlk; intros; subst U.
-      assert (HwfW : ty_wf G W).
-      { eapply ty_wf_unshift_ty; [apply SA_Refl; exact HwfA|exact HwfU]. }
-      destruct (IH n W E HwfW) as [W' [HW' [HsubG HsubG']]].
-      exists (shift_ty 1 0 W'). simpl. rewrite HW'. simpl.
-      split; [reflexivity|]. split.
-      * apply (sub_weaken_ty_shift G A W' W HsubG).
-      * apply (sub_weaken_ty_shift G' A W' W HsubG').
-  - (* NT_lt *) simpl in Hlk.
-    destruct (ctx_lookup_ty G α) as [W|] eqn:E; simpl in Hlk; [|discriminate].
-    injection Hlk; intros; subst U.
-    assert (HwfW : ty_wf G W).
-    { eapply ty_wf_unshift_lt; [apply LS_Refl; exact HwfD|exact HwfU]. }
-    destruct (IH α W E HwfW) as [W' [HW' [HsubG HsubG']]].
-    exists (shift_lt_in_ty 1 0 W'). simpl. rewrite HW'. simpl.
-    split; [reflexivity|]. split.
-    + apply (sub_weaken_lt_shift G D W' W HsubG).
-    + apply (sub_weaken_lt_shift G' D W' W HsubG').
-Qed.
-
-
-Scheme ty_wf_mutind := Induction for ty_wf Sort Prop
-with types_wf_mutind := Induction for types_wf Sort Prop.
-Combined Scheme ty_wf_types_wf_mutind from ty_wf_mutind, types_wf_mutind.
 
 (* lt_of_ty_ctx is monotone under narrowing (computed lt_∅ can only shrink) *)
 Lemma lt_of_ty_ctx_NT_all : forall f,
@@ -441,7 +312,7 @@ Proof.
     + intros Γ A l B HwfA IHA Hwfl HwfB IHB Bsub Bsup G' HN Hf.
       rewrite !lt_of_ty_ctx_fun. apply LS_Refl. eapply lt_wf_NT; eauto.
     + intros Γ K l Ts Hwfl HwfTs IHTs Bsub Bsup G' HN Hf.
-      rewrite !lt_of_ty_ctx_ctor. apply lt_min_mono.
+      rewrite !lt_of_ty_ctx_ctor. apply lt_join_mono.
       * apply LS_Refl. eapply lt_wf_NT; eauto.
       * apply (IHTs Bsub Bsup G' HN Hf).
     + intros Γ A HwfA IHA Bsub Bsup G' HN Hf.
@@ -451,7 +322,7 @@ Proof.
     + intros Γ Bsub Bsup G' HN Hf.
       rewrite !lt_of_ty_ctx_list_nil. apply LS_Refl. constructor.
     + intros Γ T Ts HwfT IHT HwfTs IHTs Bsub Bsup G' HN Hf.
-      rewrite !lt_of_ty_ctx_list_cons. apply lt_min_mono.
+      rewrite !lt_of_ty_ctx_list_cons. apply lt_join_mono.
       * apply (IHT Bsub Bsup G' HN Hf).
       * apply (IHTs Bsub Bsup G' HN Hf).
   - destruct IHf as [IHf_ty IHf_tys].
@@ -474,7 +345,7 @@ Proof.
     + intros Γ A l B HwfA IHA Hwfl HwfB IHB Bsub Bsup G' HN Hf.
       rewrite !lt_of_ty_ctx_fun. apply LS_Refl. eapply lt_wf_NT; eauto.
     + intros Γ K l Ts Hwfl HwfTs IHTs Bsub Bsup G' HN Hf.
-      rewrite !lt_of_ty_ctx_ctor. apply lt_min_mono.
+      rewrite !lt_of_ty_ctx_ctor. apply lt_join_mono.
       * apply LS_Refl. eapply lt_wf_NT; eauto.
       * apply (IHTs Bsub Bsup G' HN Hf).
     + intros Γ A HwfA IHA Bsub Bsup G' HN Hf.
@@ -484,7 +355,7 @@ Proof.
     + intros Γ Bsub Bsup G' HN Hf.
       rewrite !lt_of_ty_ctx_list_nil. apply LS_Refl. constructor.
     + intros Γ T Ts HwfT IHT HwfTs IHTs Bsub Bsup G' HN Hf.
-      rewrite !lt_of_ty_ctx_list_cons. apply lt_min_mono.
+      rewrite !lt_of_ty_ctx_list_cons. apply lt_join_mono.
       * apply (IHT Bsub Bsup G' HN Hf).
       * apply (IHTs Bsub Bsup G' HN Hf).
 Qed.
@@ -506,55 +377,6 @@ Proof.
   intros Bsub Bsup G G' HN T HwfT. unfold lt_of_ty_G.
   rewrite <- (NT_length Bsub Bsup G G' HN).
   apply (lt_of_ty_ctx_NT Bsub Bsup G G' HN (List.length G) T HwfT (Nat.le_refl _)).
-Qed.
-
-Lemma ty_wf_NT_all :
-  (forall G T, ty_wf G T -> forall Bsub Bsup G',
-      NarrowTy Bsub Bsup G G' -> ty_wf G' T) /\
-  (forall G Ts, types_wf G Ts -> forall Bsub Bsup G',
-      NarrowTy Bsub Bsup G G' -> types_wf G' Ts).
-Proof.
-  apply (ty_wf_types_wf_mutind
-    (fun G T _ => forall Bsub Bsup G', NarrowTy Bsub Bsup G G' -> ty_wf G' T)
-    (fun G Ts _ => forall Bsub Bsup G', NarrowTy Bsub Bsup G G' -> types_wf G' Ts)).
-  - intros Γ α B Hlk HwfB IHBound Bsub Bsup G' HN.
-    destruct (NT_lookup_sub Bsub Bsup Γ G' HN α B Hlk HwfB)
-      as [B' [HB' [_ HsubG']]].
-    destruct (sub_wf _ _ _ HsubG') as [HwfB' _].
-    econstructor; eauto.
-  - intros Γ A l B HwfA IHA Hwfl HwfB IHB Bsub Bsup G' HN.
-    constructor.
-    + apply (IHA Bsub Bsup G' HN).
-    + eapply lt_wf_NT; eauto.
-    + apply (IHB Bsub Bsup G' HN).
-  - intros Γ K l Ts Hwfl HwfTs IHTs Bsub Bsup G' HN.
-    constructor.
-    + eapply lt_wf_NT; eauto.
-    + apply (IHTs Bsub Bsup G' HN).
-  - intros Γ A HwfA IHA Bsub Bsup G' HN.
-    constructor.
-    apply (IHA Bsub Bsup (bind_lt lt_local :: G')).
-    apply NT_lt; [exact HN|constructor|constructor].
-  - intros Γ B A HwfB IHB HwfA IHA Bsub Bsup G' HN.
-    constructor.
-    + apply (IHB Bsub Bsup G' HN).
-    + apply (IHA Bsub Bsup (bind_ty B :: G')).
-      apply NT_ty.
-      * exact HN.
-      * exact HwfB.
-      * apply (IHB Bsub Bsup G' HN).
-  - intros Γ Bsub Bsup G' HN. constructor.
-  - intros Γ T Ts HwfT IHT HwfTs IHTs Bsub Bsup G' HN.
-    constructor.
-    + apply (IHT Bsub Bsup G' HN).
-    + apply (IHTs Bsub Bsup G' HN).
-Qed.
-
-Lemma ty_wf_NT : forall Bsub Bsup G G',
-  NarrowTy Bsub Bsup G G' -> forall T, ty_wf G T -> ty_wf G' T.
-Proof.
-  intros Bsub Bsup G G' HN T Hwf.
-  exact (proj1 ty_wf_NT_all G T Hwf Bsub Bsup G' HN).
 Qed.
 
 Lemma types_wf_NT : forall Bsub Bsup G G',

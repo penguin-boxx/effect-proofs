@@ -8,6 +8,7 @@ Require Import Substitution.
 Require Import Typing.
 Require Import Subst.
 Require Import Narrowing.
+Require Import Eqb.
 
 (* ================================================================== *)
 (*                                                                    *)
@@ -28,7 +29,7 @@ Require Import Narrowing.
 (* The lattice decider works in three layers:                         *)
 (*  1. [lt_le], a CUT-FREE inductive characterization of lifetime     *)
 (*     subtyping: the left side is decomposed into its atoms          *)
-(*     (lt_min is the lattice join), and an atom lies below [r] iff   *)
+(*     (lt_join is the lattice join), and an atom lies below [r] iff   *)
 (*     it is [lt_free], occurs among [r]'s atoms, [lt_local] occurs   *)
 (*     among [r]'s atoms, or (for a variable) its context bound lies  *)
 (*     below [r].  Admissibility of transitivity ([lt_le_trans]) is   *)
@@ -47,29 +48,8 @@ Require Import Narrowing.
 (*     vacuous under [eval_ctx], which has no lifetime binders).      *)
 (* ================================================================== *)
 
-(* ------------------------------------------------------------------ *)
-(* Decidable equality of lifetimes                                    *)
-(* ------------------------------------------------------------------ *)
-
-Fixpoint lt_eqb (a b : lifetime) : bool :=
-  match a, b with
-  | lt_var x, lt_var y => Nat.eqb x y
-  | lt_free, lt_free => true
-  | lt_local, lt_local => true
-  | lt_min a1 a2, lt_min b1 b2 => andb (lt_eqb a1 b1) (lt_eqb a2 b2)
-  | _, _ => false
-  end.
-
-Lemma lt_eqb_spec : forall a b, reflect (a = b) (lt_eqb a b).
-Proof.
-  induction a; destruct b; simpl;
-    try (apply ReflectF; discriminate).
-  - destruct (Nat.eqb_spec n n0); constructor; congruence.
-  - apply ReflectT; reflexivity.
-  - apply ReflectT; reflexivity.
-  - destruct (IHa1 b1); [destruct (IHa2 b2)|];
-      constructor; congruence.
-Qed.
+(* Decidable equality of lifetimes ([lt_eqb]/[lt_eqb_spec]) lives in  *)
+(* Eqb.v.                                                             *)
 
 (* ------------------------------------------------------------------ *)
 (* Atoms: flattening the joins                                        *)
@@ -77,7 +57,7 @@ Qed.
 
 Fixpoint lt_atoms (l : lifetime) : list lifetime :=
   match l with
-  | lt_min l1 l2 => lt_atoms l1 ++ lt_atoms l2
+  | lt_join l1 l2 => lt_atoms l1 ++ lt_atoms l2
   | a => [a]
   end.
 
@@ -91,7 +71,7 @@ Proof.
 Qed.
 
 Lemma lt_atoms_no_min : forall l a1 a2,
-  ~ In (lt_min a1 a2) (lt_atoms l).
+  ~ In (lt_join a1 a2) (lt_atoms l).
 Proof.
   induction l; simpl; intros a1 a2 Hin;
     try (destruct Hin as [Heq|[]]; discriminate).
@@ -124,10 +104,10 @@ Qed.
 Inductive lt_le (Γ : ctx) : lifetime -> lifetime -> Prop :=
   | LL_Free  : forall r,
       lt_le Γ lt_free r
-  | LL_Min   : forall l1 l2 r,
+  | LL_Join   : forall l1 l2 r,
       lt_le Γ l1 r ->
       lt_le Γ l2 r ->
-      lt_le Γ (lt_min l1 l2) r
+      lt_le Γ (lt_join l1 l2) r
   (* reflexivity at the atoms: an atom below any join containing it *)
   | LL_Mem   : forall a r,
       In a (lt_atoms r) ->
@@ -143,10 +123,13 @@ Inductive lt_le (Γ : ctx) : lifetime -> lifetime -> Prop :=
       lt_le Γ Δ r ->
       lt_le Γ (lt_var x) r.
 
-Hint Constructors lt_le : core.
+(* Local: [lt_le] is an internal artefact of the decider; its         *)
+(* constructors must not leak into the global hint database of every  *)
+(* downstream file.                                                   *)
+#[local] Hint Constructors lt_le : core.
 
 (* Right-monotonicity: growing the right-hand atom set preserves      *)
-(* everything (this is what LS_MinR1/LS_MinR2 become, cut-free).      *)
+(* everything (this is what LS_JoinR1/LS_JoinR2 become, cut-free).      *)
 Lemma lt_le_r_mono : forall Γ l r r',
   lt_le Γ l r ->
   incl (lt_atoms r) (lt_atoms r') ->
@@ -159,7 +142,7 @@ Lemma lt_le_refl : forall Γ l, lt_le Γ l l.
 Proof.
   intros Γ l; induction l;
     try (apply LL_Mem; simpl; auto; fail).
-  apply LL_Min.
+  apply LL_Join.
   - eapply lt_le_r_mono; [exact IHl1|].
     intros a Ha; simpl; apply in_or_app; auto.
   - eapply lt_le_r_mono; [exact IHl2|].
@@ -216,8 +199,8 @@ Proof.
     try (destruct Hin as [<-|[]]; apply LS_Refl; assumption).
   inversion Hwf; subst.
   apply in_app_or in Hin; destruct Hin.
-  - apply LS_MinR1; auto.
-  - apply LS_MinR2; auto.
+  - apply LS_JoinR1; auto.
+  - apply LS_JoinR2; auto.
 Qed.
 
 Lemma lt_le_sound : forall Γ l r,
@@ -228,7 +211,7 @@ Lemma lt_le_sound : forall Γ l r,
 Proof.
   intros Γ l r H; induction H; intros Hwfl Hwfr.
   - apply LS_Free; exact Hwfr.
-  - inversion Hwfl; subst. apply LS_MinL; auto.
+  - inversion Hwfl; subst. apply LS_JoinL; auto.
   - apply lt_atoms_in_sub; assumption.
   - eapply LS_Trans; [apply LS_Local; exact Hwfl|].
     apply lt_atoms_in_sub; assumption.
@@ -244,13 +227,15 @@ Proof.
   - eapply LL_Bound; eauto using lt_le_refl.
   - apply lt_le_refl.
   - eapply lt_le_trans; eauto.
-  - apply LL_Min; auto.
+  - apply LL_Join; auto.
   - eapply lt_le_r_mono; [exact IHlt_sub|].
     intros a Ha; simpl; apply in_or_app; auto.
   - eapply lt_le_r_mono; [exact IHlt_sub|].
     intros a Ha; simpl; apply in_or_app; auto.
 Qed.
 
+(* PUBLIC API — terminal deliverable: no internal consumers; do not
+   mistake for dead code.  Gated by scripts/check_assumptions.py. *)
 Theorem lt_le_iff : forall Γ l r,
   lt_wf Γ l ->
   lt_wf Γ r ->
@@ -265,7 +250,7 @@ Qed.
 (* ------------------------------------------------------------------ *)
 
 (* Fuel is consumed only when chasing a variable's bound; all other   *)
-(* work is structural.  [lt_min] is never reached: [lt_leb] feeds     *)
+(* work is structural.  [lt_join] is never reached: [lt_leb] feeds     *)
 (* only atoms.                                                        *)
 Fixpoint atom_leb (fuel : nat) (Γ : ctx) (a r : lifetime) {struct fuel} : bool :=
   match a with
@@ -278,7 +263,7 @@ Fixpoint atom_leb (fuel : nat) (Γ : ctx) (a r : lifetime) {struct fuel} : bool 
           forallb (fun a' => atom_leb fuel' Γ a' r) (lt_atoms Δ)
       | _, _ => false
       end
-  | lt_min _ _   => false
+  | lt_join _ _   => false
   end.
 
 Definition lt_leb (fuel : nat) (Γ : ctx) (l r : lifetime) : bool :=
@@ -310,7 +295,7 @@ Lemma lt_le_from_atoms : forall Γ l r,
 Proof.
   induction l; simpl; intros r H;
     try (apply H; simpl; auto; fail).
-  apply LL_Min; [apply IHl1 | apply IHl2];
+  apply LL_Join; [apply IHl1 | apply IHl2];
     intros a Ha; apply H; apply in_or_app; auto.
 Qed.
 
@@ -383,7 +368,7 @@ Fixpoint ctx_lt_count (Γ : ctx) : nat :=
 Fixpoint lt_occursb (y : nat) (l : lifetime) : bool :=
   match l with
   | lt_var x     => Nat.eqb x y
-  | lt_min l1 l2 => lt_occursb y l1 || lt_occursb y l2
+  | lt_join l1 l2 => lt_occursb y l1 || lt_occursb y l2
   | _            => false
   end.
 
@@ -450,7 +435,7 @@ Proof.
   intros Γ l r H; induction H; simpl; intros b fuel Hin Hfuel.
   - (* LL_Free *)
     destruct Hin as [<-|[]]. apply atom_leb_free.
-  - (* LL_Min *)
+  - (* LL_Join *)
     apply in_app_or in Hin; destruct Hin; eauto.
   - (* LL_Mem: the atom a is an atom of r *)
     rewrite (lt_atoms_atom _ _ H) in Hin.
@@ -536,11 +521,9 @@ Qed.
 (* ------------------------------------------------------------------ *)
 (* nolocb: the REAL noloc premise, decided                            *)
 (*                                                                    *)
-(* This replaces [no_local_ty] in the example witnesses: that         *)
-(* function is neither sound nor complete for the judgment the        *)
-(* typing rules actually impose (it recurses into function domains,   *)
-(* which [lt_of_ty] ignores, and passes under quantifiers, which      *)
-(* [lt_of_ty] sends to [lt_local]).                                   *)
+(* [nolocb] decides exactly the escape side condition the typing      *)
+(* rules impose (`Γ ⊢ₗ lt_of_ty_G Γ T <: lt_free`); no syntactic      *)
+(* approximation is involved.                                         *)
 (* ------------------------------------------------------------------ *)
 
 Definition nolocb (Γ : ctx) (T : type) : bool :=
@@ -557,6 +540,8 @@ Proof.
   apply lt_of_ty_ctx_wf; [exact Hwf | apply Nat.le_refl].
 Qed.
 
+(* PUBLIC API — terminal deliverable: no internal consumers; do not
+   mistake for dead code.  Gated by scripts/check_assumptions.py. *)
 Corollary nolocb_spec_eval_ctx : forall Γ T,
   eval_ctx Γ ->
   ty_wf Γ T ->
@@ -646,6 +631,9 @@ Proof.
     + apply IHvs. inversion HF; assumption.
 Qed.
 
+(* [valueb] backs the reflective [solve_value] tactic                 *)
+(* (examples/ExamplesTactics.v); [valueb_spec] is the artifact-facing *)
+(* statement.  Gated by scripts/check_assumptions.py.                 *)
 Theorem valueb_spec : forall t, reflect (value t) (valueb t).
 Proof.
   intros t. destruct (valueb t) eqn:E.

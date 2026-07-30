@@ -7,11 +7,12 @@ Require Import Substitution.
 Require Import Semantics.
 Require Import Typing.
 Require Import Subst.
-Require Import Markers.
+Require Import MarkerAnnots.
+Require Import WellScoped.
+Require Import WsRtLaws.
 Require Import Progress.
 Require Import Narrowing.
 Require Import Variance.
-Require Import Inversions.
 Require Import Frames.
 Require Import TypingInv.
 
@@ -58,13 +59,12 @@ Lemma subst_tm_preserves : forall Γ A t B v,
   Γ ⊢ₜ subst_tm 0 v t : B.
 Proof. exact typing_SubstTm_eval_ctx. Qed.
 
-Lemma tybeta_preserves_with_subst_nl : forall Γ bound body S T,
+Lemma tybeta_preserves : forall Γ bound body S T,
   eval_ctx Γ ->
-  subst_nl S 0 (bind_ty bound :: Γ) Γ ->
   Γ ⊢ₜ term_ty_app (term_ty_lam bound body) S : T ->
   Γ ⊢ₜ subst_ty_in_tm 0 S body : T.
 Proof.
-  intros Γ bound body S T Hec Hnl Hty.
+  intros Γ bound body S T Hec Hty.
   apply tyapp_typing_inv_p in Hty.
   destruct Hty as [B [U [Hlam [HSB Hres]]]].
   apply ty_lam_typing_inv in Hlam.
@@ -78,21 +78,11 @@ Proof.
   - eapply typing_SubstTy.
     + exact Hbody.
     + apply SubstTy_here. exact HSbound.
-    + exact Hnl.
     + apply ctor_fields_closed_bind_ty.
       apply eval_ctx_ctor_fields_closed. exact Hec.
   - eapply SA_Trans.
     + apply (sub_subst_ty Γ B U0 U S HUsub HSB).
     + exact Hres.
-Qed.
-
-Lemma tybeta_preserves : forall Γ bound body S T,
-  eval_ctx Γ ->
-  Γ ⊢ₜ term_ty_app (term_ty_lam bound body) S : T ->
-  Γ ⊢ₜ subst_ty_in_tm 0 S body : T.
-Proof.
-  intros Γ bound body S T Hec Hty.
-  eapply tybeta_preserves_with_subst_nl; [exact Hec | exact I | exact Hty].
 Qed.
 
 Lemma ltbeta_preserves : forall Γ body l T,
@@ -190,32 +180,7 @@ Proof.
   eapply SA_Trans; [exact HetaSub | exact Hsub].
 Qed.
 
-(* ==================================================================== *)
-(*  perform_preserves.                                                  *)
-(*                                                                      *)
-(*  Reducing  handler_m m T_B T_R (P[perform (cap …) Ss v]) to          *)
-(*  op_body[Ss][v, resume]  preserves typing.  The proof:               *)
-(*  (a) handler/plug/perform/cap inversions recover the cap's op_body   *)
-(*      typing (under push_ty_vars n_β any_at_free, two bind_tm) and    *)
-(*      reconcile the two effect lookups (perform vs cap) via           *)
-(*      sub_ctor_inv + lookup determinism;                              *)
-(*  (b) the push_ty_vars TYPE peel substitutes Ss into op_body, with    *)
-(*      the operation-signature reconciliation                          *)
-(*      subst_list_ty Ss (inst_op_ty_args …) = inst_op_all_args … Ss …; *)
-(*  (c) the reified resumption plug (shift P)(var 0) is typed by        *)
-(*      weakening + shift_tm_plug + plug_typing_replace, the focus      *)
-(*      replacement justified by the perform's principal type ret_inst  *)
-(*      being unchanged under term-shift (perform_principal_general);   *)
-(*  (d) the two term arguments [v; resume] are substituted by           *)
-(*      typing_subst_list_tm_eval_ctx_global.                           *)
-(* ==================================================================== *)
-
-
-
-
-(* The perform's principal type is its ret_inst annotation; any type it
-   can be given is a supertype.  Immediate from perform_typing_inv now
-   that the annotation is written on the term. *)
+(* Generic list helper. *)
 Lemma Forall2_nth_error_r :
   forall (A B : Type) (R : A -> B -> Prop) (xs : list A) (ys : list B) i x,
   Forall2 R xs ys ->
@@ -230,6 +195,9 @@ Proof.
     + apply IH. exact Hnth.
 Qed.
 
+(* The perform's principal type is its ret_inst annotation; any type it
+   can be given is a supertype.  Immediate from perform_typing_inv: the
+   annotation is written on the term. *)
 Lemma perform_principal_general :
   forall G recv op Ss A arg Tu,
   G ⊢ₜ term_perform recv op Ss A arg : Tu ->
@@ -264,6 +232,25 @@ Proof.
   - eapply perform_principal_general. exact Hu.
 Qed.
 
+(* ==================================================================== *)
+(*  perform_preserves.                                                  *)
+(*                                                                      *)
+(*  Reducing  handler_m m T_B T_R (P[perform (cap …) Ss v]) to          *)
+(*  op_body[Ss][v, resume]  preserves typing.  The proof:               *)
+(*  (a) handler/plug/perform/cap inversions recover the cap's op_body   *)
+(*      typing (under push_ty_vars n_β any_at_free, two bind_tm) and    *)
+(*      reconcile the two effect lookups (perform vs cap) via           *)
+(*      sub_ctor_inv + lookup determinism;                              *)
+(*  (b) the push_ty_vars TYPE peel substitutes Ss into op_body, with    *)
+(*      the operation-signature reconciliation                          *)
+(*      subst_list_ty Ss (inst_op_ty_args …) = inst_op_all_args … Ss …; *)
+(*  (c) the reified resumption plug (shift P)(var 0) is typed by        *)
+(*      weakening + shift_tm_plug + plug_typing_replace, the focus      *)
+(*      replacement justified by the perform's principal type ret_inst  *)
+(*      being unchanged under term-shift (perform_principal_general);   *)
+(*  (d) the two term arguments [v; resume] are substituted by           *)
+(*      typing_subst_list_tm_eval_ctx_global.                           *)
+(* ==================================================================== *)
 Lemma perform_preserves :
   forall Γ E_tag m Ts T_B T_R op_bodies op n_beta op_body Ss A v P T,
   eval_ctx Γ -> value v -> pure_ectx_m m P ->
@@ -372,9 +359,9 @@ Proof.
 Qed.
 
 (* ================================================================== *)
-(* Step preservation of the v2 runtime invariants (rt_closed and      *)
-(* well_scoped) — the Phase-2 lemmas that discharge the former        *)
-(* reachability hypothesis of type_soundness.                         *)
+(* Step preservation of the runtime invariants (rt_closed and         *)
+(* well_scoped) — these discharge the well-scopedness hypothesis of   *)
+(* type_soundness.                                                    *)
 (* ================================================================== *)
 
 Lemma head_step_preserves_rt_closed : forall Γ r r' Tr,
@@ -414,7 +401,7 @@ Proof.
     destruct Hrtred as [Hcapc Hrtv].
     match goal with Hn : nth_error _ _ = Some (_, _) |- _ =>
       destruct (ops_cap_closed_nth _ _ _ _ Hcapc Hn) as [Hfv2op Hrtop] end.
-    destruct (resume_body_closed_rt P _ Hfv Hrt) as [Hfvb Hrtb].
+    destruct (reified_continuation_closed_rt P _ Hfv Hrt) as [Hfvb Hrtb].
     apply rt_closed_subst_list_tm.
     + apply Forall_cons; [exact Hfvv|].
       apply Forall_cons; [|apply Forall_nil].
@@ -455,8 +442,8 @@ Proof.
 Qed.
 
 (* The H_Perform case for well_scoped, mirroring                       *)
-(* the retired marker_ok analogue: the op-body confinement comes       *)
-(* straight from the v2 cap clause; the perform argument is rt-free    *)
+(* the op-body confinement comes straight from the well_scoped cap     *)
+(* clause; the perform argument is rt-free                             *)
 (* by the typing-side escape lemma; the reified resume is well-scoped  *)
 (* because the captured frames were, one delimiter up.                 *)
 Lemma well_scoped_step_handler_elim :
@@ -502,7 +489,7 @@ Proof.
   pose proof (rt_closed_plug_inv P _ Hrt) as Hrtred.
   destruct Hrtred as [Hcapc Hrtv].
   destruct (ops_cap_closed_nth _ _ _ _ Hcapc Hnth) as [Hfv2op Hrtop].
-  destruct (resume_body_closed_rt P _ Hfv Hrt) as [Hfvb Hrtb].
+  destruct (reified_continuation_closed_rt P _ Hfv Hrt) as [Hfvb Hrtb].
   apply well_scoped_subst_list_tm.
   - apply Forall_cons; [exact Hfvv|].
     apply Forall_cons; [|apply Forall_nil].
@@ -597,7 +584,7 @@ Proof.
         [apply se_top; apply se_refl | exact Hwb].
 Qed.
 
-(* The fused v2 invariant is preserved by one step. *)
+(* The fused runtime invariant is preserved by one step. *)
 Theorem step_preserves_ws_rt : forall Γ t t' T,
   eval_ctx Γ -> Γ ⊢ₜ t : T -> ws_rt [] t -> t ==> t' -> ws_rt [] t'.
 Proof.
@@ -644,7 +631,6 @@ Proof.
     eapply perform_preserves; eauto.
 Qed.
 
-(* Handle inversion (principal): recover the T_Handle premises + T_R <:: T. *)
 
 (* Allocating a fresh handler delimiter preserves typing. *)
 Lemma handle_step_preserves_typing :

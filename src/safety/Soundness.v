@@ -7,9 +7,10 @@ Require Import Substitution.
 Require Import Semantics.
 Require Import Typing.
 Require Import Subst.
-Require Import Markers.
+Require Import MarkerAnnots.
+Require Import WellScoped.
+Require Import WsRtLaws.
 Require Import Progress.
-Require Import Inversions.
 Require Import Preservation.
 
 (* ================================================================== *)
@@ -17,8 +18,9 @@ Require Import Preservation.
 (*                                                                    *)
 (* The single file a reader opens for "the safety theorem".  It pairs *)
 (* progress (Progress) with preservation (Preservation) and the       *)
-(* step-preservation of the runtime marker invariants (Markers /      *)
-(* Preservation) to conclude that a well-typed, marker-safe term      *)
+(* step-preservation of the runtime marker invariants (MarkerAnnots,  *)
+(* WsRtLaws, Preservation) to conclude that a well-typed, marker-safe *)
+(* term                                                               *)
 (* never reaches a stuck state.                                       *)
 (* (Escape safety — local lifetimes / capabilities never escaping     *)
 (* their scope — is the separate, independent deliverable in Escape.) *)
@@ -50,7 +52,7 @@ Lemma safe_state_not_stuck : forall Γ t T,
   ~ stuck t.
 Proof.
   intros Γ t T Hec Hmok Hsafe Hty [Hnv Hns].
-  destruct (progress_safe _ _ _ Hec Hmok Hsafe Hty) as [Hv | [t' Hs]].
+  destruct (progress _ _ _ Hec Hmok Hsafe Hty) as [Hv | [t' Hs]].
   - contradiction.
   - apply Hns; eauto.
 Qed.

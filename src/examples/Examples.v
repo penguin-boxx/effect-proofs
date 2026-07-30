@@ -21,7 +21,7 @@ Module CoreNotation.
   Notation "'`Lf'"     := lt_free.
   Notation "'`Ll'"     := lt_local.
   Notation "'`L' n"    := (lt_var n) (at level 5, format "'`L'  n").
-  Notation "l1 '+l' l2" := (lt_min l1 l2) (at level 50, left associativity).
+  Notation "l1 '+l' l2" := (lt_join l1 l2) (at level 50, left associativity).
 
   Notation "'`T' n" := (type_var n) (at level 5, format "'`T'  n").
   Notation "A '-{' l '}->' B" :=
@@ -344,12 +344,12 @@ Definition withReader : term :=
          λ: `T 1 \\
            $$ 1).
 
-(* let readerExample =                             *)
+(* let reader_example =                             *)
 (*   handle r: Reader<Nat> { op ask() resume(2) }  *)
 (*   perform r.ask()                               *)
-Definition readerExample_op_body : term := ($$ 1) @· two_v.
-Definition readerExample : term :=
-  term_handle Reader_tag [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) [(0, readerExample_op_body)]
+Definition reader_example_op_body : term := ($$ 1) @· two_v.
+Definition reader_example : term :=
+  term_handle Reader_tag [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) [(0, reader_example_op_body)]
     (term_perform ($$ 0) 0 [] (T_Nat `Lf) unit_v).
 
 (* fun withState[lr]<s <: Any'free, r <: Any'free>(
@@ -363,7 +363,7 @@ Definition readerExample : term :=
        fun(s: s) x
    This is the command-datatype ENCODING of State (a single clause
    dispatching on Cmd<s> -> s: [get] reads the state, [put] writes and
-   returns it); the honest two-operation version is [statemExample]. *)
+   returns it); the honest two-operation version is [statem_example]. *)
 Definition state_op_body : term :=
   λ: `T 1 \\
     term_match ($$ 1) get_tag 0 0
@@ -431,7 +431,7 @@ Definition statem_get_body : term :=
 Definition statem_put_body : term :=
   λ: T_Nat `Lf \\ (($$ 2) @· unit_v) @· ($$ 1).
 
-Definition statemExample_handler : term :=
+Definition statem_example_handler : term :=
   term_handle StateM_tag [T_Nat `Lf]
     (T_Nat `Lf -{ `Lf }-> T_Nat `Lf)
     (T_Nat `Lf -{ `Ll }-> T_Nat `Lf)
@@ -441,12 +441,11 @@ Definition statemExample_handler : term :=
      let: T_Nat `Lf <- term_perform ($$ 2) 0 [] (T_Nat `Lf) unit_v in
      λ: T_Nat `Lf \\ $$ 1).
 
-Definition statemExample : term := statemExample_handler @· two_v.
+Definition statem_example : term := statem_example_handler @· two_v.
 
 (* error: testWithState stores a local Reader capability inside free state. *)
 (* The rejection is stated on the REAL noloc premise of T_Perform /     *)
-(* T_Handle — `Γ ⊢ₗ lt_of_ty_G Γ S <: lt_free` — not on the auxiliary   *)
-(* [no_local_ty], which the typing rules never consult.  The proof is a *)
+(* T_Handle — `Γ ⊢ₗ lt_of_ty_G Γ S <: lt_free`.  The proof is a         *)
 (* certified decision by [nolocb] (Decide.v).                           *)
 Definition testWithState_escape_witness : Prop :=
   ~ (full_ctx ⊢ₗ lt_of_ty_G full_ctx (T_Option `Lf (T_Reader `Ll T_Unit))
@@ -468,14 +467,14 @@ Definition withException : term :=
         (T_Result `Lf (`T 1) (`T 0)) (T_Result `Lf (`T 1) (`T 0)) [(1, withException_op_body)]
         (ok_v (`T 1) (`T 0) (($$ 1) @· ($$ 0))).
 
-(* let exampleException = withException<Nat, File>(context(h) fun() perform h.throw<File>(3)) *)
-Definition exampleException_body : term :=
+(* let exception_example = withException<Nat, File>(context(h) fun() perform h.throw<File>(3)) *)
+Definition exception_example_body : term :=
   term_perform ($$ 0) 0 [T_File `Lf] (T_File `Lf) three_v.
 
-Definition exampleException : term :=
+Definition exception_example : term :=
   (withException @ty[ T_Nat `Lf ] @ty[ T_File `Lf ]) @·
     (λ: T_Exception `Ll (T_Nat `Lf) \\
-      exampleException_body).
+      exception_example_body).
 
 (* fun lazyMap[lf, la, lb]<a <: Any'la, b <: Any'lb>(
        xs: LazyList<a>, f: (a)'lf -> b
@@ -575,13 +574,13 @@ Definition withId : term :=
     λ: (T_Id `Ll -{ `Lf }-> `T 0) \\
       term_handle Id_tag [] (`T 0) (`T 0) [(1, withId_op_body)] (($$ 1) @· ($$ 0)).
 
-(* let exampleOptionality =
+(* let optionality_example =
      handle o: Optionality { op mkSome<b>(x) resume(Some<b>(x)) }
      perform o.mkSome<Nat>(3) *)
 Definition optionality_op_body : term :=
   ($$ 1) @· (some_v (`T 0) ($$ 0)).
 
-Definition exampleOptionality : term :=
+Definition optionality_example : term :=
   term_handle Optionality_tag []
     (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf (T_Nat `Lf)) [(1, optionality_op_body)]
     (term_perform ($$ 0) 0 [T_Nat `Lf] (T_Option `Lf (T_Nat `Lf)) three_v).
@@ -600,7 +599,7 @@ Definition withId_example : term :=
   (withId @ty[ T_Nat `Lf ])
     @· (λ: T_Id `Ll \\ term_perform ($$ 0) 0 [T_Nat `Lf] (T_Nat `Lf) two_v).
 
-(* let multishotExample =
+(* let multishot_example =
      handle r: Reader<Nat> { op ask() let _ = resume(2) in resume(3) }
      perform r.ask()
    The op clause resumes TWICE: the captured continuation is re-run,
@@ -608,11 +607,11 @@ Definition withId_example : term :=
 Definition multishot_op_body : term :=
   let: T_Nat `Lf <- ($$ 1) @· two_v in ($$ 2) @· three_v.
 
-Definition multishotExample : term :=
+Definition multishot_example : term :=
   term_handle Reader_tag [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) [(0, multishot_op_body)]
     (term_perform ($$ 0) 0 [] (T_Nat `Lf) unit_v).
 
-(* let forwardExample =
+(* let forward_example =
      handle h: Exception<Nat> { op throw<a>(e) Error<Nat,File>(e) }
      Ok<Nat,File>(
        handle r: Reader<Nat> { op ask() resume(2) }
@@ -626,7 +625,7 @@ Definition forward_inner_body : term :=
   let: T_Nat `Lf <- term_perform ($$ 0) 0 [] (T_Nat `Lf) unit_v in
   term_perform ($$ 2) 0 [T_File `Lf] (T_File `Lf) ($$ 0).
 
-Definition forwardExample : term :=
+Definition forward_example : term :=
   term_handle Exception_tag [T_Nat `Lf]
     (T_Result `Lf (T_Nat `Lf) (T_File `Lf)) (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
     [(1, error_v (T_Nat `Lf) (T_File `Lf) ($$ 0))]
@@ -716,9 +715,9 @@ Definition typed_downcast_example : Prop := data_ctx ⊢ₜ downcast_example : T
 (*   withFile<Unit>(fun(f) Unit())  :  Unit                     *)
 Definition typed_withFile_example : Prop := data_ctx ⊢ₜ withFile_example : T_Unit.
 
-(*   readerExample  :  Nat                                      *)
-Definition typed_readerExample : Prop :=
-  full_ctx ⊢ₜ readerExample : T_Nat `Lf.
+(*   reader_example  :  Nat                                      *)
+Definition typed_reader_example : Prop :=
+  full_ctx ⊢ₜ reader_example : T_Nat `Lf.
 
 (*   withReader : [lr]<e,r>.                                    *)
 (*     (context(Reader<e>) ()'local -> r) -> (e'local -> r)     *)
@@ -740,9 +739,9 @@ Definition typed_withState : Prop :=
 Definition typed_withState_example : Prop :=
   full_ctx ⊢ₜ withState_example : T_Nat `Lf.
 
-(*   statemExample : Nat — the TWO-OPERATION handler showcase   *)
-Definition typed_statemExample : Prop :=
-  statem_ctx ⊢ₜ statemExample : T_Nat `Lf.
+(*   statem_example : Nat — the TWO-OPERATION handler showcase   *)
+Definition typed_statem_example : Prop :=
+  statem_ctx ⊢ₜ statem_example : T_Nat `Lf.
 
 (*   withException : <e,r>.                                     *)
 (*     (context(Exception<e>) () -> r) -> Result<e, r>          *)
@@ -752,9 +751,9 @@ Definition typed_withException : Prop :=
         ((T_Exception `Ll (`T 1) -{ `Lf }-> `T 0) -{ `Lf }->
          T_Result `Lf (`T 1) (`T 0))).
 
-(*   exampleException  :  Result<Nat, File>                     *)
-Definition typed_exampleException : Prop :=
-  full_ctx ⊢ₜ exampleException : T_Result `Lf (T_Nat `Lf) (T_File `Lf).
+(*   exception_example  :  Result<Nat, File>                     *)
+Definition typed_exception_example : Prop :=
+  full_ctx ⊢ₜ exception_example : T_Result `Lf (T_Nat `Lf) (T_File `Lf).
 
 (*   withReader_example : Nat                                   *)
 Definition typed_withReader_example : Prop :=
@@ -764,13 +763,13 @@ Definition typed_withReader_example : Prop :=
 Definition typed_withId_example : Prop :=
   full_ctx ⊢ₜ withId_example : T_Nat `Lf.
 
-(*   multishotExample : Nat                                     *)
-Definition typed_multishotExample : Prop :=
-  full_ctx ⊢ₜ multishotExample : T_Nat `Lf.
+(*   multishot_example : Nat                                     *)
+Definition typed_multishot_example : Prop :=
+  full_ctx ⊢ₜ multishot_example : T_Nat `Lf.
 
-(*   forwardExample : Result<Nat, File>                         *)
-Definition typed_forwardExample : Prop :=
-  full_ctx ⊢ₜ forwardExample : T_Result `Lf (T_Nat `Lf) (T_File `Lf).
+(*   forward_example : Result<Nat, File>                         *)
+Definition typed_forward_example : Prop :=
+  full_ctx ⊢ₜ forward_example : T_Result `Lf (T_Nat `Lf) (T_File `Lf).
 
 (*   getOrElse : <t>. t -> Option<t> -local-> t                 *)
 Definition typed_getOrElse : Prop :=
@@ -792,9 +791,9 @@ Definition typed_withId : Prop :=
     : type_ty_all (T_Any `Lf)
         ((T_Id `Ll -{ `Lf }-> `T 0) -{ `Lf }-> `T 0).
 
-(*   exampleOptionality  :  Option<Nat>                         *)
-Definition typed_exampleOptionality : Prop :=
-  full_ctx ⊢ₜ exampleOptionality : T_Option `Lf (T_Nat `Lf).
+(*   optionality_example  :  Option<Nat>                         *)
+Definition typed_optionality_example : Prop :=
+  full_ctx ⊢ₜ optionality_example : T_Option `Lf (T_Nat `Lf).
 
 (* The explicit binder context of [lazyMap_body] (innermost first):     *)
 (*   f    : (a)'lf -> b                                                 *)
@@ -872,10 +871,10 @@ Definition red_withFile_example : Prop := withFile_example ==>> unit_v.
 (*   withState(get; put(3); get)(2)  ~~>*  3   (the 2nd get)     *)
 Definition red_withState_example : Prop := withState_example ==>> three_v.
 
-(*   statemExample  ~~>*  3 : both operations of the two-op       *)
+(*   statem_example  ~~>*  3 : both operations of the two-op       *)
 (*   declaration fire — get (index 0) twice and put (index 1)     *)
 (*   once, selected by nth_error in H_Perform.                    *)
-Definition red_statemExample : Prop := statemExample ==>> three_v.
+Definition red_statem_example : Prop := statem_example ==>> three_v.
 
 (*   mapFirst(Pair(0,0), Pair(2,3), succ)  ~~>*  Pair(3, 3)     *)
 Definition red_mapFirst_example : Prop :=
@@ -887,8 +886,8 @@ Definition red_foldEndo_example : Prop := foldEndo_example ==>> four_v.
 (*   withException<Nat,File>(fun() throw 3)  ~~>*  Error(3)      *)
 (* The abortive handler: the captured continuation (the Ok frame) *)
 (* is discarded — the op clause never resumes.                    *)
-Definition red_exampleException : Prop :=
-  exampleException ==>> error_v (T_Nat `Lf) (T_File `Lf) three_v.
+Definition red_exception_example : Prop :=
+  exception_example ==>> error_v (T_Nat `Lf) (T_File `Lf) three_v.
 
 (*   withReader<Nat,Nat>(fun() ask)(2)  ~~>*  2                 *)
 Definition red_withReader_example : Prop := withReader_example ==>> two_v.
@@ -897,11 +896,11 @@ Definition red_withReader_example : Prop := withReader_example ==>> two_v.
 Definition red_withId_example : Prop := withId_example ==>> two_v.
 
 (*   handle { ask() resume(2); resume(3) } perform ask() ~~>* 3 *)
-Definition red_multishotExample : Prop := multishotExample ==>> three_v.
+Definition red_multishot_example : Prop := multishot_example ==>> three_v.
 
-(*   forwardExample  ~~>*  Error(2)                             *)
-Definition red_forwardExample : Prop :=
-  forwardExample ==>> error_v (T_Nat `Lf) (T_File `Lf) two_v.
+(*   forward_example  ~~>*  Error(2)                             *)
+Definition red_forward_example : Prop :=
+  forward_example ==>> error_v (T_Nat `Lf) (T_File `Lf) two_v.
 
 (*   getOrElse<Nat>(0, Some(3))  ~~>*  3   (H_MatchYes)         *)
 Definition red_getOrElse_some : Prop := getOrElse_some ==>> three_v.
@@ -912,9 +911,9 @@ Definition red_list_example_full : Prop :=
   list_example_full ==>> cons_v (T_File `Ll) file_v (nil_v (T_File `Ll)).
 
 (*   handle { ask() resume(2) } perform ask()  ~~>*  2          *)
-Definition red_readerExample : Prop := readerExample ==>> two_v.
+Definition red_reader_example : Prop := reader_example ==>> two_v.
 
 (*   handle { mkSome(x) resume(Some(x)) } perform mkSome(3)      *)
 (*       ~~>*  Some(3)                                          *)
-Definition red_exampleOptionality : Prop :=
-  exampleOptionality ==>> some_v (T_Nat `Lf) three_v.
+Definition red_optionality_example : Prop :=
+  optionality_example ==>> some_v (T_Nat `Lf) three_v.
