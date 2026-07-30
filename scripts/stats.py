@@ -6,23 +6,29 @@
 # Prints (and writes to STATS.md) per-directory statistics for the
 # proof development: lines of code and declaration counts.  EVERY
 # number is computed from the sources at generation time — nothing is
-# hardcoded, so a paper citing these figures can regenerate them with
-# `make stats` and diff against the committed STATS.md.
+# hardcoded (the directory list comes from src/_CoqProject), so a
+# paper citing these figures can regenerate them with `make stats`
+# and diff against the committed STATS.md.  `--check` (used by
+# `make check-docs` / `make verify`) fails when the committed file
+# is stale.
 #
 # Declaration counting is syntactic: a line whose first token (after
-# leading whitespace) is the keyword.  Comment prose never starts a
-# line with a bare declaration keyword in this codebase, and the
-# repo uses no Local/Program/Global prefixes (checked 2026-07-19).
+# leading whitespace) is the keyword.  Local/Program/Global-prefixed
+# declaration forms would evade that counting, so their absence is
+# CHECKED (guard_no_prefixed_decls), not assumed.
 #
 # ==================================================================
 import re
+import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import coqparse
+
+ROOT = coqparse.ROOT
 OUTFILE = "STATS.md"
 
-DIRS = ["core", "subst", "safety", "examples"]
-KEYWORDS = ["Definition", "Fixpoint", "Inductive", "Lemma", "Theorem", "Corollary"]
+KEYWORDS = coqparse.STAT_KEYWORDS
 
 # A declaration line starts (after optional whitespace) with the
 # keyword followed by a whitespace character.
@@ -30,6 +36,25 @@ KW_RE = {kw: re.compile(r"^\s*" + kw + r"\s") for kw in KEYWORDS}
 
 
 def main():
+    check_mode = "--check" in sys.argv[1:]
+
+    dirs = coqparse.coq_project_dirs()
+
+    # Prefixed declarations would silently undercount; fail loudly.
+    bad = []
+    for d in dirs:
+        for f in sorted((ROOT / "src" / p for p in coqparse.coq_project_files()
+                         if p.parts[0] == d), key=str):
+            for ln, line in coqparse.guard_no_prefixed_decls(f):
+                bad.append(f"{f.relative_to(ROOT)}:{ln}: {line}")
+    if bad:
+        print("FAIL: prefixed declarations found — the keyword counting "
+              "below would miss them; extend stats.py first:",
+              file=sys.stderr)
+        for b in bad:
+            print(f"  {b}", file=sys.stderr)
+        sys.exit(1)
+
     out = []
     out.append("# Development statistics")
     out.append("")
@@ -43,9 +68,12 @@ def main():
     total_loc = 0
     total_kw = {kw: 0 for kw in KEYWORDS}
 
-    for d in DIRS:
-        # Byte-wise sort (à la LC_ALL=C) for determinism.
-        files = sorted(ROOT.joinpath("src", d).rglob("*.v"), key=str)
+    project_files = coqparse.coq_project_files()
+    for d in dirs:
+        # Files of the build only (from _CoqProject), byte-wise sorted
+        # (à la LC_ALL=C) for determinism.
+        files = sorted((ROOT / "src" / f for f in project_files
+                        if f.parts[0] == d), key=str)
         text = "".join(
             f.read_text(encoding="utf-8", errors="replace") for f in files
         )
@@ -65,10 +93,12 @@ def main():
     )
 
     content = "\n".join(out) + "\n"
-    (ROOT / OUTFILE).write_text(content, encoding="utf-8")
-    print(content, end="")
-    print()
-    print(f"Wrote {OUTFILE}.")
+    if not coqparse.check_or_write(OUTFILE, content, check_mode, "stats"):
+        sys.exit(1)
+    if not check_mode:
+        print(content, end="")
+        print()
+        print(f"Wrote {OUTFILE}.")
 
 
 if __name__ == "__main__":

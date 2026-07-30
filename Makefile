@@ -1,31 +1,48 @@
-.PHONY: all clean check-assumptions theorem-index stats
+.PHONY: all clean check-assumptions theorem-index stats check-docs verify help
 
 COQ_MAKEFILE := src/Makefile.coq
+NPROC := $(shell nproc 2>/dev/null || echo 2)
 
 all: $(COQ_MAKEFILE)
-	$(MAKE) -C src -f Makefile.coq
+	$(MAKE) -j$(NPROC) -C src -f Makefile.coq
 
 $(COQ_MAKEFILE): src/_CoqProject
 	cd src && coq_makefile -f _CoqProject -o Makefile.coq
 
 # Verify every capstone theorem is closed under the global context
 # (no axioms).  Depends on `all` so the check never runs against a
-# stale or partial build.  See scripts/check_assumptions.py for the
-# capstone list.
+# stale or partial build.  The capstone list is derived from the
+# gated files — see scripts/check_assumptions.py.
 check-assumptions: all
 	./scripts/check_assumptions.py
 
 # Regenerate THEOREMS.md (index of every Theorem/Corollary in src/).
+# Purely syntactic — deliberately does NOT depend on `all`.
 theorem-index:
 	./scripts/theorem_index.py
 
 # Regenerate STATS.md (per-directory LOC and declaration counts).
+# Purely syntactic — deliberately does NOT depend on `all`.
 stats:
 	./scripts/stats.py
 
+# Fail if the committed generated docs are stale vs. the sources.
+check-docs:
+	./scripts/theorem_index.py --check
+	./scripts/stats.py --check
+
+# The one command a reviewer runs: build, axiom gate, docs freshness.
+verify: all check-assumptions check-docs
+
 clean:
-	$(MAKE) -C src -f Makefile.coq clean 2>/dev/null || true
-	rm -f src/Makefile.coq src/Makefile.coq.conf
-	rm -f src/**/.*.aux
-	rm -f src/.lia.cache
-	rm -f src/**/.lia.cache
+	[ ! -f $(COQ_MAKEFILE) ] || $(MAKE) -C src -f Makefile.coq cleanall
+	rm -f src/Makefile.coq src/Makefile.coq.conf src/.Makefile.coq.d
+
+help:
+	@echo "make                  build the development (parallel)"
+	@echo "make verify           build + axiom gate + docs-freshness gate"
+	@echo "make check-assumptions  axiom gate only (builds first)"
+	@echo "make theorem-index    regenerate THEOREMS.md"
+	@echo "make stats            regenerate STATS.md"
+	@echo "make check-docs       fail if THEOREMS.md/STATS.md are stale"
+	@echo "make clean            remove all build artifacts"

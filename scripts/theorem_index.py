@@ -5,22 +5,27 @@
 #
 # Regenerates THEOREMS.md: a table of every Theorem and Corollary
 # (deliberately NOT plain Lemmas — those are internal machinery)
-# across src/**/*.v, with name, file:line, and the first line of the
-# statement.  Output is deterministic: files are sorted byte-wise
-# and rows follow source line order within each file, so regenerating
-# on an unchanged tree is a no-op — CI-friendly and diff-reviewable.
+# across the files of the build (src/_CoqProject), with name,
+# file:line, and the first line of the statement.  Output is
+# deterministic: files are sorted byte-wise and rows follow source
+# line order within each file, so regenerating on an unchanged tree
+# is a no-op — CI-friendly and diff-reviewable.
 #
-# Run via `make theorem-index`.  THEOREMS.md is committed; regenerate
-# it whenever a Theorem/Corollary is added, moved, or renamed.
+# Run via `make theorem-index`.  THEOREMS.md is committed;
+# `--check` (used by `make check-docs` / `make verify`) fails with a
+# diff when the committed file is stale.
 #
 # ==================================================================
 import re
+import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import coqparse
+
+ROOT = coqparse.ROOT
 OUTFILE = "THEOREMS.md"
 
-DECL_RE = re.compile(r"^\s*(Theorem|Corollary)\s")
 # The statement's first line is what follows the first ':' on the
 # declaration line.
 STMT_RE = re.compile(r"^\s*(Theorem|Corollary)\s+[^:]*:\s*")
@@ -41,11 +46,9 @@ def rows_for_file(path, relpath):
     i = 0
     while i < len(lines):
         line = lines[i]
-        if DECL_RE.match(line):
+        if coqparse.DECL_RE.match(line):
             ln = i + 1
-            fields = line.split()
-            name = fields[1] if len(fields) > 1 else ""
-            name = name.split(":", 1)[0]
+            name = coqparse.DECL_RE.match(line).group(2)
             stmt = STMT_RE.sub("", line, count=1)
             if stmt.strip() == "" and i + 1 < len(lines):
                 i += 1
@@ -57,8 +60,12 @@ def rows_for_file(path, relpath):
 
 
 def main():
-    # Byte-wise sort (à la LC_ALL=C) for determinism.
-    files = sorted(ROOT.joinpath("src").rglob("*.v"), key=str)
+    check_mode = "--check" in sys.argv[1:]
+
+    # Index exactly the files of the build, byte-wise sorted (à la
+    # LC_ALL=C) for determinism.
+    files = sorted((ROOT / "src" / f for f in coqparse.coq_project_files()),
+                   key=str)
     rows = []
     for f in files:
         rows.extend(rows_for_file(f, f.relative_to(ROOT).as_posix()))
@@ -76,8 +83,12 @@ def main():
         "| --- | --- | --- |",
     ] + rows
 
-    (ROOT / OUTFILE).write_text("\n".join(out) + "\n", encoding="utf-8")
-    print(f"Wrote {OUTFILE} ({n_rows} theorems/corollaries).")
+    content = "\n".join(out) + "\n"
+    if not coqparse.check_or_write(OUTFILE, content, check_mode,
+                                   "theorem-index"):
+        sys.exit(1)
+    if not check_mode:
+        print(f"Wrote {OUTFILE} ({n_rows} theorems/corollaries).")
 
 
 if __name__ == "__main__":

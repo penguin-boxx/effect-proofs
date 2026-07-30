@@ -3,28 +3,44 @@
 #                 CI: build + capstone assumption check
 #
 # Builds the full development in a container with a pinned Rocq
-# Prover, then verifies that every capstone theorem is closed under
-# the global context (scripts/check_assumptions.py).
+# Prover, then runs `make verify`: the capstone axiom gate
+# (scripts/check_assumptions.py) plus the generated-docs freshness
+# gate (THEOREMS.md/STATS.md must match the sources).
 #
-# Version pinning: the artifact targets Rocq 9.1.0.  Docker Hub's
+# Version pinning: the artifact targets Rocq 9.1.  Docker Hub's
 # official Rocq Prover repository (rocq/rocq-prover) publishes NO
 # 9.1.0 tag — as of 2026-07-19 the 9.1 series exists only as `9.1`
 # and `9.1.1` (verified via the registry API; the 9.1.1 image config
 # carries ROCQ_VERSION=9.1.1).  We therefore pin the exact patch tag
 # `9.1.1`, the closest immutable pin in the 9.1 series (bugfix-only
-# delta from 9.1.0).  CHECK ON FIRST CI RUN that the image resolves
-# and that the "Rocq version" step prints 9.1.x.
+# delta from 9.1.0).  The "Rocq version" step fails fast if the
+# image ever drifts out of the 9.1 series.
+#
+# Caching: compiled .vo/.glob files are cached keyed on the source
+# hash, so a push that touches one file rebuilds incrementally.  The
+# weekly scheduled run skips the cache step entirely, so a poisoned
+# cache cannot mask a break for more than a week.
 #
 # ==================================================================
 name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
+  schedule:
+    # Weekly clean-ish run so a stale cache cannot silently mask a break.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     container:
       image: rocq/rocq-prover:9.1.1
       # The image's default user is `rocq` (its opam switch lives in
@@ -42,7 +58,7 @@ jobs:
         # An explicit `shell: bash` makes the runner invoke
         # `bash --noprofile --norc -eo pipefail {0}`.  pipefail is
         # load-bearing: a piped command must never mask a failing
-        # exit code (see also the BUILD GATING note in the repo).
+        # exit code (see the build-gating note in ARTIFACT.md).
         shell: bash
     steps:
       - name: Checkout
@@ -54,8 +70,18 @@ jobs:
           # Fail fast if the image ever drifts out of the 9.1 series.
           opam exec -- rocq --version | grep -q 'version 9\.1\.'
 
-      - name: Build
-        run: opam exec -- make
+      - name: Cache compiled proofs
+        if: github.event_name != 'schedule'
+        uses: actions/cache@v4
+        with:
+          path: |
+            src/**/*.vo
+            src/**/*.vos
+            src/**/*.vok
+            src/**/*.glob
+            src/**/.*.aux
+          key: rocq-9.1.1-${{ hashFiles('src/**/*.v', 'src/_CoqProject') }}
+          restore-keys: rocq-9.1.1-
 
-      - name: Check assumptions
-        run: opam exec -- make check-assumptions
+      - name: Verify (build + axiom gate + docs gate)
+        run: opam exec -- make verify

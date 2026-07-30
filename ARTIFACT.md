@@ -23,8 +23,11 @@ the same minor series — see `.github/workflows/ci.yml`).
 ## Scope of the verified development
 
 The verified development is **exactly the files listed in
-`src/_CoqProject`** — those are what `make` builds and what the
-assumption gate checks.  The `experiments/` directory is unbuilt
+`src/_CoqProject`** — those are what `make` builds.  The assumption
+gate then checks every Theorem/Corollary of the capstone files
+(`GATED_FILES` in `scripts/check_assumptions.py`); since every
+capstone's proof is checked transitively by `Print Assumptions`, the
+axiom-freeness claim covers everything those theorems depend on.  The `experiments/` directory is unbuilt
 scratch work (it contains `Admitted`/`Axiom` placeholders by nature)
 and is **excluded from archival tarballs** via `.gitattributes`
 (`export-ignore`), as is the local `.claude/` directory.  Axiom-freeness
@@ -48,21 +51,25 @@ last pipe stage unless `pipefail` is set.
 ## Verify: the self-check
 
 ```sh
-make check-assumptions
+make verify
 ```
 
-Rebuilds if needed, then runs `Print Assumptions` on **every capstone
-theorem** — all Theorems/Corollaries of the gated files (`Soundness`,
-`Escape`, `Boundary`, `BoundaryStep`, `Occurrence`, `Decide`, `Stepf`,
-`MarkerRename`, `Guarantees`, `ExamplesSafety`, `ExamplesRejection`) —
-and fails unless each one prints `Closed under the global context`,
-i.e. the development is axiom-free, with no admitted proofs and no
-smuggled hypotheses. The capstone list lives in one commented block at
-the top of `scripts/check_assumptions.py` and is **verified
-exhaustive** by the script itself: an ungated `Theorem`/`Corollary` in
-any gated file fails the run.
+**This is the command reviewers should run.** It builds the
+development, then runs two gates:
 
-This is the command reviewers should run. CI runs it on every push.
+1. **The axiom gate** (`make check-assumptions`): `Print Assumptions`
+   on **every capstone theorem** — every Theorem/Corollary of every
+   gated file — fails unless each one prints `Closed under the global
+   context`, i.e. the development is axiom-free, with no admitted
+   proofs and no smuggled hypotheses. The capstone list is **derived,
+   not hand-maintained**: the single source of truth is the
+   `GATED_FILES` list in `scripts/check_assumptions.py`, and every
+   Theorem/Corollary declared in those files is gated automatically —
+   a new theorem in a gated file cannot escape the gate.
+
+2. **The docs-freshness gate** (`make check-docs`): the committed
+   generated documents (THEOREMS.md, STATS.md) must match what the
+   sources regenerate — a stale committed index fails CI.
 
 ## Generated documentation
 
@@ -72,18 +79,20 @@ make stats           # regenerates STATS.md (also printed to stdout)
 ```
 
 - [THEOREMS.md](THEOREMS.md) — every `Theorem` and `Corollary` in
-  `src/`, with location and the first line of its statement.
+  the build, with location and the first line of its statement.
 - [STATS.md](STATS.md) — per-directory LOC and declaration counts.
 
 Both are committed and deterministic; regenerate them after changing
-the sources and commit the diff. Nothing in them is hand-maintained,
-so any figure a paper cites can be re-derived by running the target.
+the sources and commit the diff (`make verify` fails otherwise).
+Nothing in them is hand-maintained, so any figure a paper cites can
+be re-derived by running the target.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` builds the development and runs
-`make check-assumptions` inside the pinned Rocq container on every
-push and pull request.
+`.github/workflows/ci.yml` runs `make verify` inside the pinned Rocq
+container on pushes to main, pull requests, and a weekly schedule
+(the scheduled run skips the build cache so a stale cache cannot
+mask a break).
 
 ## TODO — maintainer-only steps before archival
 
