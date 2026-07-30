@@ -4,73 +4,41 @@ Require Import Stdlib.micromega.Lia.
 Import ListNotations.
 Require Import Syntax.
 Require Import Substitution.
-Require Import Semantics.
 Require Import Typing.
-Require Import ShiftLaws.
-Require Import Weakening.
-Require Import SubstLt.
-Require Import SubstTy.
-Require Import SubstTm.
-Require Import ProgramCtx.
-Require Import TypingSubst.
 
 (* ================================================================== *)
 (* The substitution-tier tactic library.                              *)
 (*                                                                    *)
-(* Shared automation for the de Bruijn metatheory:                    *)
+(* Placed FIRST in the tier so every subst module can use it.  The    *)
+(* hint databases are created here; their entries are registered at   *)
+(* the defining sites across the tier (end of ShiftLaws.v,            *)
+(* Weakening.v, SubstLt.v, SubstTy.v, SubstTm.v, TypingSubst.v).      *)
 (*                                                                    *)
 (*   subst_go       Hint Rewrite database normalizing the inline      *)
 (*                  [fix go]/[fix go_ops] traversals to their named   *)
 (*                  List.map/concat forms (the *_go_eq_* bridge       *)
-(*                  lemmas), so traversal proofs can start with       *)
-(*                  [autorewrite with subst_go].                      *)
+(*                  lemmas): [autorewrite with subst_go].  The        *)
+(*                  safety-tier marker bridges register here too.     *)
 (*                                                                    *)
-(* This library is FORWARD-FACING: the pre-existing proofs have not   *)
-(* been retrofitted onto it (they spell their rewrites out); new      *)
-(* proofs in this tier should prefer these tactics.                   *)
-(*                                                                    *)
-(*   ctxmap         Hint Resolve database with every judgment-        *)
-(*                  transport lemma of the context-map relations      *)
+(*   ctxmap         Hint Resolve database with the judgment-transport *)
+(*                  lemmas of the context-map relations               *)
 (*                  (InsTy/InsLt/InsTm/SubstLt/SubstTy/SubstTm);      *)
-(*                  [wf_transport] is [solve [eauto with ctxmap]].    *)
+(*                  [wf_transport] is [solve [eauto with ctxmap]] —   *)
+(*                  the standard discharge of a one-step transport.   *)
+(*                                                                    *)
+(*   go_traverse    close one constructor case of a purely structural *)
+(*                  traversal equation (normalize, fold IHs, refl).   *)
 (*                                                                    *)
 (*   dbi            decide every visible [Nat.eqb]/[Nat.ltb]/         *)
 (*                  [Nat.leb] comparison, then close arithmetic       *)
-(*                  side-goals with [lia] — the standard var-case     *)
-(*                  finisher of the shift/subst commutation laws.     *)
+(*                  side-goals with [lia].  Currently forward-facing: *)
+(*                  the existing var-case proofs interleave           *)
+(*                  branch-dependent rewrites with their comparison   *)
+(*                  splits, so none was mechanically convertible.     *)
 (* ================================================================== *)
 
 Create HintDb subst_go.
-#[export] Hint Rewrite
-  shift_lt_in_ty_go_eq_map shift_ty_go_eq_map shift_tm_go_eq_map
-  shift_ty_in_tm_go_eq_map shift_lt_in_tm_go_eq_map
-  subst_ty_go_eq_map subst_tm_go_eq_map subst_lt_in_tm_go_eq_map
-  subst_ty_in_tm_go_eq_map
-  multi_subst_lt_in_ty_go_eq_map
-  shift_tm_go_ops_eq_map shift_ty_in_tm_go_ops_eq_map
-  shift_lt_in_tm_go_ops_eq_map subst_tm_go_ops_eq_map
-  subst_ty_in_tm_go_ops_eq_map subst_lt_in_tm_go_ops_eq_map
-  free_tm_vars_go_eq_concat free_tm_vars_go_ops_eq_concat
-  has_rt_cap_go_ops_eq
-  : subst_go.
-
 Create HintDb ctxmap.
-#[export] Hint Resolve
-  lt_wf_InsTy lt_wf_InsLt lt_wf_InsTm
-  lt_wf_SubstLt lt_wf_SubstTy lt_wf_SubstTm
-  ty_wf_InsTy ty_wf_InsLt ty_wf_InsTm
-  ty_wf_SubstLt ty_wf_SubstTy ty_wf_SubstTm
-  lifetimes_wf_InsTy lifetimes_wf_InsLt lifetimes_wf_InsTm
-  lifetimes_wf_SubstLt lifetimes_wf_SubstTy lifetimes_wf_SubstTm
-  lt_sub_InsTy lt_sub_InsLt lt_sub_InsTm
-  lt_sub_SubstLt lt_sub_SubstTy lt_sub_SubstTm
-  sub_InsTy sub_InsLt sub_InsTm
-  sub_SubstLt sub_SubstTy sub_SubstTm
-  sub_free_InsTy sub_free_InsLt sub_free_InsTm
-  sub_free_SubstLt sub_free_SubstTy sub_free_SubstTm
-  sub_free_list_InsTy sub_free_list_InsLt sub_free_list_InsTm
-  sub_free_list_SubstLt sub_free_list_SubstTy sub_free_list_SubstTm
-  : ctxmap.
 
 Ltac wf_transport := solve [eauto with ctxmap].
 
@@ -89,3 +57,56 @@ Ltac dbi_case :=
 (* The var-case finisher: case on the comparisons, then the branch is
    either arithmetic-absurd, reflexivity, or f_equal + arithmetic. *)
 Ltac dbi := dbi_case; try lia; try reflexivity; try (f_equal; lia).
+
+(* Close one constructor case of a purely structural traversal
+   equation: normalize the inline go-fixpoints, fold every inductive
+   hypothesis, and finish by reflexivity. *)
+Ltac go_traverse :=
+  intros; simpl; autorewrite with subst_go;
+  repeat match goal with IH : forall _, _ |- _ => rewrite IH; clear IH end;
+  reflexivity.
+
+(* [sig_congr law] closes a ctor/eff signature congruence: destruct
+   the signature tuple, unfold the sig operations, then close every
+   component by index normalization + the single core [law]. *)
+(* Extension hook: files defining further sig operations redefine
+   this (Ltac ::=) so [sig_congr] unfolds them too. *)
+Ltac sig_extra_unfold := idtac.
+
+(* Two-law variant for signature congruences whose components close  *)
+(* by different core laws (the cancel/comm mixed cases).              *)
+Ltac sig_congr2 law1 law2 :=
+  intros; simpl;
+  repeat match goal with p : _ * _ |- _ => destruct p end;
+  unfold shift_ty_ctor_sig, shift_lt_ctor_sig,
+         shift_ty_eff_sig, shift_lt_eff_sig;
+  sig_extra_unfold;
+  simpl;
+  solve [ repeat first
+    [ solve [ apply law1; lia ] | solve [ apply law1 ]
+    | solve [ symmetry; apply law1; lia ] | solve [ symmetry; apply law1 ]
+    | solve [ apply law2; lia ] | solve [ apply law2 ]
+    | solve [ symmetry; apply law2; lia ] | solve [ symmetry; apply law2 ]
+    | rewrite Nat.add_0_r
+    | rewrite Nat.add_succ_r
+    | (rewrite !List.map_map; apply List.map_ext; intros ?p;
+       repeat match goal with p : _ * _ |- _ => destruct p end; simpl)
+    | progress f_equal ] ].
+
+Ltac sig_congr law :=
+  intros; simpl;
+  repeat match goal with p : _ * _ |- _ => destruct p end;
+  unfold shift_ty_ctor_sig, shift_lt_ctor_sig,
+         shift_ty_eff_sig, shift_lt_eff_sig;
+  sig_extra_unfold;
+  simpl;
+  solve [ repeat first
+    [ solve [ apply law; lia ]
+    | solve [ apply law ]
+    | solve [ symmetry; apply law; lia ]
+    | solve [ symmetry; apply law ]
+    | rewrite Nat.add_0_r
+    | rewrite Nat.add_succ_r
+    | (rewrite !List.map_map; apply List.map_ext; intros ?p;
+       repeat match goal with p : _ * _ |- _ => destruct p end; simpl)
+    | progress f_equal ] ].

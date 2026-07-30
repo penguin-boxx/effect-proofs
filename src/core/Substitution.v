@@ -46,18 +46,12 @@ Fixpoint shift_lt (amount cutoff : nat) (l : lifetime) : lifetime :=
 (* --- Types: shift lifetime variables --- *)
 
 Fixpoint shift_lt_in_ty (amount cutoff : nat) (T : type) : type :=
-  let fix go Ts :=
-    match Ts with
-    | []        => []
-    | A :: rest => shift_lt_in_ty amount cutoff A :: go rest
-    end
-  in
   match T with
   | type_var n        => type_var n
   | type_fun A l B    => type_fun (shift_lt_in_ty amount cutoff A)
                                   (shift_lt amount cutoff l)
                                   (shift_lt_in_ty amount cutoff B)
-  | type_ctor K l Ts  => type_ctor K (shift_lt amount cutoff l) (go Ts)
+  | type_ctor K l Ts  => type_ctor K (shift_lt amount cutoff l) (List.map (shift_lt_in_ty amount cutoff) Ts)
   | type_lt_all A     => type_lt_all (shift_lt_in_ty amount (S cutoff) A)
   | type_ty_all B A   => type_ty_all (shift_lt_in_ty amount cutoff B)
                                      (shift_lt_in_ty amount cutoff A)
@@ -69,16 +63,10 @@ Definition map_shift_lt_in_ty (amount cutoff : nat) (Ts : list type) : list type
 (* --- Types: shift type variables --- *)
 
 Fixpoint shift_ty (amount cutoff : nat) (T : type) : type :=
-  let fix go Ts :=
-    match Ts with
-    | []        => []
-    | A :: rest => shift_ty amount cutoff A :: go rest
-    end
-  in
   match T with
   | type_var n        => type_var (if Nat.leb cutoff n then n + amount else n)
   | type_fun A l B    => type_fun (shift_ty amount cutoff A) l (shift_ty amount cutoff B)
-  | type_ctor K l Ts  => type_ctor K l (go Ts)
+  | type_ctor K l Ts  => type_ctor K l (List.map (shift_ty amount cutoff) Ts)
   | type_lt_all A     => type_lt_all (shift_ty amount cutoff A)
   | type_ty_all B A   => type_ty_all (shift_ty amount cutoff B)
                                      (shift_ty amount (S cutoff) A)
@@ -90,12 +78,6 @@ Definition map_shift_ty (amount cutoff : nat) (Ts : list type) : list type :=
 (* --- Terms: shift term variables --- *)
 
 Fixpoint shift_tm (amount cutoff : nat) (t : term) : term :=
-  let fix go ts :=
-    match ts with
-    | []        => []
-    | u :: rest => shift_tm amount cutoff u :: go rest
-    end
-  in
   match t with
   | term_var x           => term_var (if Nat.leb cutoff x then x + amount else x)
   | term_app t1 t2       => term_app (shift_tm amount cutoff t1) (shift_tm amount cutoff t2)
@@ -106,7 +88,7 @@ Fixpoint shift_tm (amount cutoff : nat) (t : term) : term :=
   | term_ty_lam bound body => term_ty_lam bound (shift_tm amount cutoff body)
   | term_lt_app t l        => term_lt_app (shift_tm amount cutoff t) l
   | term_lt_lam body     => term_lt_lam (shift_tm amount cutoff body)
-  | term_ctor K l lts Ts ts  => term_ctor K l lts Ts (go ts)
+  | term_ctor K l lts Ts ts  => term_ctor K l lts Ts (List.map (shift_tm amount cutoff) ts)
     (* yes_body is under n_lt lifetime binders and arity term binders. *)
     | term_match scrut tag n_lt arity yes_body no_body =>
       term_match (shift_tm amount cutoff scrut) tag n_lt arity
@@ -116,33 +98,19 @@ Fixpoint shift_tm (amount cutoff : nat) (t : term) : term :=
   (* the n_β outer type-binders of op_body don't bind term vars.       *)
     | term_handle E Ts T_B T_R op_bodies body =>
       term_handle E Ts T_B T_R
-                  ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
-          match obs with
-          | []              => []
-          | (nb, ob) :: rest => (nb, shift_tm amount (cutoff + 2) ob) :: go_ops rest
-          end) op_bodies)
+                  (List.map (fun '(nb, ob) => (nb, shift_tm amount (cutoff + 2) ob)) op_bodies)
                   (shift_tm amount (S cutoff) body)
   | term_perform t op Ss A arg =>
       term_perform (shift_tm amount cutoff t) op Ss A (shift_tm amount cutoff arg)
     | term_cap E m Ts T_R op_bodies =>
       term_cap E m Ts T_R
-               ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
-          match obs with
-          | []              => []
-          | (nb, ob) :: rest => (nb, shift_tm amount (cutoff + 2) ob) :: go_ops rest
-          end) op_bodies)
+               (List.map (fun '(nb, ob) => (nb, shift_tm amount (cutoff + 2) ob)) op_bodies)
   | term_handler_m m T_B T_R t => term_handler_m m T_B T_R (shift_tm amount cutoff t)
   end.
 
 (* --- Terms: shift type variables --- *)
 
 Fixpoint shift_ty_in_tm (amount cutoff : nat) (t : term) : term :=
-  let fix go ts :=
-    match ts with
-    | []        => []
-    | u :: rest => shift_ty_in_tm amount cutoff u :: go rest
-    end
-  in
   match t with
   | term_var x           => term_var x
   | term_app t1 t2       => term_app (shift_ty_in_tm amount cutoff t1)
@@ -158,7 +126,7 @@ Fixpoint shift_ty_in_tm (amount cutoff : nat) (t : term) : term :=
   | term_lt_app t l        => term_lt_app (shift_ty_in_tm amount cutoff t) l
   (* lt binder does not bind type vars *)
   | term_lt_lam body     => term_lt_lam (shift_ty_in_tm amount cutoff body)
-  | term_ctor K l lts Ts ts  => term_ctor K l lts (map_shift_ty amount cutoff Ts) (go ts)
+  | term_ctor K l lts Ts ts  => term_ctor K l lts (map_shift_ty amount cutoff Ts) (List.map (shift_ty_in_tm amount cutoff) ts)
     (* match introduces no type binder; lifetime/term binders do not affect type indices *)
     | term_match scrut tag n_lt arity yes_body no_body =>
       term_match (shift_ty_in_tm amount cutoff scrut) tag n_lt arity
@@ -169,11 +137,7 @@ Fixpoint shift_ty_in_tm (amount cutoff : nat) (t : term) : term :=
       term_handle E (map_shift_ty amount cutoff Ts)
                   (shift_ty amount cutoff T_B)
                   (shift_ty amount cutoff T_R)
-                  ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
-          match obs with
-          | []              => []
-          | (nb, ob) :: rest => (nb, shift_ty_in_tm amount (cutoff + nb) ob) :: go_ops rest
-          end) op_bodies)
+                  (List.map (fun '(nb, ob) => (nb, shift_ty_in_tm amount (cutoff + nb) ob)) op_bodies)
                   (shift_ty_in_tm amount cutoff body)
   | term_perform t op Ss A arg =>
       term_perform (shift_ty_in_tm amount cutoff t)
@@ -184,11 +148,7 @@ Fixpoint shift_ty_in_tm (amount cutoff : nat) (t : term) : term :=
   | term_cap E m Ts T_R op_bodies =>
       term_cap E m (map_shift_ty amount cutoff Ts)
                (shift_ty amount cutoff T_R)
-               ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
-          match obs with
-          | []              => []
-          | (nb, ob) :: rest => (nb, shift_ty_in_tm amount (cutoff + nb) ob) :: go_ops rest
-          end) op_bodies)
+               (List.map (fun '(nb, ob) => (nb, shift_ty_in_tm amount (cutoff + nb) ob)) op_bodies)
   | term_handler_m m T_B T_R t =>
       term_handler_m m (shift_ty amount cutoff T_B) (shift_ty amount cutoff T_R)
         (shift_ty_in_tm amount cutoff t)
@@ -197,12 +157,6 @@ Fixpoint shift_ty_in_tm (amount cutoff : nat) (t : term) : term :=
 (* --- Terms: shift lifetime variables --- *)
 
 Fixpoint shift_lt_in_tm (amount cutoff : nat) (t : term) : term :=
-  let fix go ts :=
-    match ts with
-    | []        => []
-    | u :: rest => shift_lt_in_tm amount cutoff u :: go rest
-    end
-  in
   match t with
   | term_var x           => term_var x
   | term_app t1 t2       => term_app (shift_lt_in_tm amount cutoff t1)
@@ -221,7 +175,7 @@ Fixpoint shift_lt_in_tm (amount cutoff : nat) (t : term) : term :=
   | term_ctor K l lts Ts ts  => term_ctor K (shift_lt amount cutoff l)
                                         (List.map (shift_lt amount cutoff) lts)
                                         (map_shift_lt_in_ty amount cutoff Ts)
-                                        (go ts)
+                                        (List.map (shift_lt_in_tm amount cutoff) ts)
     | term_match scrut tag n_lt arity yes_body no_body =>
       term_match (shift_lt_in_tm amount cutoff scrut) tag n_lt arity
                     (shift_lt_in_tm amount (cutoff + n_lt) yes_body)
@@ -230,11 +184,7 @@ Fixpoint shift_lt_in_tm (amount cutoff : nat) (t : term) : term :=
       term_handle E (map_shift_lt_in_ty amount cutoff Ts)
                   (shift_lt_in_ty amount cutoff T_B)
                   (shift_lt_in_ty amount cutoff T_R)
-                  ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
-          match obs with
-          | []              => []
-          | (nb, ob) :: rest => (nb, shift_lt_in_tm amount cutoff ob) :: go_ops rest
-          end) op_bodies)
+                  (List.map (fun '(nb, ob) => (nb, shift_lt_in_tm amount cutoff ob)) op_bodies)
                   (shift_lt_in_tm amount cutoff body)
   | term_perform t op Ss A arg =>
       term_perform (shift_lt_in_tm amount cutoff t)
@@ -245,11 +195,7 @@ Fixpoint shift_lt_in_tm (amount cutoff : nat) (t : term) : term :=
     | term_cap E m Ts T_R op_bodies =>
       term_cap E m (map_shift_lt_in_ty amount cutoff Ts)
                (shift_lt_in_ty amount cutoff T_R)
-               ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
-          match obs with
-          | []              => []
-          | (nb, ob) :: rest => (nb, shift_lt_in_tm amount cutoff ob) :: go_ops rest
-          end) op_bodies)
+               (List.map (fun '(nb, ob) => (nb, shift_lt_in_tm amount cutoff ob)) op_bodies)
   | term_handler_m m T_B T_R t =>
       term_handler_m m (shift_lt_in_ty amount cutoff T_B) (shift_lt_in_ty amount cutoff T_R)
         (shift_lt_in_tm amount cutoff t)
@@ -278,18 +224,12 @@ Fixpoint subst_lt (var : nat) (replacement l : lifetime) : lifetime :=
 (* --- Lifetime variable substitution in types --- *)
 
 Fixpoint subst_lt_in_ty (var : nat) (replacement : lifetime) (T : type) : type :=
-  let fix go Ts :=
-    match Ts with
-    | []        => []
-    | A :: rest => subst_lt_in_ty var replacement A :: go rest
-    end
-  in
   match T with
   | type_var n        => type_var n
   | type_fun A lt B   => type_fun (subst_lt_in_ty var replacement A)
                                   (subst_lt var replacement lt)
                                   (subst_lt_in_ty var replacement B)
-  | type_ctor K lt Ts => type_ctor K (subst_lt var replacement lt) (go Ts)
+  | type_ctor K lt Ts => type_ctor K (subst_lt var replacement lt) (List.map (subst_lt_in_ty var replacement) Ts)
   (* under lt_all: var shifts up, free lt vars in replacement shift up *)
   | type_lt_all A     => type_lt_all
                            (subst_lt_in_ty (S var) (shift_lt 1 0 replacement) A)
@@ -304,19 +244,13 @@ Definition map_subst_lt_in_ty (var : nat) (replacement : lifetime) (Ts : list ty
 (* --- Type variable substitution in types --- *)
 
 Fixpoint subst_ty (var : nat) (replacement T : type) : type :=
-  let fix go Ts :=
-    match Ts with
-    | []        => []
-    | A :: rest => subst_ty var replacement A :: go rest
-    end
-  in
   match T with
   | type_var n =>
       if Nat.eqb n var then replacement
       else if Nat.ltb var n then type_var (pred n)
       else type_var n
   | type_fun A l B    => type_fun (subst_ty var replacement A) l (subst_ty var replacement B)
-  | type_ctor K l Ts  => type_ctor K l (go Ts)
+  | type_ctor K l Ts  => type_ctor K l (List.map (subst_ty var replacement) Ts)
   (* under lt_all: free lt vars in replacement shift up (capture-avoidance) *)
   | type_lt_all A     => type_lt_all (subst_ty var (shift_lt_in_ty 1 0 replacement) A)
   (* under ty_all: var shifts up, free ty vars in replacement shift up *)
@@ -335,12 +269,6 @@ Definition map_subst_ty (var : nat) (replacement : type) (Ts : list type) : list
 (* replacement are shifted up by 1 to avoid capture.                      *)
 
 Fixpoint subst_tm (var : nat) (replacement t : term) : term :=
-  let fix go ts :=
-    match ts with
-    | []        => []
-    | u :: rest => subst_tm var replacement u :: go rest
-    end
-  in
   match t with
   | term_var y =>
       if Nat.eqb y var then replacement
@@ -356,7 +284,7 @@ Fixpoint subst_tm (var : nat) (replacement t : term) : term :=
   | term_lt_app t l        => term_lt_app (subst_tm var replacement t) l
   (* lt binder: var unchanged, lt vars in replacement↑1 *)
   | term_lt_lam body    => term_lt_lam (subst_tm var (shift_lt_in_tm 1 0 replacement) body)
-  | term_ctor K l lts Ts ts => term_ctor K l lts Ts (go ts)
+  | term_ctor K l lts Ts ts => term_ctor K l lts Ts (List.map (subst_tm var replacement) ts)
   (* yes_body is under arity term binders: var shifts up by arity,       *)
   (* and term vars in replacement shift up by arity to avoid capture     *)
     | term_match scrut tag n_lt arity yes_body no_body =>
@@ -367,34 +295,20 @@ Fixpoint subst_tm (var : nat) (replacement t : term) : term :=
                     (subst_tm var replacement no_body)
     | term_handle E Ts T_B T_R op_bodies body =>
       term_handle E Ts T_B T_R
-                  ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
-          match obs with
-          | []              => []
-          | (nb, ob) :: rest => (nb, subst_tm (var + 2) (shift_tm 2 0 replacement) ob) :: go_ops rest
-          end) op_bodies)
+                  (List.map (fun '(nb, ob) => (nb, subst_tm (var + 2) (shift_tm 2 0 replacement) ob)) op_bodies)
                   (subst_tm (S var) (shift_tm 1 0 replacement) body)
   | term_perform t op Ss A arg =>
       term_perform (subst_tm var replacement t) op Ss A
                    (subst_tm var replacement arg)
     | term_cap E m Ts T_R op_bodies =>
       term_cap E m Ts T_R
-               ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
-          match obs with
-          | []              => []
-          | (nb, ob) :: rest => (nb, subst_tm (var + 2) (shift_tm 2 0 replacement) ob) :: go_ops rest
-          end) op_bodies)
+               (List.map (fun '(nb, ob) => (nb, subst_tm (var + 2) (shift_tm 2 0 replacement) ob)) op_bodies)
   | term_handler_m m T_B T_R t => term_handler_m m T_B T_R (subst_tm var replacement t)
   end.
 
 (* --- Type variable substitution in terms --- *)
 
 Fixpoint subst_ty_in_tm (var : nat) (replacement : type) (t : term) : term :=
-  let fix go ts :=
-    match ts with
-    | []        => []
-    | u :: rest => subst_ty_in_tm var replacement u :: go rest
-    end
-  in
   match t with
   | term_var y          => term_var y
   | term_app t1 t2      => term_app (subst_ty_in_tm var replacement t1)
@@ -412,7 +326,7 @@ Fixpoint subst_ty_in_tm (var : nat) (replacement : type) (t : term) : term :=
   (* lt binder: var unchanged, lt vars in replacement↑1 *)
   | term_lt_lam body    => term_lt_lam
                              (subst_ty_in_tm var (shift_lt_in_ty 1 0 replacement) body)
-  | term_ctor K l lts Ts ts => term_ctor K l lts (map_subst_ty var replacement Ts) (go ts)
+  | term_ctor K l lts Ts ts => term_ctor K l lts (map_subst_ty var replacement Ts) (List.map (subst_ty_in_tm var replacement) ts)
     | term_match scrut tag n_lt arity yes_body no_body =>
       term_match (subst_ty_in_tm var replacement scrut) tag n_lt arity
                     (subst_ty_in_tm var (shift_lt_in_ty n_lt 0 replacement) yes_body)
@@ -421,11 +335,7 @@ Fixpoint subst_ty_in_tm (var : nat) (replacement : type) (t : term) : term :=
       term_handle E (map_subst_ty var replacement Ts)
                   (subst_ty var replacement T_B)
                   (subst_ty var replacement T_R)
-                  ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
-          match obs with
-          | []              => []
-          | (nb, ob) :: rest => (nb, subst_ty_in_tm (var + nb) (shift_ty nb 0 replacement) ob) :: go_ops rest
-          end) op_bodies)
+                  (List.map (fun '(nb, ob) => (nb, subst_ty_in_tm (var + nb) (shift_ty nb 0 replacement) ob)) op_bodies)
                   (subst_ty_in_tm var replacement body)
   | term_perform t op Ss A arg =>
       term_perform (subst_ty_in_tm var replacement t)
@@ -436,11 +346,7 @@ Fixpoint subst_ty_in_tm (var : nat) (replacement : type) (t : term) : term :=
     | term_cap E m Ts T_R op_bodies =>
       term_cap E m (map_subst_ty var replacement Ts)
       (subst_ty var replacement T_R)
-               ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
-          match obs with
-          | []              => []
-          | (nb, ob) :: rest => (nb, subst_ty_in_tm (var + nb) (shift_ty nb 0 replacement) ob) :: go_ops rest
-          end) op_bodies)
+               (List.map (fun '(nb, ob) => (nb, subst_ty_in_tm (var + nb) (shift_ty nb 0 replacement) ob)) op_bodies)
     | term_handler_m m T_B T_R t =>
         term_handler_m m (subst_ty var replacement T_B) (subst_ty var replacement T_R)
           (subst_ty_in_tm var replacement t)
@@ -449,12 +355,6 @@ Fixpoint subst_ty_in_tm (var : nat) (replacement : type) (t : term) : term :=
 (* --- Lifetime variable substitution in terms --- *)
 
 Fixpoint subst_lt_in_tm (var : nat) (replacement : lifetime) (t : term) : term :=
-  let fix go ts :=
-    match ts with
-    | []        => []
-    | u :: rest => subst_lt_in_tm var replacement u :: go rest
-    end
-  in
   match t with
   | term_var y          => term_var y
   | term_app t1 t2      => term_app (subst_lt_in_tm var replacement t1)
@@ -474,7 +374,7 @@ Fixpoint subst_lt_in_tm (var : nat) (replacement : lifetime) (t : term) : term :
   | term_ctor K l lts Ts ts => term_ctor K (subst_lt var replacement l)
                                        (List.map (subst_lt var replacement) lts)
                                        (map_subst_lt_in_ty var replacement Ts)
-                                       (go ts)
+                                       (List.map (subst_lt_in_tm var replacement) ts)
   (* match introduces no lifetime binder; arity term binders do not affect lifetime var index *)
     | term_match scrut tag n_lt arity yes_body no_body =>
       term_match (subst_lt_in_tm var replacement scrut) tag n_lt arity
@@ -484,11 +384,7 @@ Fixpoint subst_lt_in_tm (var : nat) (replacement : lifetime) (t : term) : term :
       term_handle E (map_subst_lt_in_ty var replacement Ts)
                   (subst_lt_in_ty var replacement T_B)
                   (subst_lt_in_ty var replacement T_R)
-                  ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
-          match obs with
-          | []              => []
-          | (nb, ob) :: rest => (nb, subst_lt_in_tm var replacement ob) :: go_ops rest
-          end) op_bodies)
+                  (List.map (fun '(nb, ob) => (nb, subst_lt_in_tm var replacement ob)) op_bodies)
                   (subst_lt_in_tm var replacement body)
   | term_perform t op Ss A arg =>
       term_perform (subst_lt_in_tm var replacement t)
@@ -499,11 +395,7 @@ Fixpoint subst_lt_in_tm (var : nat) (replacement : lifetime) (t : term) : term :
     | term_cap E m Ts T_R op_bodies =>
       term_cap E m (map_subst_lt_in_ty var replacement Ts)
                (subst_lt_in_ty var replacement T_R)
-               ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
-          match obs with
-          | []              => []
-          | (nb, ob) :: rest => (nb, subst_lt_in_tm var replacement ob) :: go_ops rest
-          end) op_bodies)
+               (List.map (fun '(nb, ob) => (nb, subst_lt_in_tm var replacement ob)) op_bodies)
   | term_handler_m m T_B T_R t =>
       term_handler_m m (subst_lt_in_ty var replacement T_B) (subst_lt_in_ty var replacement T_R)
         (subst_lt_in_tm var replacement t)

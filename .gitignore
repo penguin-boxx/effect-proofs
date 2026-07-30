@@ -76,3 +76,4 @@ time-of-build-pretty.log
 ### Local agent worktrees / session data ###
 .claude/
 __pycache__/
+CoqMakefile.conf

@@ -230,7 +230,8 @@ Proof.
     eapply SA_Trans; [exact Hsub | eassumption].
   - (* T_Cap *) injection Hs; intros; subst.
     do 2 eexists. repeat split; try eassumption; try reflexivity.
-    apply SA_Refl. apply TWF_Ctor; [apply LWF_Local | assumption].
+    + apply typing_ops_Forall2. assumption.
+    + apply SA_Refl. apply TWF_Ctor; [apply LWF_Local | assumption].
 Qed.
 
 Lemma perform_typing_inv : forall Γ recv op Ss ret_inst arg T,
@@ -297,7 +298,8 @@ Proof.
   - injection Hs; intros; subst.
     do 2 eexists.
     repeat split; try eassumption; try reflexivity.
-    apply SA_Refl. assumption.
+    + apply typing_ops_Forall2. assumption.
+    + apply SA_Refl. assumption.
 Qed.
 
 (* ------------------------------------------------------------------ *)
@@ -448,6 +450,7 @@ Proof.
       | Hlen : List.length vs = List.length (List.map _ sigma_fields) |- _ =>
           rewrite Hlen, List.length_map; reflexivity
       end.
+    + apply typings_Forall2. assumption.
     + match goal with
       | Hshape : inst_ctor_type (List.length lts) (List.length Ts) lts Ts result_ty_schema =
                  type_ctor result_tag l Ts |- _ =>

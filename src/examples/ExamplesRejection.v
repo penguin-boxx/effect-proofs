@@ -342,8 +342,8 @@ Proof.
   unfold some_v, leak2_ty.
   repeat first
     [ solve_var | solve_lt | progress solve_wf | progress cbn
-    | apply Forall2_nil | apply Forall_nil
-    | apply Forall2_cons | apply Forall_cons
+    | apply Forall2_nil | apply Forall_nil | apply TS_Nil
+    | apply Forall2_cons | apply Forall_cons | apply TS_Cons
     | eapply T_Ctor; cbn; try reflexivity ].
 Qed.
 
@@ -630,7 +630,7 @@ Proof.
     cbn; try reflexivity;
     try solve [ repeat constructor | solve_wf | solve_lt
               | repeat (constructor; try (apply LS_Refl; solve_wf)) ].
-  apply Forall2_cons; [ exact typed_endo_id_local | apply Forall2_nil ].
+  apply TS_Cons; [ exact typed_endo_id_local | apply TS_Nil ].
 Qed.
 
 Lemma typed_some_nat_local :
@@ -646,7 +646,7 @@ Proof.
       (result_tag := option_tag) (l := `Lf);
       cbn; try reflexivity;
       try solve [ repeat constructor | solve_wf | solve_lt ].
-    apply Forall2_cons; [| apply Forall2_nil].
+    apply TS_Cons; [| apply TS_Nil].
     eapply T_Sub; [ exact Hz | apply SA_Data; [ solve_lt | solve_wf ] ].
   - apply SA_Data; [ solve_lt | solve_wf ].
 Qed.
@@ -661,7 +661,7 @@ Proof.
     cbn; try reflexivity;
     try solve [ repeat constructor | solve_wf | solve_lt
               | repeat (constructor; try (apply LS_Refl; solve_wf)) ].
-  apply Forall2_cons; [ exact typed_some_nat_local | apply Forall2_nil ].
+  apply TS_Cons; [ exact typed_some_nat_local | apply TS_Nil ].
 Qed.
 
 (* ------------------------------------------------------------------ *)

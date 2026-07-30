@@ -6,8 +6,12 @@ NPROC := $(shell nproc 2>/dev/null || echo 2)
 all: $(COQ_MAKEFILE)
 	$(MAKE) -j$(NPROC) -C src -f Makefile.coq
 
+# `rocq makefile` is the canonical generator in Rocq 9 (the standalone
+# `coq_makefile` binary is a compat shim absent from the official
+# rocq/rocq-prover images); fall back to it for older toolchains.
 $(COQ_MAKEFILE): src/_CoqProject
-	cd src && coq_makefile -f _CoqProject -o Makefile.coq
+	cd src && { rocq makefile -f _CoqProject -o Makefile.coq \
+	  || coq_makefile -f _CoqProject -o Makefile.coq; }
 
 # Verify every capstone theorem is closed under the global context
 # (no axioms).  Depends on `all` so the check never runs against a

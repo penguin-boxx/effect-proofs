@@ -118,12 +118,6 @@ Fixpoint shift_ectx_tm (amount cutoff : nat) (E : ectx) : ectx :=
 (* Runtime markers occurring in a term.  This is used only to choose a *)
 (* fresh delimiter marker when a source-level handle reduces.          *)
 Fixpoint markers_in (t : term) : list marker :=
-  let fix markers_in_list_local (ts : list term) : list marker :=
-    match ts with
-    | [] => []
-    | u :: rest => markers_in u ++ markers_in_list_local rest
-    end
-  in
   match t with
   | term_var _ => []
   | term_app t1 t2 => markers_in t1 ++ markers_in t2
@@ -132,22 +126,15 @@ Fixpoint markers_in (t : term) : list marker :=
   | term_ty_lam _ body => markers_in body
   | term_lt_app t1 _ => markers_in t1
   | term_lt_lam body => markers_in body
-  | term_ctor _ _ _ _ ts => markers_in_list_local ts
+  | term_ctor _ _ _ _ ts => List.concat (List.map markers_in ts)
   | term_match scrut _ _ _ yes_body no_body =>
       markers_in scrut ++ markers_in yes_body ++ markers_in no_body
   | term_handle _ _ _ _ op_bodies body =>
-      (fix go_ops (obs : list (nat * term)) : list marker :=
-         match obs with
-         | []              => []
-         | (_, ob) :: rest => markers_in ob ++ go_ops rest
-         end) op_bodies ++ markers_in body
+      List.concat (List.map (fun '(_, ob) => markers_in ob) op_bodies)
+        ++ markers_in body
   | term_perform recv _ _ _ arg => markers_in recv ++ markers_in arg
   | term_cap _ m _ _ op_bodies =>
-      m :: (fix go_ops (obs : list (nat * term)) : list marker :=
-              match obs with
-              | []              => []
-              | (_, ob) :: rest => markers_in ob ++ go_ops rest
-              end) op_bodies
+      m :: List.concat (List.map (fun '(_, ob) => markers_in ob) op_bodies)
   | term_handler_m m _ _ body => m :: markers_in body
   end.
 

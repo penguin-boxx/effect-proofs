@@ -57,6 +57,11 @@ Fixpoint elim_lt (lvar : nat) (bound : lifetime) (p : variance) (l : lifetime)
       end
   end.
 
+(* The inner [go_list] stays a nested fix on purpose: it is           *)
+(* parameterized by the variance [p'], and the elim support proofs    *)
+(* (SubstLt.v / TypingSubst.v / Variance.v) induct on exactly this    *)
+(* two-argument shape.  A map/sequence nesting would not be           *)
+(* convertible to it.                                                 *)
 Fixpoint elim_ty (lvar : nat) (bound : lifetime) (p : variance) (T : type)
     : option type :=
   let fix go_list p' Ts :=

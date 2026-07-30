@@ -77,6 +77,19 @@ Proof.
     cbn. rewrite Hm. cbn. assumption.
 Qed.
 
+(* [ms_head E tac]: one reduction step — the head redex under
+   evaluation context [E] fires by [tac]; the context well-formedness
+   is discharged by [repeat constructor] (frames hold concrete
+   values).  Ends with [cbn] to expose the next redex.
+   [ms_alloc] is the same for the S_HandleCtx allocation step (tac
+   discharges marker freshness). *)
+Tactic Notation "ms_head" uconstr(E) tactic3(tac) :=
+  eapply MS_Step; [ apply (S_step E); [ repeat constructor | tac ] | ]; cbn.
+Tactic Notation "ms_head" uconstr(E) tactic3(wf) tactic3(tac) :=
+  eapply MS_Step; [ apply (S_step E); [ wf | tac ] | ]; cbn.
+Tactic Notation "ms_alloc" uconstr(app) tactic3(tac) :=
+  eapply MS_Step; [ apply app; [ repeat constructor | tac ] | ]; cbn.
+
 Lemma ms_ty_app : forall t t' S, t ==>> t' -> term_ty_app t S ==>> term_ty_app t' S.
 Proof.
   intros t t' S H. induction H; [ apply MS_Refl |].
@@ -191,8 +204,8 @@ Ltac solve_ctor :=
   eapply T_Ctor; cbn; try reflexivity;
   repeat first
     [ solve_var | solve_lt | progress solve_wf | progress cbn
-    | apply Forall2_nil | apply Forall_nil
-    | apply Forall2_cons | apply Forall_cons ].
+    | apply Forall2_nil | apply Forall_nil | apply TS_Nil
+    | apply Forall2_cons | apply Forall_cons | apply TS_Cons ].
 
 (* [solve_nat] types a Peano numeral [Suc (Suc ... Zero)] at [T_Nat `Lf] in
    any context whose constructor table is computable by [cbn].  It is
@@ -203,8 +216,8 @@ Ltac solve_nat :=
   unfold two_v, three_v, suc_v, zero_v;
   repeat first
     [ solve_var | solve_lt | progress solve_wf | progress cbn
-    | apply Forall2_nil | apply Forall_nil
-    | apply Forall2_cons | apply Forall_cons
+    | apply Forall2_nil | apply Forall_nil | apply TS_Nil
+    | apply Forall2_cons | apply Forall_cons | apply TS_Cons
     | eapply T_Ctor; cbn; try reflexivity ].
 
 Lemma four_v_value : value four_v.
@@ -221,16 +234,28 @@ Ltac solve_cmd :=
   eapply T_Ctor; cbn; try reflexivity;
   repeat first
     [ progress solve_wf | solve_lt
-    | apply Forall_nil | apply Forall2_nil
-    | apply Forall2_cons; [ solve_nat | ] ].
+    | apply Forall_nil | apply Forall2_nil | apply TS_Nil
+    | apply Forall2_cons; [ solve_nat | ]
+    | apply TS_Cons; [ solve_nat | ] ].
 
-(* [solve_state_perform] discharges a [perform st.<cmd>() : Nat] goal (the 11
-   premises of T_Perform for the single State operation [Cmd<Nat> -> Nat]). *)
-Ltac solve_state_perform :=
+(* [solve_perform arg] discharges the 12 premises of a monomorphic
+   (Ss = []) T_Perform goal; [arg] types the operation argument — the
+   only premise that varies between performs. *)
+Ltac solve_perform arg :=
   eapply T_Perform with (Ss := (@nil type));
   [ solve_var | cbn; reflexivity | cbn; reflexivity | reflexivity | reflexivity
   | solve_wf | constructor | cbn; reflexivity | cbn; solve_lt_sub | cbn; reflexivity
-  | solve_wf | solve_cmd ].
+  | solve_wf | arg ].
+
+(* [solve_state_perform] discharges a [perform st.<cmd>() : Nat] goal
+   (the State operation [Cmd<Nat> -> Nat]). *)
+Ltac solve_state_perform := solve_perform solve_cmd.
+
+(* [open_handle] applies T_Handle and discharges every computable /
+   well-formedness premise, leaving only the interesting ones (clause
+   typing, answer subtyping). *)
+Ltac open_handle :=
+  eapply T_Handle; try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
 
 Ltac solve_state_k_app :=
   eapply T_App with (A := `T 1) (l := `Ll) (B := `T 0);
@@ -252,3 +277,18 @@ Ltac solve_lt_var :=
         | apply LS_JoinR2; [ solve_lt_var | solve_wf ]
         | apply LS_JoinL; [ solve_lt_var | solve_lt_var ] ].
 
+(* [solve_capture] closes the closure-lifetime side condition of
+   T_Lam / the escape premise of SA_Any, whatever closer it needs. *)
+Ltac solve_capture :=
+  cbn; first [ solve_lt | solve_lt_var | solve_lt_sub | solve_free_sub
+             | apply LS_Local; solve_wf ].
+
+(* [open_lam] applies T_Lam and discharges everything but the body
+   (the one-argument form also discharges the body by [body]). *)
+Tactic Notation "open_lam" :=
+  apply T_Lam; [ solve_wf | solve_wf | | solve_capture ].
+Tactic Notation "open_lam" tactic3(body) :=
+  apply T_Lam; [ solve_wf | solve_wf | body | solve_capture ].
+
+(* [solve_any_sub] closes an [S <:: Any'Δ] upcast. *)
+Ltac solve_any_sub := apply SA_Any; [ solve_wf | solve_wf | solve_capture ].

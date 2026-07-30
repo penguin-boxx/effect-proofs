@@ -104,6 +104,7 @@ Lemma rename_marker_go_eq_map : forall f ts,
      | u :: rest => rename_marker f u :: go rest
      end) ts = List.map (rename_marker f) ts.
 Proof. intros f ts; induction ts; simpl; congruence. Qed.
+#[export] Hint Rewrite rename_marker_go_eq_map : subst_go.
 
 Lemma rename_marker_ctor_eq : forall f K l lts Ts ts,
   rename_marker f (term_ctor K l lts Ts ts)
@@ -118,6 +119,7 @@ Lemma rename_marker_go_ops_eq_map : forall f obs,
      end) obs
   = List.map (fun p => (fst p, rename_marker f (snd p))) obs.
 Proof. intros f obs; induction obs as [|[nb ob] rest IH]; simpl; congruence. Qed.
+#[export] Hint Rewrite rename_marker_go_ops_eq_map : subst_go.
 
 (* The ectx version of the traversal. *)
 Fixpoint rename_ectx (f : marker -> marker) (E : ectx) : ectx :=
@@ -169,12 +171,12 @@ Proof.
   - intros scrut tag n_lt arity yes no IHs IHy IHn. simpl.
     rewrite IHs, IHy, IHn, !List.map_app. reflexivity.
   - intros E Ts T_B T_R op_bodies body IHops IHb. simpl.
-    rewrite rename_marker_go_ops_eq_map, !markers_in_go_ops_eq_concat.
+    rewrite rename_marker_go_ops_eq_map, !markers_in_ops_eq_concat.
     rewrite IHops, IHb, List.map_app. reflexivity.
   - intros recv op Ss A arg IHr IHa. simpl.
     rewrite IHr, IHa, List.map_app. reflexivity.
   - intros E m Ts T_R op_bodies IHops. simpl.
-    rewrite rename_marker_go_ops_eq_map, !markers_in_go_ops_eq_concat.
+    rewrite rename_marker_go_ops_eq_map, !markers_in_ops_eq_concat.
     rewrite IHops. reflexivity.
   - intros m T_B T_R body IH. simpl. rewrite IH. reflexivity.
   - reflexivity.
@@ -226,7 +228,7 @@ Proof.
   - intros scrut tag n_lt arity yes no IHs IHy IHn. simpl.
     rewrite IHs, IHy, IHn. reflexivity.
   - intros E Ts T_B T_R op_bodies body IHops IHb. simpl.
-    rewrite rename_marker_go_ops_eq_map, !has_rt_cap_go_ops_eq.
+    rewrite rename_marker_go_ops_eq_map, !has_rt_cap_ops_eq.
     rewrite IHops, IHb. reflexivity.
   - intros recv op Ss A arg IHr IHa. simpl. rewrite IHr, IHa. reflexivity.
   - intros E m Ts T_R op_bodies IHops. reflexivity.
@@ -260,15 +262,15 @@ Proof.
   - intros t l IH cutoff. simpl. apply IH.
   - intros body IH cutoff. simpl. apply IH.
   - intros K l lts Ts ts IH cutoff. simpl.
-    rewrite rename_marker_go_eq_map, !free_tm_vars_go_eq_concat. apply IH.
+    autorewrite with subst_go. apply IH.
   - intros scrut tag n_lt arity yes no IHs IHy IHn cutoff. simpl.
     rewrite IHs, IHy, IHn. reflexivity.
   - intros E Ts T_B T_R op_bodies body IHops IHb cutoff. simpl.
-    rewrite rename_marker_go_ops_eq_map, !free_tm_vars_go_ops_eq_concat.
+    autorewrite with subst_go.
     rewrite IHops, IHb. reflexivity.
   - intros recv op Ss A arg IHr IHa cutoff. simpl. rewrite IHr, IHa. reflexivity.
   - intros E m Ts T_R op_bodies IHops cutoff. simpl.
-    rewrite rename_marker_go_ops_eq_map, !free_tm_vars_go_ops_eq_concat.
+    autorewrite with subst_go.
     apply IHops.
   - intros m T_B T_R body IH cutoff. simpl. apply IH.
   - intros cutoff. reflexivity.
@@ -290,9 +292,9 @@ Qed.
 (* renaming — injectivity is not needed here.                         *)
 (* ------------------------------------------------------------------ *)
 
-(* Proven by a guarded fix on the derivation (same pattern as          *)
-(* typing_ind2's own proof) because typing_ind2 does not thread the    *)
-(* is_abs premises of T_TyLam / T_LtLam, which the renamed term needs. *)
+(* Proven by a guarded fix on the derivation, recursing into the       *)
+(* typings/typing_ops sub-derivations of T_Ctor / T_Cap / T_Handle     *)
+(* directly (their elements are structural subterms).                  *)
 Theorem typing_rename_markers : forall f G t T,
   G ⊢ₜ t : T -> G ⊢ₜ rename_marker f t : T.
 Proof.
@@ -318,7 +320,7 @@ Proof.
     eapply T_Ctor; try eassumption.
     + rewrite List.length_map. assumption.
     + match goal with
-      | HF : Forall2 (fun v rho => _ ⊢ₜ v : rho) ?vs ?rf |- Forall2 _ _ ?rf =>
+      | HF : typings _ ?vs ?rf |- typings _ _ ?rf =>
           clear -IH HF; induction HF
       end.
       * constructor.
@@ -330,7 +332,7 @@ Proof.
     + match goal with HF : List.map fst _ = List.map op_nb _ |- _ =>
         rewrite List.map_map; exact HF end.
     + match goal with
-      | HF : Forall2 _ ?obs ?ops |- Forall2 _ _ ?ops =>
+      | HF : typing_ops _ _ _ _ ?obs ?ops |- typing_ops _ _ _ _ _ ?ops =>
           clear -IH HF; induction HF
       end.
       * constructor.
@@ -340,7 +342,7 @@ Proof.
     + match goal with HF : List.map fst _ = List.map op_nb _ |- _ =>
         rewrite List.map_map; exact HF end.
     + match goal with
-      | HF : Forall2 _ ?obs ?ops |- Forall2 _ _ ?ops =>
+      | HF : typing_ops _ _ _ _ ?obs ?ops |- typing_ops _ _ _ _ _ ?ops =>
           clear -IH HF; induction HF
       end.
       * constructor.
@@ -452,16 +454,16 @@ Proof.
   - intros t l IH cutoff. simpl. rewrite IH. reflexivity.
   - intros body IH cutoff. simpl. rewrite IH. reflexivity.
   - intros K l lts Ts ts IH cutoff. simpl.
-    rewrite !shift_tm_go_eq_map, !rename_marker_go_eq_map.
+    autorewrite with subst_go.
     rewrite IH. reflexivity.
   - intros scrut tag n_lt arity yes no IHs IHy IHn cutoff. simpl.
     rewrite IHs, IHy, IHn. reflexivity.
   - intros E Ts T_B T_R op_bodies body IHops IHb cutoff. simpl.
-    rewrite !shift_tm_go_ops_eq_map, !rename_marker_go_ops_eq_map.
+    autorewrite with subst_go.
     rewrite IHops, IHb. reflexivity.
   - intros recv op Ss A arg IHr IHa cutoff. simpl. rewrite IHr, IHa. reflexivity.
   - intros E m Ts T_R op_bodies IHops cutoff. simpl.
-    rewrite !shift_tm_go_ops_eq_map, !rename_marker_go_ops_eq_map.
+    autorewrite with subst_go.
     rewrite IHops. reflexivity.
   - intros m T_B T_R body IH cutoff. simpl. rewrite IH. reflexivity.
   - intros cutoff. reflexivity.
@@ -496,16 +498,16 @@ Proof.
   - intros t l IH cutoff. simpl. rewrite IH. reflexivity.
   - intros body IH cutoff. simpl. rewrite IH. reflexivity.
   - intros K l lts Ts ts IH cutoff. simpl.
-    rewrite !shift_ty_in_tm_go_eq_map, !rename_marker_go_eq_map.
+    autorewrite with subst_go.
     rewrite IH. reflexivity.
   - intros scrut tag n_lt arity yes no IHs IHy IHn cutoff. simpl.
     rewrite IHs, IHy, IHn. reflexivity.
   - intros E Ts T_B T_R op_bodies body IHops IHb cutoff. simpl.
-    rewrite !shift_ty_in_tm_go_ops_eq_map, !rename_marker_go_ops_eq_map.
+    autorewrite with subst_go.
     rewrite IHops, IHb. reflexivity.
   - intros recv op Ss A arg IHr IHa cutoff. simpl. rewrite IHr, IHa. reflexivity.
   - intros E m Ts T_R op_bodies IHops cutoff. simpl.
-    rewrite !shift_ty_in_tm_go_ops_eq_map, !rename_marker_go_ops_eq_map.
+    autorewrite with subst_go.
     rewrite IHops. reflexivity.
   - intros m T_B T_R body IH cutoff. simpl. rewrite IH. reflexivity.
   - intros cutoff. reflexivity.
@@ -540,16 +542,16 @@ Proof.
   - intros t l IH cutoff. simpl. rewrite IH. reflexivity.
   - intros body IH cutoff. simpl. rewrite IH. reflexivity.
   - intros K l lts Ts ts IH cutoff. simpl.
-    rewrite !shift_lt_in_tm_go_eq_map, !rename_marker_go_eq_map.
+    autorewrite with subst_go.
     rewrite IH. reflexivity.
   - intros scrut tag n_lt arity yes no IHs IHy IHn cutoff. simpl.
     rewrite IHs, IHy, IHn. reflexivity.
   - intros E Ts T_B T_R op_bodies body IHops IHb cutoff. simpl.
-    rewrite !shift_lt_in_tm_go_ops_eq_map, !rename_marker_go_ops_eq_map.
+    autorewrite with subst_go.
     rewrite IHops, IHb. reflexivity.
   - intros recv op Ss A arg IHr IHa cutoff. simpl. rewrite IHr, IHa. reflexivity.
   - intros E m Ts T_R op_bodies IHops cutoff. simpl.
-    rewrite !shift_lt_in_tm_go_ops_eq_map, !rename_marker_go_ops_eq_map.
+    autorewrite with subst_go.
     rewrite IHops. reflexivity.
   - intros m T_B T_R body IH cutoff. simpl. rewrite IH. reflexivity.
   - intros cutoff. reflexivity.
@@ -589,18 +591,18 @@ Proof.
   - intros body IH x s. simpl.
     rewrite IH, rename_marker_shift_lt_in_tm. reflexivity.
   - intros K l lts Ts ts IH x s. simpl.
-    rewrite !subst_tm_go_eq_map, !rename_marker_go_eq_map.
+    autorewrite with subst_go.
     rewrite IH. reflexivity.
   - intros scrut tag n_lt arity yes no IHs IHy IHn x s. simpl.
     rewrite IHs, IHy, IHn,
             rename_marker_shift_tm, rename_marker_shift_lt_in_tm.
     reflexivity.
   - intros E Ts T_B T_R op_bodies body IHops IHb x s. simpl.
-    rewrite !subst_tm_go_ops_eq_map, !rename_marker_go_ops_eq_map.
+    autorewrite with subst_go.
     rewrite IHops, IHb, !rename_marker_shift_tm. reflexivity.
   - intros recv op Ss A arg IHr IHa x s. simpl. rewrite IHr, IHa. reflexivity.
   - intros E m Ts T_R op_bodies IHops x s. simpl.
-    rewrite !subst_tm_go_ops_eq_map, !rename_marker_go_ops_eq_map.
+    autorewrite with subst_go.
     rewrite IHops. reflexivity.
   - intros m T_B T_R body IH x s. simpl. rewrite IH. reflexivity.
   - intros x s. reflexivity.
@@ -635,16 +637,16 @@ Proof.
   - intros t l IH x T. simpl. rewrite IH. reflexivity.
   - intros body IH x T. simpl. rewrite IH. reflexivity.
   - intros K l lts Ts ts IH x T. simpl.
-    rewrite !subst_ty_in_tm_go_eq_map, !rename_marker_go_eq_map.
+    autorewrite with subst_go.
     rewrite IH. reflexivity.
   - intros scrut tag n_lt arity yes no IHs IHy IHn x T. simpl.
     rewrite IHs, IHy, IHn. reflexivity.
   - intros E Ts T_B T_R op_bodies body IHops IHb x T. simpl.
-    rewrite !subst_ty_in_tm_go_ops_eq_map, !rename_marker_go_ops_eq_map.
+    autorewrite with subst_go.
     rewrite IHops, IHb. reflexivity.
   - intros recv op Ss A arg IHr IHa x T. simpl. rewrite IHr, IHa. reflexivity.
   - intros E m Ts T_R op_bodies IHops x T. simpl.
-    rewrite !subst_ty_in_tm_go_ops_eq_map, !rename_marker_go_ops_eq_map.
+    autorewrite with subst_go.
     rewrite IHops. reflexivity.
   - intros m T_B T_R body IH x T. simpl. rewrite IH. reflexivity.
   - intros x T. reflexivity.
@@ -678,16 +680,16 @@ Proof.
   - intros t l0 IH x l. simpl. rewrite IH. reflexivity.
   - intros body IH x l. simpl. rewrite IH. reflexivity.
   - intros K l0 lts Ts ts IH x l. simpl.
-    rewrite !subst_lt_in_tm_go_eq_map, !rename_marker_go_eq_map.
+    autorewrite with subst_go.
     rewrite IH. reflexivity.
   - intros scrut tag n_lt arity yes no IHs IHy IHn x l. simpl.
     rewrite IHs, IHy, IHn. reflexivity.
   - intros E Ts T_B T_R op_bodies body IHops IHb x l. simpl.
-    rewrite !subst_lt_in_tm_go_ops_eq_map, !rename_marker_go_ops_eq_map.
+    autorewrite with subst_go.
     rewrite IHops, IHb. reflexivity.
   - intros recv op Ss A arg IHr IHa x l. simpl. rewrite IHr, IHa. reflexivity.
   - intros E m Ts T_R op_bodies IHops x l. simpl.
-    rewrite !subst_lt_in_tm_go_ops_eq_map, !rename_marker_go_ops_eq_map.
+    autorewrite with subst_go.
     rewrite IHops. reflexivity.
   - intros m T_B T_R body IH x l. simpl. rewrite IH. reflexivity.
   - intros x l. reflexivity.
@@ -929,10 +931,10 @@ Proof.
   - intros E Ts T_B T_R op_bodies body IHops IHb Hf. simpl.
     rewrite rename_marker_go_ops_eq_map.
     rewrite IHops by (intros m Hm; apply Hf; simpl;
-                      rewrite markers_in_go_ops_eq_concat;
+                      rewrite markers_in_ops_eq_concat;
                       apply in_or_app; left; exact Hm).
     rewrite IHb by (intros m Hm; apply Hf; simpl;
-                    rewrite markers_in_go_ops_eq_concat;
+                    rewrite markers_in_ops_eq_concat;
                     apply in_or_app; right; exact Hm).
     reflexivity.
   - intros recv op Ss A arg IHr IHa Hf. simpl.
@@ -944,7 +946,7 @@ Proof.
   - intros E m0 Ts T_R op_bodies IHops Hf. simpl.
     rewrite rename_marker_go_ops_eq_map.
     rewrite IHops by (intros m Hm; apply Hf; simpl; right;
-                      rewrite markers_in_go_ops_eq_concat; exact Hm).
+                      rewrite markers_in_ops_eq_concat; exact Hm).
     rewrite (Hf m0) by (simpl; left; reflexivity).
     reflexivity.
   - intros m0 T_B T_R body IH Hf. simpl.
@@ -1288,11 +1290,11 @@ Proof.
   rewrite rename_marker_go_ops_eq_map.
   rewrite (rename_marker_ops_fixes (marker_swap m1 m2) op_bodies)
     by (intros m Hm; apply Hfix; apply markers_in_plug_hole_incl; simpl;
-        rewrite markers_in_go_ops_eq_concat;
+        rewrite markers_in_ops_eq_concat;
         apply in_or_app; left; exact Hm).
   rewrite (rename_marker_fixes (marker_swap m1 m2) body)
     by (intros m Hm; apply Hfix; apply markers_in_plug_hole_incl; simpl;
-        rewrite markers_in_go_ops_eq_concat;
+        rewrite markers_in_ops_eq_concat;
         apply in_or_app; right; exact Hm).
   reflexivity.
 Qed.

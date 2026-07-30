@@ -20,16 +20,11 @@ Require Import Context.
 (* ================================================================== *)
 
 Fixpoint lt_of_ty (T : type) : lifetime :=
-  let fix go_list (Ts : list type) : lifetime :=
-    match Ts with
-    | []        => lt_free
-    | A :: rest => lt_join (lt_of_ty A) (go_list rest)
-    end
-  in
   match T with
   | type_var _        => lt_free
   | type_fun _ l _    => l
-  | type_ctor _ l Ts  => lt_join l (go_list Ts)
+  | type_ctor _ l Ts  =>
+      lt_join l (List.fold_right (fun A acc => lt_join (lt_of_ty A) acc) lt_free Ts)
   | type_lt_all A     => lt_local
   | type_ty_all _ A   => lt_local
   end.
@@ -61,11 +56,7 @@ Fixpoint lt_of_ty_ctx (fuel : nat) (Γ : ctx) (T : type) : lifetime :=
         end
     | type_fun _ l _    => l
     | type_ctor _ l Ts  =>
-        lt_join l ((fix gol (Ts : list type) : lifetime :=
-                     match Ts with
-                     | []        => lt_free
-                     | A :: rest => lt_join (go A) (gol rest)
-                     end) Ts)
+        lt_join l (List.fold_right (fun A acc => lt_join (go A) acc) lt_free Ts)
     | type_lt_all A     => lt_local
     | type_ty_all _ A   => lt_local
     end
@@ -122,12 +113,6 @@ Fixpoint no_local_lt (l : lifetime) : bool :=
 (* ================================================================== *)
 
 Fixpoint free_tm_vars (cutoff : nat) (t : term) : list nat :=
-  let fix go (ts : list term) : list nat :=
-    match ts with
-    | []        => []
-    | u :: rest => free_tm_vars cutoff u ++ go rest
-    end
-  in
   match t with
   | term_var x =>
       if Nat.ltb x cutoff then [] else [x - cutoff]
@@ -137,26 +122,18 @@ Fixpoint free_tm_vars (cutoff : nat) (t : term) : list nat :=
   | term_ty_lam _ body   => free_tm_vars cutoff body
   | term_lt_app t _      => free_tm_vars cutoff t
   | term_lt_lam body     => free_tm_vars cutoff body
-  | term_ctor _ _ _ _ ts => go ts
+  | term_ctor _ _ _ _ ts => List.concat (List.map (free_tm_vars cutoff) ts)
   | term_match scrut _ _ arity y n =>
       free_tm_vars cutoff scrut
         ++ free_tm_vars (cutoff + arity) y
         ++ free_tm_vars cutoff n
   | term_handle _ _ _ _ op_bodies body =>
-      (fix go_ops (obs : list (nat * term)) : list nat :=
-         match obs with
-         | []              => []
-         | (_, ob) :: rest => free_tm_vars (cutoff + 2) ob ++ go_ops rest
-         end) op_bodies
+      List.concat (List.map (fun '(_, ob) => free_tm_vars (cutoff + 2) ob) op_bodies)
         ++ free_tm_vars (S cutoff) body
   | term_perform t _ _ _ arg =>
       free_tm_vars cutoff t ++ free_tm_vars cutoff arg
   | term_cap _ _ _ _ op_bodies =>
-      (fix go_ops (obs : list (nat * term)) : list nat :=
-         match obs with
-         | []              => []
-         | (_, ob) :: rest => free_tm_vars (cutoff + 2) ob ++ go_ops rest
-         end) op_bodies
+      List.concat (List.map (fun '(_, ob) => free_tm_vars (cutoff + 2) ob) op_bodies)
   | term_handler_m _ _ _ t => free_tm_vars cutoff t
   end.
 

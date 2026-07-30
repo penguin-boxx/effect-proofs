@@ -78,6 +78,7 @@ Lemma marker_annots_go_ops_eq_concat : forall obs,
      end) obs
   = List.concat (List.map (fun p => marker_annots (snd p)) obs).
 Proof. induction obs as [|[nb ob] rest IH]; simpl; congruence. Qed.
+#[export] Hint Rewrite marker_annots_go_ops_eq_concat : subst_go.
 
 Definition marker_types_safe (t : term) : Prop :=
   forall m T U,
@@ -129,7 +130,7 @@ Proof.
     apply Bool.orb_false_iff in Hyn as [Hy Hn].
     rewrite (IHs Hs), (IHy Hy), (IHn Hn). reflexivity.
   - intros E Ts T_B T_R op_bodies body IHops IHbody H. simpl in *.
-    rewrite has_rt_cap_go_ops_eq in H.
+    rewrite has_rt_cap_ops_eq in H.
     apply Bool.orb_false_iff in H as [Hop Hbody].
     rewrite marker_annots_go_ops_eq_concat.
     rewrite (IHops Hop), (IHbody Hbody). reflexivity.
@@ -241,7 +242,7 @@ Qed.
 
 
 (* The closed-type identity laws ([shift_ty_closed0_id] etc.) and
-   [subst_ty_in_tm_go_eq_map] live in WellScoped.v (shared with the
+   the closed-type identity laws live in WellScoped.v (shared with the
    ws_rt engine). *)
 
 Lemma marker_annots_shift_tm : forall t amount cutoff,
@@ -256,35 +257,8 @@ Proof.
     (fun obs => forall amount cutoff,
        List.concat (List.map (fun p => marker_annots (snd p))
          (List.map (fun p => (fst p, shift_tm amount (cutoff + 2) (snd p))) obs)) =
-       List.concat (List.map (fun p => marker_annots (snd p)) obs))).
-  - intros n amount cutoff. reflexivity.
-  - intros t1 t2 IH1 IH2 amount cutoff. simpl.
-    rewrite IH1, IH2. reflexivity.
-  - intros body T IH amount cutoff. simpl. apply IH.
-  - intros t T IH amount cutoff. simpl. apply IH.
-  - intros bound body IH amount cutoff. simpl. apply IH.
-  - intros t l IH amount cutoff. simpl. apply IH.
-  - intros body IH amount cutoff. simpl. apply IH.
-  - intros K l lts Ts ts IH amount cutoff. simpl.
-    rewrite shift_tm_go_eq_map. apply IH.
-  - intros scrut tag n_lt arity yes no IHs IHy IHn amount cutoff. simpl.
-    rewrite IHs, IHy, IHn. reflexivity.
-  - intros E Ts T_B T_R op_bodies body IHops IHbody amount cutoff. simpl.
-    rewrite shift_tm_go_ops_eq_map, !marker_annots_go_ops_eq_concat,
-            IHops, IHbody. reflexivity.
-  - intros recv op Ss A_ret arg IHrecv IHarg amount cutoff. simpl.
-    rewrite IHrecv, IHarg. reflexivity.
-  - intros E m Ts T_R op_bodies IHops amount cutoff. simpl.
-    rewrite shift_tm_go_ops_eq_map, !marker_annots_go_ops_eq_concat, IHops.
-    reflexivity.
-  - intros m T_B T_R t IH amount cutoff. simpl.
-    rewrite IH. reflexivity.
-  - intros amount cutoff. reflexivity.
-  - intros t ts IHt IHts amount cutoff. simpl.
-    rewrite IHt, IHts. reflexivity.
-  - intros amount cutoff. reflexivity.
-  - intros nb ob obs IHob IHobs amount cutoff. simpl.
-    rewrite IHob, IHobs. reflexivity.
+       List.concat (List.map (fun p => marker_annots (snd p)) obs)));
+    go_traverse.
 Qed.
 
 Lemma marker_annots_list_shift_tm : forall ts amount cutoff,
@@ -342,7 +316,6 @@ Proof.
   - intros t l IH amount cutoff H. simpl in *. apply IH. exact H.
   - intros body IH amount cutoff H. simpl in *. apply IH. exact H.
   - intros K l lts Ts ts IH amount cutoff H. simpl in *.
-    rewrite shift_ty_in_tm_go_eq_map.
     unfold marker_annots_closed in H. fold marker_annots_list_closed in H.
     apply IH. exact H.
   - intros scrut tag n_lt arity yes no IHs IHy IHn amount cutoff H.
@@ -354,7 +327,7 @@ Proof.
     unfold marker_annots_closed in *. simpl in *.
     rewrite marker_annots_go_ops_eq_concat in H.
     apply Forall_app in H as [Hop Hbody].
-    rewrite shift_ty_in_tm_go_ops_eq_map, !marker_annots_go_ops_eq_concat.
+    autorewrite with subst_go.
     rewrite (IHops amount cutoff Hop), (IHbody amount cutoff Hbody).
     reflexivity.
   - intros recv op Ss A_ret arg IHrecv IHarg amount cutoff H.
@@ -366,7 +339,7 @@ Proof.
     inversion H as [|mt rest Hhead Htail]; subst.
     destruct Hhead as [HTy _].
     rewrite marker_annots_go_ops_eq_concat in Htail.
-    rewrite shift_ty_in_tm_go_ops_eq_map, !marker_annots_go_ops_eq_concat.
+    autorewrite with subst_go.
     rewrite (shift_ty_closed0_id T_R amount cutoff HTy).
     rewrite (IHops amount cutoff Htail). reflexivity.
   - intros m T_B T_R t IH amount cutoff H.
@@ -414,7 +387,6 @@ Proof.
   - intros t l IH amount cutoff H. simpl in *. apply IH. exact H.
   - intros body IH amount cutoff H. simpl in *. apply IH. exact H.
   - intros K l lts Ts ts IH amount cutoff H. simpl in *.
-    rewrite shift_lt_in_tm_go_eq_map.
     unfold marker_annots_closed in H. fold marker_annots_list_closed in H.
     apply IH. exact H.
   - intros scrut tag n_lt arity yes no IHs IHy IHn amount cutoff H.
@@ -426,7 +398,7 @@ Proof.
     unfold marker_annots_closed in *. simpl in *.
     rewrite marker_annots_go_ops_eq_concat in H.
     apply Forall_app in H as [Hop Hbody].
-    rewrite shift_lt_in_tm_go_ops_eq_map, !marker_annots_go_ops_eq_concat.
+    autorewrite with subst_go.
     rewrite (IHops amount cutoff Hop), (IHbody amount cutoff Hbody). reflexivity.
   - intros recv op Ss A_ret arg IHrecv IHarg amount cutoff H.
     unfold marker_annots_closed in *. simpl in *.
@@ -437,7 +409,7 @@ Proof.
     inversion H as [|mt rest Hhead Htail]; subst.
     destruct Hhead as [_ HLt].
     rewrite marker_annots_go_ops_eq_concat in Htail.
-    rewrite shift_lt_in_tm_go_ops_eq_map, !marker_annots_go_ops_eq_concat.
+    autorewrite with subst_go.
     rewrite (shift_lt_in_ty_closed0_id T_R amount cutoff HLt).
     rewrite (IHops amount cutoff Htail). reflexivity.
   - intros m T_B T_R t IH amount cutoff H.
@@ -508,7 +480,6 @@ Proof.
   - intros t l IH var replacement H. simpl in *. apply IH. exact H.
   - intros body IH var replacement H. simpl in *. apply IH. exact H.
   - intros K l lts Ts ts IH var replacement H. simpl in *.
-    rewrite subst_ty_in_tm_go_eq_map.
     unfold marker_annots_closed in H. fold marker_annots_list_closed in H.
     apply IH. exact H.
   - intros scrut tag n_lt arity yes no IHs IHy IHn var replacement H.
@@ -521,7 +492,7 @@ Proof.
     unfold marker_annots_closed in *. simpl in *.
     rewrite marker_annots_go_ops_eq_concat in H.
     apply Forall_app in H as [Hop Hbody].
-    rewrite subst_ty_in_tm_go_ops_eq_map, !marker_annots_go_ops_eq_concat.
+    autorewrite with subst_go.
     rewrite (IHops var replacement Hop).
     rewrite (IHbody var replacement Hbody). reflexivity.
   - intros recv op Ss A_ret arg IHrecv IHarg var replacement H.
@@ -533,7 +504,7 @@ Proof.
     inversion H as [|mt rest Hhead Htail]; subst.
     destruct Hhead as [HTy _].
     rewrite marker_annots_go_ops_eq_concat in Htail.
-    rewrite subst_ty_in_tm_go_ops_eq_map, !marker_annots_go_ops_eq_concat.
+    autorewrite with subst_go.
     rewrite (subst_ty_closed0_id T_R var replacement HTy).
     rewrite (IHops var replacement Htail). reflexivity.
   - intros m T_B T_R t IH var replacement H.
@@ -582,7 +553,6 @@ Proof.
   - intros t l IH var replacement H. simpl in *. apply IH. exact H.
   - intros body IH var replacement H. simpl in *. apply IH. exact H.
   - intros K l lts Ts ts IH var replacement H. simpl in *.
-    rewrite subst_lt_in_tm_go_eq_map.
     unfold marker_annots_closed in H. fold marker_annots_list_closed in H.
     apply IH. exact H.
   - intros scrut tag n_lt arity yes no IHs IHy IHn var replacement H.
@@ -595,7 +565,7 @@ Proof.
     unfold marker_annots_closed in *. simpl in *.
     rewrite marker_annots_go_ops_eq_concat in H.
     apply Forall_app in H as [Hop Hbody].
-    rewrite subst_lt_in_tm_go_ops_eq_map, !marker_annots_go_ops_eq_concat.
+    autorewrite with subst_go.
     rewrite (IHops var replacement Hop), (IHbody var replacement Hbody). reflexivity.
   - intros recv op Ss A_ret arg IHrecv IHarg var replacement H.
     unfold marker_annots_closed in *. simpl in *.
@@ -606,7 +576,7 @@ Proof.
     inversion H as [|mt rest Hhead Htail]; subst.
     destruct Hhead as [_ HLt].
     rewrite marker_annots_go_ops_eq_concat in Htail.
-    rewrite subst_lt_in_tm_go_ops_eq_map, !marker_annots_go_ops_eq_concat.
+    autorewrite with subst_go.
     rewrite (subst_lt_in_ty_closed0_id T_R var replacement HLt).
     rewrite (IHops var replacement Htail). reflexivity.
   - intros m T_B T_R t IH var replacement H.
@@ -702,8 +672,7 @@ Proof.
       (marker_annots_closed_shift_lt_in_tm _ _ _ Hrepl) p Hp).
     rewrite (marker_annots_shift_lt_in_tm_closed repl 1 0 Hrepl) in IH. exact IH.
   - intros K l lts Ts ts IH var repl Hrepl p Hp. simpl in *.
-    rewrite subst_tm_go_eq_map in Hp.
-    exact (IH var repl Hrepl p Hp).
+        exact (IH var repl Hrepl p Hp).
   - intros scrut tag n_lt arity yes no IHs IHy IHn var repl Hrepl p Hp. simpl in *.
     repeat rewrite List.in_app_iff in Hp. destruct Hp as [Hp | [Hp | Hp]].
     + specialize (IHs var repl Hrepl p Hp).
@@ -717,7 +686,7 @@ Proof.
     + specialize (IHn var repl Hrepl p Hp).
       repeat rewrite List.in_app_iff in *. tauto.
   - intros E Ts T_B T_R op_bodies body IHops IHbody var repl Hrepl p Hp. simpl in *.
-    rewrite subst_tm_go_ops_eq_map, !marker_annots_go_ops_eq_concat in Hp.
+    rewrite subst_tm_ops_eq_map, !marker_annots_go_ops_eq_concat in Hp.
     rewrite marker_annots_go_ops_eq_concat.
     apply List.in_app_or in Hp as [Hp | Hp].
     + specialize (IHops var repl Hrepl p Hp).
@@ -733,7 +702,7 @@ Proof.
     + specialize (IHarg var repl Hrepl p Hp).
       repeat rewrite List.in_app_iff in *. tauto.
   - intros E m Ts T_R op_bodies IHops var repl Hrepl p Hp. simpl in *.
-    rewrite subst_tm_go_ops_eq_map, !marker_annots_go_ops_eq_concat in Hp.
+    rewrite subst_tm_ops_eq_map, !marker_annots_go_ops_eq_concat in Hp.
     rewrite marker_annots_go_ops_eq_concat.
     destruct Hp as [Hp | Hp].
     + apply List.in_or_app. right. simpl. left. exact Hp.
@@ -1016,15 +985,13 @@ Proof.
   intros K l lts Ts ts. simpl.
   induction ts as [|u rest IH]; simpl; [reflexivity | rewrite IH; reflexivity].
 Qed.
+#[export] Hint Rewrite markers_in_ctor_eq : subst_go.
 
-Lemma markers_in_go_ops_eq_concat : forall obs,
-  (fix go_ops (obs : list (nat * term)) : list marker :=
-     match obs with
-     | []              => []
-     | (_, ob) :: rest => markers_in ob ++ go_ops rest
-     end) obs
+Lemma markers_in_ops_eq_concat : forall (obs : list (nat * term)),
+  List.concat (List.map (fun '(_, ob) => markers_in ob) obs)
   = List.concat (List.map (fun p => markers_in (snd p)) obs).
-Proof. induction obs as [|[nb ob] rest IH]; simpl; congruence. Qed.
+Proof. intros; induction obs as [|[nb ob] rest IH]; simpl; congruence. Qed.
+#[export] Hint Rewrite markers_in_ops_eq_concat : subst_go.
 
 Lemma marker_annots_marker_in : forall t m T,
   In (m, T) (marker_annots t) -> In m (markers_in t).
@@ -1055,7 +1022,7 @@ Proof.
     + apply List.in_or_app. right. apply List.in_or_app. right. apply IHn with (T := T). exact H.
   - intros E Ts T_B T_R op_bodies body IHops IHbody m T H. simpl in *.
     rewrite marker_annots_go_ops_eq_concat in H.
-    rewrite markers_in_go_ops_eq_concat.
+    rewrite markers_in_ops_eq_concat.
     apply List.in_app_or in H as [H | H].
     + apply List.in_or_app. left. apply IHops with (T := T). exact H.
     + apply List.in_or_app. right. apply IHbody with (T := T). exact H.
@@ -1065,7 +1032,7 @@ Proof.
     + apply List.in_or_app. right. apply IHarg with (T := T). exact H.
   - intros E m0 Ts T_R op_bodies IHops m T H. simpl in *.
     rewrite marker_annots_go_ops_eq_concat in H.
-    rewrite markers_in_go_ops_eq_concat.
+    rewrite markers_in_ops_eq_concat.
     destruct H as [H | H].
     + injection H; intros; subst. left. reflexivity.
     + right. apply IHops with (T := T). exact H.

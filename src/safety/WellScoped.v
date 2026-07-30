@@ -21,8 +21,10 @@ Require Import Subst.
 (*   ws_rt             — the two bundled.                             *)
 (*                                                                    *)
 (* All invariants hold vacuously on source terms                      *)
-(* ([has_rt_cap t = false]).  The traversal laws live in WsRtLaws.v;  *)
-(* the annotation invariants in MarkerAnnots.v.                       *)
+(* ([has_rt_cap t = false]).  The traversal laws live in WsRtLaws.v   *)
+(* and are stated over the fused [ws_rt] (one induction per traversal *)
+(* covers both conjuncts); the annotation invariants in               *)
+(* MarkerAnnots.v.                                                    *)
 (* ================================================================== *)
 
 (* Closed-type identity laws, shared with MarkerAnnots.v.               *)
@@ -172,7 +174,7 @@ Qed.
 (*    [pure_ectx_m] and [scope_below] both target the innermost         *)
 (*    occurrence).                                                      *)
 (* Unlike v1, this predicate is monotone along [scope_ext] and hence    *)
-(* preserved by reduction (see step_preserves_well_scoped).            *)
+(* preserved by reduction (see step_preserves_ws_rt).                  *)
 (* ==================================================================== *)
 
 Fixpoint well_scoped (ms : list marker) (t : term) : Prop :=
@@ -358,91 +360,64 @@ Proof.
 Qed.
 
 
-(* well_scoped holds vacuously on terms with no runtime capability. *)
-Lemma well_scoped_no_rt_cap : forall t ms, has_rt_cap t = false -> well_scoped ms t.
-Proof.
-  apply (term_list_ind
-    (fun t => forall ms, has_rt_cap t = false -> well_scoped ms t)
-    (fun ts => forall ms, has_rt_cap_list ts = false -> well_scoped_list ms ts)
-    (fun obs => forall ms,
-       existsb (fun p => has_rt_cap (snd p)) obs = false -> ops_well_scoped ms obs)).
-  - intros n ms H. exact I.
-  - intros t1 t2 IH1 IH2 ms H. simpl in H. apply Bool.orb_false_iff in H as [H1 H2].
-    split; [apply IH1|apply IH2]; assumption.
-  - intros body T IH ms H. simpl in H. apply IH. exact H.
-  - intros t T IH ms H. simpl in H. apply IH. exact H.
-  - intros bound body IH ms H. simpl in H. apply IH. exact H.
-  - intros t l IH ms H. simpl in H. apply IH. exact H.
-  - intros body IH ms H. simpl in H. apply IH. exact H.
-  - intros K l lts Ts ts IH ms H. rewrite well_scoped_ctor_eq. apply IH.
-    rewrite has_rt_cap_ctor_eq in H. exact H.
-  - intros scrut tag nlt ar y n IHs IHy IHn ms H. simpl in H.
-    apply Bool.orb_false_iff in H as [Hs Hyn]. apply Bool.orb_false_iff in Hyn as [Hy Hn].
-    split; [apply IHs|split;[apply IHy|apply IHn]]; assumption.
-  - intros E Ts T_B T_R op_bodies body IHops IHb ms H. simpl in H.
-    rewrite has_rt_cap_go_ops_eq in H.
-    apply Bool.orb_false_iff in H as [Hop Hb]. split; [apply IHops|apply IHb]; assumption.
-  - intros t op Ss A_ret arg IHt IHa ms H. simpl in H.
-    apply Bool.orb_false_iff in H as [Ht Ha]. split; [apply IHt|apply IHa]; assumption.
-  - intros E_tag m Ts T_R op_bodies IHops ms H. simpl in H. discriminate.
-  - intros m T_B T_R body IH ms H. simpl in H. discriminate.
-  - intros ms H. exact I.
-  - intros u ts IHu IHts ms H. simpl in H. apply Bool.orb_false_iff in H as [Hu Hts].
-    split; [apply IHu|apply IHts]; assumption.
-  - intros ms H. exact I.
-  - intros nb ob obs IHob IHobs ms H. simpl in H.
-    apply Bool.orb_false_iff in H as [Hob Hobs].
-    split; [apply IHob|apply IHobs]; assumption.
-Qed.
-
-(* rt_closed holds vacuously on terms with no runtime capability. *)
-Lemma rt_closed_no_rt_cap : forall t, has_rt_cap t = false -> rt_closed t.
-Proof.
-  apply (term_list_ind
-    (fun t => has_rt_cap t = false -> rt_closed t)
-    (fun ts => has_rt_cap_list ts = false -> rt_closed_list ts)
-    (fun obs =>
-       existsb (fun p => has_rt_cap (snd p)) obs = false -> ops_rt_closed obs)).
-  - intros n H. exact I.
-  - intros t1 t2 IH1 IH2 H. simpl in H. apply Bool.orb_false_iff in H as [H1 H2].
-    split; [apply IH1|apply IH2]; assumption.
-  - intros body T IH H. simpl in H. apply IH. exact H.
-  - intros t T IH H. simpl in H. apply IH. exact H.
-  - intros bound body IH H. simpl in H. apply IH. exact H.
-  - intros t l IH H. simpl in H. apply IH. exact H.
-  - intros body IH H. simpl in H. apply IH. exact H.
-  - intros K l lts Ts ts IH H. rewrite rt_closed_ctor_eq. apply IH.
-    rewrite has_rt_cap_ctor_eq in H. exact H.
-  - intros scrut tag nlt ar y n IHs IHy IHn H. simpl in H.
-    apply Bool.orb_false_iff in H as [Hs Hyn]. apply Bool.orb_false_iff in Hyn as [Hy Hn].
-    split; [apply IHs|split;[apply IHy|apply IHn]]; assumption.
-  - intros E Ts T_B T_R op_bodies body IHops IHb H. simpl in H.
-    rewrite has_rt_cap_go_ops_eq in H.
-    apply Bool.orb_false_iff in H as [Hop Hb]. split; [apply IHops|apply IHb]; assumption.
-  - intros t op Ss A_ret arg IHt IHa H. simpl in H.
-    apply Bool.orb_false_iff in H as [Ht Ha]. split; [apply IHt|apply IHa]; assumption.
-  - intros E_tag m Ts T_R op_bodies IHops H. simpl in H. discriminate.
-  - intros m T_B T_R body IH H. simpl in H. discriminate.
-  - intros H. exact I.
-  - intros u ts IHu IHts H. simpl in H. apply Bool.orb_false_iff in H as [Hu Hts].
-    split; [apply IHu|apply IHts]; assumption.
-  - intros H. exact I.
-  - intros nb ob obs IHob IHobs H. simpl in H.
-    apply Bool.orb_false_iff in H as [Hob Hobs].
-    split; [apply IHob|apply IHobs]; assumption.
-Qed.
-
 (* The fused runtime invariant: marker provenance ([well_scoped])      *)
-(* and term-closedness of cap op-bodies ([rt_closed]).  The bundle and *)
-(* the step-preservation layer consume this fused form; the component  *)
-(* predicates and their traversal lemmas remain the proof engine.      *)
+(* and term-closedness of cap op-bodies ([rt_closed]).  The bundle,    *)
+(* the step-preservation layer, and the traversal laws (WsRtLaws.v)    *)
+(* all work over this fused form: each traversal is proved ONCE, with  *)
+(* the conjunction as the induction motive.                            *)
 Definition ws_rt (ms : list marker) (t : term) : Prop :=
   well_scoped ms t /\ rt_closed t.
 
-Lemma ws_rt_no_rt_cap : forall t, has_rt_cap t = false -> ws_rt [] t.
+(* ws_rt holds vacuously on terms with no runtime capability, at any   *)
+(* ambient scope.                                                      *)
+Lemma ws_rt_no_rt_cap : forall t ms, has_rt_cap t = false -> ws_rt ms t.
 Proof.
-  intros t H. split;
-    [apply well_scoped_no_rt_cap | apply rt_closed_no_rt_cap]; exact H.
+  unfold ws_rt.
+  apply (term_list_ind
+    (fun t => forall ms, has_rt_cap t = false ->
+       well_scoped ms t /\ rt_closed t)
+    (fun ts => forall ms, has_rt_cap_list ts = false ->
+       well_scoped_list ms ts /\ rt_closed_list ts)
+    (fun obs => forall ms,
+       existsb (fun p => has_rt_cap (snd p)) obs = false ->
+       ops_well_scoped ms obs /\ ops_rt_closed obs)).
+  - intros n ms H. split; exact I.
+  - intros t1 t2 IH1 IH2 ms H. simpl in H. apply Bool.orb_false_iff in H as [H1 H2].
+    destruct (IH1 ms H1) as [W1 R1]. destruct (IH2 ms H2) as [W2 R2].
+    split; split; assumption.
+  - intros body T IH ms H. simpl in H. exact (IH ms H).
+  - intros t T IH ms H. simpl in H. exact (IH ms H).
+  - intros bound body IH ms H. simpl in H. exact (IH ms H).
+  - intros t l IH ms H. simpl in H. exact (IH ms H).
+  - intros body IH ms H. simpl in H. exact (IH ms H).
+  - intros K l lts Ts ts IH ms H. rewrite has_rt_cap_ctor_eq in H.
+    rewrite well_scoped_ctor_eq, rt_closed_ctor_eq. exact (IH ms H).
+  - intros scrut tag nlt ar y n IHs IHy IHn ms H. simpl in H.
+    apply Bool.orb_false_iff in H as [Hs Hyn]. apply Bool.orb_false_iff in Hyn as [Hy Hn].
+    destruct (IHs ms Hs) as [Ws Rs]. destruct (IHy ms Hy) as [Wy Ry].
+    destruct (IHn ms Hn) as [Wn Rn].
+    split; [split; [exact Ws | split; [exact Wy | exact Wn]]
+           | split; [exact Rs | split; [exact Ry | exact Rn]]].
+  - intros E Ts T_B T_R op_bodies body IHops IHb ms H. simpl in H.
+    rewrite has_rt_cap_ops_eq in H.
+    apply Bool.orb_false_iff in H as [Hop Hb].
+    destruct (IHops ms Hop) as [Wop Rop]. destruct (IHb ms Hb) as [Wb Rb].
+    split; split; assumption.
+  - intros t op Ss A_ret arg IHt IHa ms H. simpl in H.
+    apply Bool.orb_false_iff in H as [Ht Ha].
+    destruct (IHt ms Ht) as [Wt Rt]. destruct (IHa ms Ha) as [Wa Ra].
+    split; split; assumption.
+  - intros E_tag m Ts T_R op_bodies IHops ms H. simpl in H. discriminate.
+  - intros m T_B T_R body IH ms H. simpl in H. discriminate.
+  - intros ms H. split; exact I.
+  - intros u ts IHu IHts ms H. simpl in H. apply Bool.orb_false_iff in H as [Hu Hts].
+    destruct (IHu ms Hu) as [Wu Ru]. destruct (IHts ms Hts) as [Wts Rts].
+    split; split; assumption.
+  - intros ms H. split; exact I.
+  - intros nb ob obs IHob IHobs ms H. simpl in H.
+    apply Bool.orb_false_iff in H as [Hob Hobs].
+    destruct (IHob ms Hob) as [Wob Rob]. destruct (IHobs ms Hobs) as [Wobs Robs].
+    split; split; assumption.
 Qed.
 
 (* Monotonicity of well_scoped along scope extension: the payoff of    *)

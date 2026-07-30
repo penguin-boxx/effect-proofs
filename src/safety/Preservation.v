@@ -35,7 +35,7 @@ Proof.
   - (* EC_hole *) simpl; reflexivity.
   - (* EC_ctor *)
     cbn [plug shift_ectx_tm shift_tm].
-    rewrite shift_tm_go_eq_map. rewrite List.map_app. cbn [List.map].
+    rewrite List.map_app. cbn [List.map].
     rewrite IHP. reflexivity.
 Qed.
 
@@ -359,94 +359,19 @@ Proof.
 Qed.
 
 (* ================================================================== *)
-(* Step preservation of the runtime invariants (rt_closed and         *)
-(* well_scoped) — these discharge the well-scopedness hypothesis of   *)
-(* type_soundness.                                                    *)
+(* Step preservation of the fused runtime invariant ws_rt (marker     *)
+(* provenance + cap-body term-closedness) — discharges the            *)
+(* well-scopedness hypothesis of type_soundness.  One lemma per       *)
+(* level; each case threads both conjuncts through the fused          *)
+(* traversal laws of WsRtLaws.v.                                      *)
 (* ================================================================== *)
 
-Lemma head_step_preserves_rt_closed : forall Γ r r' Tr,
-  eval_ctx Γ ->
-  Γ ⊢ₜ r : Tr ->
-  free_tm_vars 0 r = [] ->
-  rt_closed r ->
-  r -->h r' ->
-  rt_closed r'.
-Proof.
-  intros Γ r r' Tr Hec Hty Hfv Hrt Hstep. inversion Hstep; subst.
-  - (* H_Beta *)
-    simpl in Hfv. apply app_eq_nil in Hfv as [Hfb Hfvv].
-    destruct Hrt as [Hrb Hrv].
-    apply rt_closed_subst_tm; assumption.
-  - (* H_TyBeta *)
-    apply rt_closed_subst_ty_in_tm. exact Hrt.
-  - (* H_LtBeta *)
-    apply rt_closed_subst_lt_in_tm. exact Hrt.
-  - (* H_MatchYes *)
-    simpl in Hfv. apply app_eq_nil in Hfv as [Hfc _].
-    rewrite free_tm_vars_go_eq_concat in Hfc.
-    destruct Hrt as [Hrc [Hry _]]. rewrite rt_closed_ctor_eq in Hrc.
-    apply rt_closed_subst_list_tm.
-    + apply Forall_of_concat_map_nil. exact Hfc.
-    + apply rt_closed_list_Forall. exact Hrc.
-    + apply rt_closed_subst_list_lt_in_tm. exact Hry.
-  - (* H_MatchNo *)
-    destruct Hrt as [_ [_ Hrn]]. exact Hrn.
-  - (* H_Return *)
-    exact Hrt.
-  - (* H_Perform *)
-    simpl in Hfv. simpl in Hrt.
-    pose proof (free_tm_vars_plug_nil_inv P _ Hfv) as Hfvred.
-    simpl in Hfvred. apply app_eq_nil in Hfvred as [Hfvcap Hfvv].
-    pose proof (rt_closed_plug_inv P _ Hrt) as Hrtred.
-    destruct Hrtred as [Hcapc Hrtv].
-    match goal with Hn : nth_error _ _ = Some (_, _) |- _ =>
-      destruct (ops_cap_closed_nth _ _ _ _ Hcapc Hn) as [Hfv2op Hrtop] end.
-    destruct (reified_continuation_closed_rt P _ Hfv Hrt) as [Hfvb Hrtb].
-    apply rt_closed_subst_list_tm.
-    + apply Forall_cons; [exact Hfvv|].
-      apply Forall_cons; [|apply Forall_nil].
-      simpl. exact Hfvb.
-    + apply Forall_cons; [exact Hrtv|].
-      apply Forall_cons; [|apply Forall_nil].
-      simpl. exact Hrtb.
-    + apply rt_closed_subst_list_ty_in_tm. exact Hrtop.
-Qed.
-
-Theorem step_preserves_rt_closed : forall Γ t t' T,
-  eval_ctx Γ -> Γ ⊢ₜ t : T -> rt_closed t -> t ==> t' -> rt_closed t'.
-Proof.
-  intros Γ t t' T Hec Hty Hrt Hstep.
-  inversion Hstep as
-    [E r r' Hwf Hhead Heq1 Heq2
-    | E E_tag Ts T_B T_R op_bodies body m Hwf Hfresh Heq1 Heq2]; subst.
-  - (* S_step *)
-    pose proof (typing_closed _ _ _ Hec Hty) as Hcl.
-    pose proof (free_tm_vars_plug_nil_inv E r Hcl) as Hfvr.
-    destruct (plug_typing_inv E Γ r T Hty) as [Tr Hr].
-    eapply rt_closed_plug_replace; [exact Hrt|].
-    intros Hrtr. eapply head_step_preserves_rt_closed; eauto.
-  - (* S_HandleCtx *)
-    pose proof (typing_closed _ _ _ Hec Hty) as Hcl.
-    pose proof (free_tm_vars_plug_nil_inv E _ Hcl) as Hfvh.
-    simpl in Hfvh.
-    rewrite free_tm_vars_go_ops_eq_concat in Hfvh.
-    apply app_eq_nil in Hfvh as [Hfop Hfb].
-    eapply rt_closed_plug_replace; [exact Hrt|].
-    intros Hrth. destruct Hrth as [Hrop Hrb].
-    simpl. apply rt_closed_subst_tm.
-    + exact Hrb.
-    + simpl. rewrite free_tm_vars_go_ops_eq_concat. exact Hfop.
-    + apply ops_cap_closed_join.
-      * apply Forall_of_concat_map_nil. exact Hfop.
-      * exact Hrop.
-Qed.
-
-(* The H_Perform case for well_scoped, mirroring                       *)
-(* the op-body confinement comes straight from the well_scoped cap     *)
-(* clause; the perform argument is rt-free                             *)
-(* by the typing-side escape lemma; the reified resume is well-scoped  *)
-(* because the captured frames were, one delimiter up.                 *)
-Lemma well_scoped_step_handler_elim :
+(* The H_Perform case: the op-body confinement comes straight from    *)
+(* the well_scoped cap clause; the perform argument is rt-free by the *)
+(* typing-side escape lemma; the reified resume is well-scoped        *)
+(* because the captured frames were, one delimiter up, and rt-closed  *)
+(* by reified_continuation_closed_rt.                                 *)
+Lemma ws_rt_step_handler_elim :
   forall Γ m T_B T_R E_tag Ts op_bodies op n_beta op_body Ss A v P Tr ms,
   eval_ctx Γ ->
   value v ->
@@ -456,18 +381,16 @@ Lemma well_scoped_step_handler_elim :
         (plug P (term_perform (term_cap E_tag m Ts T_R op_bodies) op Ss A v)) : Tr ->
   free_tm_vars 0 (term_handler_m m T_B T_R
         (plug P (term_perform (term_cap E_tag m Ts T_R op_bodies) op Ss A v))) = [] ->
-  rt_closed (term_handler_m m T_B T_R
+  ws_rt ms (term_handler_m m T_B T_R
         (plug P (term_perform (term_cap E_tag m Ts T_R op_bodies) op Ss A v))) ->
-  well_scoped ms (term_handler_m m T_B T_R
-        (plug P (term_perform (term_cap E_tag m Ts T_R op_bodies) op Ss A v))) ->
-  well_scoped ms
+  ws_rt ms
     (subst_list_tm
        [v; term_lam (term_handler_m m T_B T_R
                        (plug (shift_ectx_tm 1 0 P) (term_var 0))) A]
        (subst_list_ty_in_tm Ss op_body)).
 Proof.
   intros Γ m T_B T_R E_tag Ts op_bodies op n_beta op_body Ss A v P Tr ms
-         Hec Hval Hpure Hnth Hty Hfv Hrt Hws.
+         Hec Hval Hpure Hnth Hty Hfv [Hws Hrt].
   simpl in Hfv. simpl in Hrt.
   pose proof (well_scoped_step_handler_confinement
                 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hws Hpure Hnth)
@@ -490,107 +413,98 @@ Proof.
   destruct Hrtred as [Hcapc Hrtv].
   destruct (ops_cap_closed_nth _ _ _ _ Hcapc Hnth) as [Hfv2op Hrtop].
   destruct (reified_continuation_closed_rt P _ Hfv Hrt) as [Hfvb Hrtb].
-  apply well_scoped_subst_list_tm.
+  assert (Hplugvar : ws_rt (m :: ms) (plug P (term_var 0))).
+  { apply (ws_rt_plug_replace P
+      (term_perform (term_cap E_tag m Ts T_R op_bodies) op Ss A v)).
+    - split; [exact Hws | exact Hrt].
+    - intros ms' _. split; exact I. }
+  apply ws_rt_subst_list_tm.
   - apply Forall_cons; [exact Hfvv|].
     apply Forall_cons; [|apply Forall_nil].
     simpl. exact Hfvb.
-  - apply Forall_cons; [exact Hrtv|].
-    apply Forall_cons; [|apply Forall_nil].
-    simpl. exact Hrtb.
   - apply Forall_cons.
-    + apply well_scoped_no_rt_cap. exact Hvcap.
+    + apply ws_rt_no_rt_cap. exact Hvcap.
     + apply Forall_cons; [|apply Forall_nil].
-      change (well_scoped (m :: ms) (plug (shift_ectx_tm 1 0 P) (term_var 0))).
-      apply well_scoped_plug_shift_ectx_tm.
-      eapply well_scoped_plug_replace; [exact Hws | intros ms' _; exact I].
-  - apply rt_closed_subst_list_ty_in_tm. exact Hrtop.
-  - apply well_scoped_subst_list_ty_in_tm. exact Hopconf.
+      split.
+      * change (well_scoped (m :: ms) (plug (shift_ectx_tm 1 0 P) (term_var 0))).
+        apply well_scoped_plug_shift_ectx_tm.
+        exact (proj1 Hplugvar).
+      * exact Hrtb.
+  - apply ws_rt_subst_list_ty_in_tm. split; [exact Hopconf | exact Hrtop].
 Qed.
 
-Lemma head_step_preserves_well_scoped : forall Γ r r' Tr,
+Lemma head_step_preserves_ws_rt : forall Γ r r' Tr,
   eval_ctx Γ ->
   Γ ⊢ₜ r : Tr ->
   free_tm_vars 0 r = [] ->
-  rt_closed r ->
   r -->h r' ->
-  forall ms, well_scoped ms r -> well_scoped ms r'.
+  forall ms, ws_rt ms r -> ws_rt ms r'.
 Proof.
-  intros Γ r r' Tr Hec Hty Hfv Hrt Hstep ms Hws. inversion Hstep; subst.
+  intros Γ r r' Tr Hec Hty Hfv Hstep ms Hws. inversion Hstep; subst.
   - (* H_Beta *)
-    simpl in Hfv. apply app_eq_nil in Hfv as [Hfb Hfvv].
-    destruct Hrt as [Hrb Hrv]. destruct Hws as [Hwb Hwv].
-    apply well_scoped_subst_tm; assumption.
+    simpl in Hfv. apply app_eq_nil in Hfv as [_ Hfvv].
+    destruct Hws as [[Hwb Hwv] [Hrb Hrv]].
+    apply ws_rt_subst_tm;
+      [split; assumption | exact Hfvv | split; assumption].
   - (* H_TyBeta *)
-    apply well_scoped_subst_ty_in_tm. exact Hws.
+    apply ws_rt_subst_ty_in_tm. exact Hws.
   - (* H_LtBeta *)
-    apply well_scoped_subst_lt_in_tm. exact Hws.
+    apply ws_rt_subst_lt_in_tm. exact Hws.
   - (* H_MatchYes *)
     simpl in Hfv. apply app_eq_nil in Hfv as [Hfc _].
-    rewrite free_tm_vars_go_eq_concat in Hfc.
-    destruct Hrt as [Hrc [Hry _]]. rewrite rt_closed_ctor_eq in Hrc.
-    destruct Hws as [Hwc [Hwy _]]. rewrite well_scoped_ctor_eq in Hwc.
-    apply well_scoped_subst_list_tm.
+    destruct Hws as [[Hwc [Hwy _]] [Hrc [Hry _]]].
+    rewrite well_scoped_ctor_eq in Hwc. rewrite rt_closed_ctor_eq in Hrc.
+    apply ws_rt_subst_list_tm.
     + apply Forall_of_concat_map_nil. exact Hfc.
-    + apply rt_closed_list_Forall. exact Hrc.
-    + apply well_scoped_list_Forall. exact Hwc.
-    + apply rt_closed_subst_list_lt_in_tm. exact Hry.
-    + apply well_scoped_subst_list_lt_in_tm. exact Hwy.
+    + apply ws_rt_list_Forall; assumption.
+    + apply ws_rt_subst_list_lt_in_tm. split; assumption.
   - (* H_MatchNo *)
-    destruct Hws as [_ [_ Hwn]]. exact Hwn.
+    destruct Hws as [[_ [_ Hwn]] [_ [_ Hrn]]]. split; assumption.
   - (* H_Return *)
     destruct (handler_m_typing_inv _ _ _ _ _ _ Hty) as [Hbody [_ [Hnl _]]].
     pose proof (typing_closed _ _ _ Hec Hty) as Hcl. simpl in Hcl.
-    apply well_scoped_no_rt_cap.
+    apply ws_rt_no_rt_cap.
     eapply value_no_local_no_rt_cap;
       [ exact Hec | exact Hbody | assumption | exact Hcl | exact Hnl ].
   - (* H_Perform *)
-    eapply well_scoped_step_handler_elim;
+    eapply ws_rt_step_handler_elim;
       [ exact Hec | eassumption | eassumption | eassumption
-      | exact Hty | exact Hfv | exact Hrt | exact Hws ].
-Qed.
-
-Theorem step_preserves_well_scoped : forall Γ t t' T,
-  eval_ctx Γ -> Γ ⊢ₜ t : T -> rt_closed t -> well_scoped [] t ->
-  t ==> t' -> well_scoped [] t'.
-Proof.
-  intros Γ t t' T Hec Hty Hrt Hws Hstep.
-  inversion Hstep as
-    [E r r' Hwf Hhead Heq1 Heq2
-    | E E_tag Ts T_B T_R op_bodies body m Hwf Hfresh Heq1 Heq2]; subst.
-  - (* S_step *)
-    pose proof (typing_closed _ _ _ Hec Hty) as Hcl.
-    pose proof (free_tm_vars_plug_nil_inv E r Hcl) as Hfvr.
-    pose proof (rt_closed_plug_inv E r Hrt) as Hrtr.
-    destruct (plug_typing_inv E Γ r T Hty) as [Tr Hr].
-    eapply well_scoped_plug_replace; [exact Hws|].
-    intros ms' Hwsr.
-    eapply head_step_preserves_well_scoped; eauto.
-  - (* S_HandleCtx *)
-    pose proof (typing_closed _ _ _ Hec Hty) as Hcl.
-    pose proof (free_tm_vars_plug_nil_inv E _ Hcl) as Hfvh.
-    simpl in Hfvh.
-    rewrite free_tm_vars_go_ops_eq_concat in Hfvh.
-    apply app_eq_nil in Hfvh as [Hfop Hfb].
-    pose proof (rt_closed_plug_inv E _ Hrt) as Hrth.
-    destruct Hrth as [Hrop Hrb].
-    eapply well_scoped_plug_replace; [exact Hws|].
-    intros ms' [Hwop Hwb].
-    apply well_scoped_subst_tm.
-    + exact Hrb.
-    + simpl. rewrite free_tm_vars_go_ops_eq_concat. exact Hfop.
-    + split; [left; reflexivity|].
-      rewrite scope_below_cons_eq. exact Hwop.
-    + apply (well_scoped_mono body ms' (m :: ms'));
-        [apply se_top; apply se_refl | exact Hwb].
+      | exact Hty | exact Hfv | exact Hws ].
 Qed.
 
 (* The fused runtime invariant is preserved by one step. *)
 Theorem step_preserves_ws_rt : forall Γ t t' T,
   eval_ctx Γ -> Γ ⊢ₜ t : T -> ws_rt [] t -> t ==> t' -> ws_rt [] t'.
 Proof.
-  intros Γ t t' T Hec Hty [Hws Hrt] Hstep. split.
-  - eapply step_preserves_well_scoped; eauto.
-  - eapply step_preserves_rt_closed; eauto.
+  intros Γ t t' T Hec Hty Hwsrt Hstep.
+  inversion Hstep as
+    [E r r' Hwf Hhead Heq1 Heq2
+    | E E_tag Ts T_B T_R op_bodies body m Hwf Hfresh Heq1 Heq2]; subst.
+  - (* S_step *)
+    pose proof (typing_closed _ _ _ Hec Hty) as Hcl.
+    pose proof (free_tm_vars_plug_nil_inv E r Hcl) as Hfvr.
+    destruct (plug_typing_inv E Γ r T Hty) as [Tr Hr].
+    eapply ws_rt_plug_replace; [exact Hwsrt|].
+    intros ms' Hwsr.
+    eapply head_step_preserves_ws_rt; eauto.
+  - (* S_HandleCtx *)
+    pose proof (typing_closed _ _ _ Hec Hty) as Hcl.
+    pose proof (free_tm_vars_plug_nil_inv E _ Hcl) as Hfvh.
+    simpl in Hfvh.
+    rewrite free_tm_vars_ops_eq_concat in Hfvh.
+    apply app_eq_nil in Hfvh as [Hfop Hfb].
+    eapply ws_rt_plug_replace; [exact Hwsrt|].
+    intros ms' [[Hwop Hwb] [Hrop Hrb]].
+    change (ws_rt (m :: ms') (subst_tm 0 (term_cap E_tag m Ts T_R op_bodies) body)).
+    apply ws_rt_subst_tm.
+    + split; [apply (well_scoped_mono body ms' (m :: ms'));
+              [apply se_top; apply se_refl | exact Hwb] | exact Hrb].
+    + simpl. rewrite free_tm_vars_ops_eq_concat. exact Hfop.
+    + split.
+      * split; [left; reflexivity|].
+        rewrite scope_below_cons_eq. exact Hwop.
+      * apply ops_cap_closed_join;
+          [apply Forall_of_concat_map_nil; exact Hfop | exact Hrop].
 Qed.
 
 (* Head reductions preserve typing (at any type, under eval_ctx). *)
@@ -647,7 +561,7 @@ Proof.
      & Hnl & Hbr & Hfst & Hops & Hbody & Hsub).
   assert (Hcap : Γ ⊢ₜ term_cap E_tag m Ts T_R op_bodies
                    : type_ctor E_tag lt_local Ts).
-  { eapply T_Cap; eassumption. }
+  { eapply T_Cap; try eassumption. apply typing_ops_Forall2; eassumption. }
   eapply T_Sub; [ | exact Hsub ].
   apply T_HandlerM; try assumption.
   eapply subst_tm_preserves; [ exact Hec | exact Hbody | apply value_cap | exact Hcap ].

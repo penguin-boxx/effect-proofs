@@ -90,21 +90,21 @@ Proof.
   - intros t l IH c y. simpl. apply IH.
   - intros body IH c y. simpl. apply IH.
   - intros K l lts Ts ts IH c y. simpl.
-    rewrite !free_tm_vars_go_eq_concat. apply IH.
+    apply IH.
   - intros scrut tag n_lt arity yes_body no_body IHs IHy IHn c y. simpl.
     rewrite !List.in_app_iff. intros [H|[H|H]].
     + left. apply IHs. exact H.
     + right; left. apply IHy. exact H.
     + right; right. apply IHn. exact H.
   - intros E Ts T_B T_R op_bodies body IHops IHb c y. simpl.
-    rewrite !free_tm_vars_go_ops_eq_concat.
+    rewrite !free_tm_vars_ops_eq_concat.
     rewrite !List.in_app_iff. intros [H|H].
     + left. apply IHops. exact H.
     + right. apply IHb. exact H.
   - intros t op Ss A_ret arg IHt IHa c y. simpl.
     rewrite !List.in_app_iff. intros [H|H]; [left; apply IHt; exact H | right; apply IHa; exact H].
   - intros E m Ts T_R op_bodies IHops c y. simpl.
-    rewrite !free_tm_vars_go_ops_eq_concat. apply IHops.
+    rewrite !free_tm_vars_ops_eq_concat. apply IHops.
   - intros m T_B T_R t IH c y. simpl. apply IH.
   - intros c y. simpl. intros [].
   - intros t ts IHt IHts c y. simpl.
@@ -200,12 +200,6 @@ Proof.
            result_ty result_tag l vs
            Hlk Heff Hlts HwfLts Hrho HTs HwfTs Hres Hshape Hresult_eff Hwfl Hltsub Hforall
            Hvslen Hf2ty Hf2IH x Hin.
-    change (In x ((fix go ts :=
-      match ts with
-      | [] => []
-      | u :: rest => free_tm_vars 0 u ++ go rest
-      end) vs)) in Hin.
-    rewrite free_tm_vars_go_eq_concat in Hin.
     clear - Hf2IH Hin.
     revert Hin. induction Hf2IH as [|v rho vs0 rhos0 Hp Hf2P' IH]; intros Hin.
     + simpl in Hin. contradiction.
@@ -228,7 +222,7 @@ Proof.
   - intros Γ E_tag m Ts op_bodies n_α ops T_R
            Heff Hlen HwfTs HwfTR Hfst Hops IHops x Hin.
     simpl in Hin.
-    rewrite free_tm_vars_go_ops_eq_concat in Hin.
+    rewrite free_tm_vars_ops_eq_concat in Hin.
     clear - IHops Hin.
     revert Hin. induction IHops as [|ob osig obs' ops' Hp Hrest IH]; intros Hin.
     + simpl in Hin. contradiction.
@@ -241,7 +235,7 @@ Proof.
   - intros Γ E_tag Ts op_bodies body n_α ops T_B T_R
            Heff Hlen HwfTs HwfTB HwfTR HnoLocal Hsub Hfst Hops IHops Hbody IHbody x Hin.
     simpl in Hin.
-    rewrite free_tm_vars_go_ops_eq_concat in Hin.
+    rewrite free_tm_vars_ops_eq_concat in Hin.
     rewrite List.in_app_iff in Hin. destruct Hin as [HopsFree | HbodyFree].
     + clear - IHops HopsFree.
       revert HopsFree. induction IHops as [|ob osig obs' ops' Hp Hrest IH]; intros Hin.

@@ -17,17 +17,30 @@ Require Import Subst.
 (* subsumption.                                                       *)
 (* ================================================================== *)
 
+(* The shared skeleton of every frame lemma: remember the frame,
+   induct on its typing derivation, discharge the T_Sub case by the
+   IH, and expose the frame's own introduction rule (injected and
+   substituted).  Each lemma below finishes with just that rule. *)
+Ltac frame_replace H Himpl :=
+  lazymatch type of H with
+  | typing _ ?s _ =>
+      let s0 := fresh "s0" in let Hs := fresh "Hs" in
+      remember s as s0 eqn:Hs; revert Hs;
+      induction H; intros Hs; try discriminate Hs;
+      [ eapply T_Sub;
+        [ match goal with IH : _ -> _ = _ -> _ |- _ =>
+            apply IH; [exact Himpl | exact Hs] end
+        | assumption ]
+      | injection Hs; intros; subst ]
+  end.
+
 Lemma app1_replace : forall Γ f f' t2 T,
   Γ ⊢ₜ term_app f t2 : T ->
   (forall Tf, Γ ⊢ₜ f : Tf -> Γ ⊢ₜ f' : Tf) ->
   Γ ⊢ₜ term_app f' t2 : T.
 Proof.
-  intros Γ f f' t2 T H Himpl.
-  remember (term_app f t2) as s eqn:Hs. revert Hs.
-  induction H; intros Hs; try discriminate Hs.
-  - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
-  - injection Hs; intros; subst.
-    eapply T_App; [apply Himpl; eassumption | eassumption].
+  intros Γ f f' t2 T H Himpl. frame_replace H Himpl.
+  eapply T_App; [apply Himpl; eassumption | eassumption].
 Qed.
 
 Lemma app2_replace : forall Γ t1 u u' T,
@@ -35,12 +48,8 @@ Lemma app2_replace : forall Γ t1 u u' T,
   (forall Tu, Γ ⊢ₜ u : Tu -> Γ ⊢ₜ u' : Tu) ->
   Γ ⊢ₜ term_app t1 u' : T.
 Proof.
-  intros Γ t1 u u' T H Himpl.
-  remember (term_app t1 u) as s eqn:Hs. revert Hs.
-  induction H; intros Hs; try discriminate Hs.
-  - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
-  - injection Hs; intros; subst.
-    eapply T_App; [eassumption | apply Himpl; eassumption].
+  intros Γ t1 u u' T H Himpl. frame_replace H Himpl.
+  eapply T_App; [eassumption | apply Himpl; eassumption].
 Qed.
 
 Lemma ty_app_replace : forall Γ u u' S T,
@@ -48,12 +57,8 @@ Lemma ty_app_replace : forall Γ u u' S T,
   (forall Tu, Γ ⊢ₜ u : Tu -> Γ ⊢ₜ u' : Tu) ->
   Γ ⊢ₜ term_ty_app u' S : T.
 Proof.
-  intros Γ u u' S T H Himpl.
-  remember (term_ty_app u S) as s eqn:Hs. revert Hs.
-  induction H; intros Hs; try discriminate Hs.
-  - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
-  - injection Hs; intros; subst.
-    eapply T_TyApp; [apply Himpl; eassumption | assumption | assumption].
+  intros Γ u u' S T H Himpl. frame_replace H Himpl.
+  eapply T_TyApp; [apply Himpl; eassumption | assumption | assumption].
 Qed.
 
 Lemma lt_app_replace : forall Γ u u' l T,
@@ -61,12 +66,8 @@ Lemma lt_app_replace : forall Γ u u' l T,
   (forall Tu, Γ ⊢ₜ u : Tu -> Γ ⊢ₜ u' : Tu) ->
   Γ ⊢ₜ term_lt_app u' l : T.
 Proof.
-  intros Γ u u' l T H Himpl.
-  remember (term_lt_app u l) as s eqn:Hs. revert Hs.
-  induction H; intros Hs; try discriminate Hs.
-  - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
-  - injection Hs; intros; subst.
-    eapply T_LtApp; [apply Himpl; eassumption | assumption].
+  intros Γ u u' l T H Himpl. frame_replace H Himpl.
+  eapply T_LtApp; [apply Himpl; eassumption | assumption].
 Qed.
 
 Lemma match_scrut_replace : forall Γ u u' K nlt ar y n T,
@@ -74,12 +75,8 @@ Lemma match_scrut_replace : forall Γ u u' K nlt ar y n T,
   (forall Tu, Γ ⊢ₜ u : Tu -> Γ ⊢ₜ u' : Tu) ->
   Γ ⊢ₜ term_match u' K nlt ar y n : T.
 Proof.
-  intros Γ u u' K nlt ar y n T H Himpl.
-  remember (term_match u K nlt ar y n) as s eqn:Hs. revert Hs.
-  induction H; intros Hs; try discriminate Hs.
-  - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
-  - injection Hs; intros; subst.
-    eapply T_Match;
+  intros Γ u u' K nlt ar y n T H Himpl. frame_replace H Himpl.
+  eapply T_Match;
       try (apply Himpl; eassumption); try eassumption; try reflexivity.
 Qed.
 
@@ -88,13 +85,9 @@ Lemma handler_m_replace : forall Γ m T_B T_R u u' T,
   (forall Tu, Γ ⊢ₜ u : Tu -> Γ ⊢ₜ u' : Tu) ->
   Γ ⊢ₜ term_handler_m m T_B T_R u' : T.
 Proof.
-  intros Γ m T_B T_R u u' T H Himpl.
-  remember (term_handler_m m T_B T_R u) as s eqn:Hs. revert Hs.
-  induction H; intros Hs; try discriminate Hs.
-  - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
-  - injection Hs; intros; subst.
-    eapply T_HandlerM; try eassumption.
-    apply Himpl; eassumption.
+  intros Γ m T_B T_R u u' T H Himpl. frame_replace H Himpl.
+  eapply T_HandlerM; try eassumption.
+  apply Himpl; eassumption.
 Qed.
 
 Lemma perform_recv_replace : forall Γ u u' op Ss A arg T,
@@ -102,12 +95,8 @@ Lemma perform_recv_replace : forall Γ u u' op Ss A arg T,
   (forall Tu, Γ ⊢ₜ u : Tu -> Γ ⊢ₜ u' : Tu) ->
   Γ ⊢ₜ term_perform u' op Ss A arg : T.
 Proof.
-  intros Γ u u' op Ss A arg T H Himpl.
-  remember (term_perform u op Ss A arg) as s eqn:Hs. revert Hs.
-  induction H; intros Hs; try discriminate Hs.
-  - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
-  - injection Hs; intros; subst.
-    eapply T_Perform;
+  intros Γ u u' op Ss A arg T H Himpl. frame_replace H Himpl.
+  eapply T_Perform;
       try (apply Himpl; eassumption); try eassumption; try reflexivity.
 Qed.
 
@@ -116,12 +105,8 @@ Lemma perform_arg_replace : forall Γ recv u u' op Ss A T,
   (forall Tu, Γ ⊢ₜ u : Tu -> Γ ⊢ₜ u' : Tu) ->
   Γ ⊢ₜ term_perform recv op Ss A u' : T.
 Proof.
-  intros Γ recv u u' op Ss A T H Himpl.
-  remember (term_perform recv op Ss A u) as s eqn:Hs. revert Hs.
-  induction H; intros Hs; try discriminate Hs.
-  - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
-  - injection Hs; intros; subst.
-    eapply T_Perform;
+  intros Γ recv u u' op Ss A T H Himpl. frame_replace H Himpl.
+  eapply T_Perform;
       try (apply Himpl; eassumption); try eassumption; try reflexivity.
 Qed.
 
@@ -142,17 +127,14 @@ Lemma ctor_focus_replace : forall Γ K l lts Ts vs u u' ts T,
   (forall Tu, Γ ⊢ₜ u : Tu -> Γ ⊢ₜ u' : Tu) ->
   Γ ⊢ₜ term_ctor K l lts Ts (vs ++ u' :: ts) : T.
 Proof.
-  intros Γ K l lts Ts vs u u' ts T H Himpl.
-  remember (term_ctor K l lts Ts (vs ++ u :: ts)) as s eqn:Hs. revert Hs.
-  induction H; intros Hs; try discriminate Hs.
-  - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
-  - injection Hs; intros; subst.
-    assert (Hlen : length (vs ++ u' :: ts) = length (vs ++ u :: ts))
+  intros Γ K l lts Ts vs u u' ts T H Himpl. frame_replace H Himpl.
+  assert (Hlen : length (vs ++ u' :: ts) = length (vs ++ u :: ts))
       by (rewrite !length_app; reflexivity).
     eapply T_Ctor;
       try (rewrite Hlen; eassumption);
-      try (eapply Forall2_focus_replace;
-           [ eassumption | intros ru Hu; apply Himpl; exact Hu ]);
+      try (apply typings_Forall2; eapply Forall2_focus_replace;
+           [ apply typings_Forall2; eassumption
+           | intros ru Hu; apply Himpl; exact Hu ]);
       try eassumption; try reflexivity.
 Qed.
 

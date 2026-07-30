@@ -244,7 +244,7 @@ Theorem progress_open : forall Γ ms t T,
 Proof.
   intros Γ0 ms0 t0 T0 Hec0 Hmok0 Hsafe0 Hty0. revert ms0 Hmok0 Hsafe0 Hec0.
   revert Hty0; revert T0; revert t0; revert Γ0.
-  apply (typing_ind2 (fun Γ t T => forall ms,
+  apply (typing_ind_forall2 (fun Γ t T => forall ms,
     well_scoped ms t -> marker_types_safe t -> eval_ctx Γ -> progress_result ms t)).
   - (* T_Var *)
     intros Γ x T Hlk Hwf ms Hmok Hsafe Hec.
@@ -273,7 +273,7 @@ Proof.
       right. right. exists Et, m, Ts0, T_R, ob, opx, Ss, A0, v, (EC_app1 P t2).
       repeat split; auto.
   - (* T_TyLam *)
-    intros Γ bound body T HwfBound HwfT Hbody IHbody ms Hmok Hsafe Hec. left; constructor.
+    intros Γ bound body T HwfBound HwfT Habs Hbody IHbody ms Hmok Hsafe Hec. left; constructor.
   - (* T_TyApp *)
     intros Γ t B U S Ht IH HwfS Hsub ms Hmok Hsafe Hec.
     simpl in Hmok. specialize (IH ms Hmok Hsafe Hec).
@@ -286,7 +286,7 @@ Proof.
       right. right. exists Et, m, Ts0, T_R, ob, opx, Ss, A0, v, (EC_ty_app P S).
       repeat split; auto.
   - (* T_LtLam *)
-    intros Γ body T HwfT Hbody IHbody ms Hmok Hsafe Hec. left; constructor.
+    intros Γ body T HwfT Habs Hbody IHbody ms Hmok Hsafe Hec. left; constructor.
   - (* T_LtApp *)
     intros Γ t T l Ht IH Hwfl ms Hmok Hsafe Hec.
     simpl in Hmok. specialize (IH ms Hmok Hsafe Hec).

@@ -8,6 +8,7 @@
 (* build order (Variance itself imports Subst); files needing them    *)
 (* import them directly.                                              *)
 (* ================================================================== *)
+Require Export SubstTactics.
 Require Export ShiftLaws.
 Require Export Weakening.
 Require Export SubstLt.
@@ -15,4 +16,3 @@ Require Export SubstTy.
 Require Export ProgramCtx.
 Require Export SubstTm.
 Require Export TypingSubst.
-Require Export SubstTactics.

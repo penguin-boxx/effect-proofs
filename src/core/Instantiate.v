@@ -55,18 +55,13 @@ Fixpoint multi_subst_lt (cutoff : nat) (lts : list lifetime) (l : lifetime)
 
 Fixpoint multi_subst_lt_in_ty (cutoff : nat) (lts : list lifetime) (T : type)
     : type :=
-  let fix go (Ts : list type) : list type :=
-    match Ts with
-    | []        => []
-    | A :: rest => multi_subst_lt_in_ty cutoff lts A :: go rest
-    end
-  in
   match T with
   | type_var n        => type_var n
   | type_fun A l B    => type_fun (multi_subst_lt_in_ty cutoff lts A)
                                   (multi_subst_lt cutoff lts l)
                                   (multi_subst_lt_in_ty cutoff lts B)
-  | type_ctor K l Ts  => type_ctor K (multi_subst_lt cutoff lts l) (go Ts)
+  | type_ctor K l Ts  => type_ctor K (multi_subst_lt cutoff lts l)
+                                   (List.map (multi_subst_lt_in_ty cutoff lts) Ts)
   | type_lt_all A     => type_lt_all (multi_subst_lt_in_ty (S cutoff) lts A)
   | type_ty_all B A   => type_ty_all (multi_subst_lt_in_ty cutoff lts B)
                                      (multi_subst_lt_in_ty cutoff lts A)

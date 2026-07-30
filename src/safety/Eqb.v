@@ -79,7 +79,7 @@ Fixpoint ty_list_eqb (Ts1 Ts2 : list type) : bool :=
   | _, _ => false
   end.
 
-(* go_eq lemma in the style of shift_tm_go_eq_map (ShiftLaws.v). *)
+(* go_eq bridge for ty_eqb's inline list fix (cf. the go_ops bridges in ShiftLaws.v). *)
 Lemma ty_eqb_go_eq : forall Ts1 Ts2,
   (fix go (Ts1 Ts2 : list type) : bool :=
      match Ts1, Ts2 with

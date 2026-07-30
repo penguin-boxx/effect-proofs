@@ -153,7 +153,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       Γ ⊢ₗ lt_of_ty_list rho_fields <: lt_of_ty result_ty ->
       Forall (fun l0 => Γ ⊢ₗ l0 <: l) lts ->
       List.length vs = List.length rho_fields ->
-      Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rho_fields ->
+      typings Γ vs rho_fields ->
       Γ ⊢ₜ term_ctor K l lts Ts vs : result_ty
 
   (* --- Pattern match typing --------------------------------------- *)
@@ -207,12 +207,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       types_wf Γ Ts ->
       ty_wf Γ T_R ->
       List.map fst op_bodies = List.map op_nb ops ->
-      Forall2 (fun ob osig =>
-        (op_body_ctx Γ (op_nb osig)
-           (inst_op_ty_args n_α Ts (op_nb osig) (op_sig_ty osig))
-           (inst_op_ty_args n_α Ts (op_nb osig) (op_ret_ty osig)) T_R)
-          ⊢ₜ snd ob : shift_ty (op_nb osig) 0 T_R)
-        op_bodies ops ->
+      typing_ops Γ n_α Ts T_R op_bodies ops ->
       Γ ⊢ₜ term_cap E_tag m Ts T_R op_bodies : type_ctor E_tag lt_local Ts
 
   (* NOTE on op-body variable convention (matching H_Perform):         *)
@@ -238,12 +233,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
       Γ ⊢ T_B <:: T_R ->
       List.map fst op_bodies = List.map op_nb ops ->
-      Forall2 (fun ob osig =>
-        (op_body_ctx Γ (op_nb osig)
-           (inst_op_ty_args n_α Ts (op_nb osig) (op_sig_ty osig))
-           (inst_op_ty_args n_α Ts (op_nb osig) (op_ret_ty osig)) T_R)
-          ⊢ₜ snd ob : shift_ty (op_nb osig) 0 T_R)
-        op_bodies ops ->
+      typing_ops Γ n_α Ts T_R op_bodies ops ->
       (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) ⊢ₜ body : T_B ->
       Γ ⊢ₜ term_handle E_tag Ts T_B T_R op_bodies body : T_R
 
@@ -278,54 +268,116 @@ Inductive typing : ctx -> term -> type -> Prop :=
       Γ ⊢ₜ t : T_B ->
       Γ ⊢ₜ term_handler_m m T_B T_R t : T_R
 
+(* Pointwise typing of a constructor's field values against their      *)
+(* instantiated field types (the T_Ctor premise; isomorphic to         *)
+(* `Forall2 (fun v rho => Γ ⊢ₜ v : rho)` — see typings_Forall2).       *)
+with typings : ctx -> list term -> list type -> Prop :=
+  | TS_Nil : forall Γ, typings Γ [] []
+  | TS_Cons : forall Γ v rho vs rhos,
+      Γ ⊢ₜ v : rho ->
+      typings Γ vs rhos ->
+      typings Γ (v :: vs) (rho :: rhos)
+
+(* Pointwise typing of a handler's operation bodies against the        *)
+(* effect's operation signatures (the shared T_Cap/T_Handle premise;   *)
+(* isomorphic to the corresponding Forall2 — see typing_ops_Forall2).  *)
+with typing_ops : ctx -> nat -> list type -> type ->
+                  list (nat * term) -> list (nat * type * type) -> Prop :=
+  | TO_Nil : forall Γ n_α Ts T_R, typing_ops Γ n_α Ts T_R [] []
+  | TO_Cons : forall Γ n_α Ts T_R ob osig op_bodies ops,
+      (op_body_ctx Γ (op_nb osig)
+         (inst_op_ty_args n_α Ts (op_nb osig) (op_sig_ty osig))
+         (inst_op_ty_args n_α Ts (op_nb osig) (op_ret_ty osig)) T_R)
+        ⊢ₜ snd ob : shift_ty (op_nb osig) 0 T_R ->
+      typing_ops Γ n_α Ts T_R op_bodies ops ->
+      typing_ops Γ n_α Ts T_R (ob :: op_bodies) (osig :: ops)
 
 where "G '⊢ₜ' t ':' T" := (typing G t T).
 
-Hint Constructors typing : core.
+Hint Constructors typing typings typing_ops : core.
 
 (* ------------------------------------------------------------------- *)
-(* Forall2 plumbing + a Forall2-aware induction principle for `typing` *)
+(* Generated mutual induction schemes.                                 *)
 (*                                                                     *)
-(* Coq's auto-generated `typing_ind` does NOT thread per-element       *)
-(* induction hypotheses through the `Forall2` premise of T_Ctor.       *)
-(* `typing_ind2` below augments the T_Ctor case with exactly that      *)
-(* `Forall2 (fun v rho => P Γ v rho)` hypothesis, which is what lets   *)
-(* `progress` and `preservation` discharge the constructor case        *)
-(* without any axioms.                                                 *)
+(* Because `typing`/`typings`/`typing_ops` form one mutual block, the  *)
+(* Scheme command generates an induction principle that threads        *)
+(* per-element induction hypotheses through the list premises of       *)
+(* T_Ctor / T_Cap / T_Handle — no hand-maintained principle needed.    *)
+(* (`Minimality` = the non-dependent form, matching `typing_ind`.)     *)
 (* ------------------------------------------------------------------- *)
 
+Scheme typing_mut_ind := Minimality for typing Sort Prop
+  with typings_mut_ind := Minimality for typings Sort Prop
+  with typing_ops_mut_ind := Minimality for typing_ops Sort Prop.
 
-Lemma typing_ind2 :
+Combined Scheme typing_typings_ops_mut_ind
+  from typing_mut_ind, typings_mut_ind, typing_ops_mut_ind.
+
+(* ------------------------------------------------------------------- *)
+(* Round-trip bridges: the mutual list relations are exactly the       *)
+(* Forall2 forms they replaced.                                        *)
+(* ------------------------------------------------------------------- *)
+
+Lemma typings_Forall2 : forall Γ vs rhos,
+  typings Γ vs rhos <-> Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rhos.
+Proof.
+  intros Γ vs rhos; split; intros H; induction H; constructor; assumption.
+Qed.
+
+Lemma typing_ops_Forall2 : forall Γ n_α Ts T_R op_bodies ops,
+  typing_ops Γ n_α Ts T_R op_bodies ops <->
+  Forall2 (fun ob osig =>
+    (op_body_ctx Γ (op_nb osig)
+       (inst_op_ty_args n_α Ts (op_nb osig) (op_sig_ty osig))
+       (inst_op_ty_args n_α Ts (op_nb osig) (op_ret_ty osig)) T_R)
+      ⊢ₜ snd ob : shift_ty (op_nb osig) 0 T_R)
+    op_bodies ops.
+Proof.
+  intros Γ n_α Ts T_R op_bodies ops; split; intros H; induction H;
+    constructor; assumption.
+Qed.
+
+(* ------------------------------------------------------------------- *)
+(* The Forall2-aware induction principle for `typing`, now derived     *)
+(* from the generated mutual scheme (motives for the list relations    *)
+(* are the Forall2 of per-element IHs).  Every typing mega-proof       *)
+(* (Weakening, SubstLt, SubstTm, TypingSubst, ProgramCtx, Progress)    *)
+(* inducts with this.                                                  *)
+(* ------------------------------------------------------------------- *)
+
+Lemma typing_ind_forall2 :
   forall (P : ctx -> term -> type -> Prop),
   (forall Γ x T, ctx_lookup_tm Γ x = Some T -> ty_wf Γ T -> P Γ (term_var x) T) ->
   (forall Γ t T U, Γ ⊢ₜ t : T -> P Γ t T -> Γ ⊢ T <:: U -> P Γ t U) ->
   (forall Γ body A l B,
-    ty_wf Γ A ->
-    ty_wf Γ B ->
+      ty_wf Γ A ->
+      ty_wf Γ B ->
      (bind_tm A :: Γ) ⊢ₜ body : B -> P (bind_tm A :: Γ) body B ->
-    Γ ⊢ₗ capture_lt Γ body <: l ->
+      Γ ⊢ₗ capture_lt Γ body <: l ->
      P Γ (term_lam body A) (type_fun A l B)) ->
   (forall Γ t1 t2 A l B,
      Γ ⊢ₜ t1 : type_fun A l B -> P Γ t1 (type_fun A l B) ->
      Γ ⊢ₜ t2 : A -> P Γ t2 A ->
      P Γ (term_app t1 t2) B) ->
   (forall Γ bound body T,
-    ty_wf Γ bound ->
-    ty_wf (bind_ty bound :: Γ) T ->
+      ty_wf Γ bound ->
+      ty_wf (bind_ty bound :: Γ) T ->
+      is_abs body = true ->
      (bind_ty bound :: Γ) ⊢ₜ body : T -> P (bind_ty bound :: Γ) body T ->
      P Γ (term_ty_lam bound body) (type_ty_all bound T)) ->
   (forall Γ t B U S,
      Γ ⊢ₜ t : type_ty_all B U -> P Γ t (type_ty_all B U) ->
-    ty_wf Γ S ->
+      ty_wf Γ S ->
      Γ ⊢ S <:: B ->
      P Γ (term_ty_app t S) (subst_ty 0 S U)) ->
   (forall Γ body T,
-    ty_wf (bind_lt lt_local :: Γ) T ->
+      ty_wf (bind_lt lt_local :: Γ) T ->
+      is_abs body = true ->
      (bind_lt lt_local :: Γ) ⊢ₜ body : T -> P (bind_lt lt_local :: Γ) body T ->
      P Γ (term_lt_lam body) (type_lt_all T)) ->
   (forall Γ t T l,
      Γ ⊢ₜ t : type_lt_all T -> P Γ t (type_lt_all T) ->
-    lt_wf Γ l ->
+      lt_wf Γ l ->
      P Γ (term_lt_app t l) (subst_lt_in_ty 0 l T)) ->
         (forall Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields
           result_ty result_tag l vs,
@@ -346,8 +398,8 @@ Lemma typing_ind2 :
      Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rho_fields ->
      Forall2 (fun v rho => P Γ v rho) vs rho_fields ->
       P Γ (term_ctor K l lts Ts vs) result_ty) ->
-        (forall Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
-          rho_fields scrut_result_ty result_tag result_l
+      (forall Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
+        rho_fields scrut_result_ty result_tag result_l
          Γ' yes_body eta elim_result no_body,
      K <> any_tag ->
      ctx_lookup_ctor Γ K = Some (n_lt, n_ty, sigma_fields, result_ty_schema) ->
@@ -356,14 +408,14 @@ Lemma typing_ind2 :
      rho_fields = List.map (inst_ctor_type_open n_lt n_ty Ts) sigma_fields ->
       List.length Ts = n_ty ->
       types_wf Γ Ts ->
-      scrut_result_ty = inst_ctor_type n_lt n_ty (List.repeat Delta n_lt) Ts result_ty_schema ->
-      scrut_result_ty = type_ctor result_tag result_l Ts ->
+         scrut_result_ty = inst_ctor_type n_lt n_ty (List.repeat Delta n_lt) Ts result_ty_schema ->
+        scrut_result_ty = type_ctor result_tag result_l Ts ->
       ctx_lookup_eff Γ result_tag = None ->
       result_tag <> any_tag ->
-      lt_wf Γ Delta ->
-      Γ ⊢ₗ result_l <: Delta ->
-      Γ ⊢ₜ scrut : type_ctor result_tag Delta Ts ->
-      P Γ scrut (type_ctor result_tag Delta Ts) ->
+        lt_wf Γ Delta ->
+         Γ ⊢ₗ result_l <: Delta ->
+        Γ ⊢ₜ scrut : type_ctor result_tag Delta Ts ->
+        P Γ scrut (type_ctor result_tag Delta Ts) ->
      arity = List.length rho_fields ->
      Γ' = push_match_bound n_lt Delta Γ ->
      (fold_right (fun rho Γ0 => bind_tm rho :: Γ0) Γ' rho_fields) ⊢ₜ yes_body : eta ->
@@ -377,7 +429,7 @@ Lemma typing_ind2 :
     types_wf Γ Ts ->
     ty_wf Γ T_R ->
      List.map fst op_bodies = List.map op_nb ops ->
-      Forall2 (fun ob osig =>
+     Forall2 (fun ob osig =>
         (op_body_ctx Γ (op_nb osig)
            (inst_op_ty_args n_α Ts (op_nb osig) (op_sig_ty osig))
            (inst_op_ty_args n_α Ts (op_nb osig) (op_ret_ty osig)) T_R)
@@ -399,7 +451,7 @@ Lemma typing_ind2 :
     Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
     Γ ⊢ T_B <:: T_R ->
      List.map fst op_bodies = List.map op_nb ops ->
-      Forall2 (fun ob osig =>
+     Forall2 (fun ob osig =>
         (op_body_ctx Γ (op_nb osig)
            (inst_op_ty_args n_α Ts (op_nb osig) (op_sig_ty osig))
            (inst_op_ty_args n_α Ts (op_nb osig) (op_ret_ty osig)) T_R)
@@ -414,8 +466,8 @@ Lemma typing_ind2 :
       (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) ⊢ₜ body : T_B ->
       P (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) body T_B ->
      P Γ (term_handle E_tag Ts T_B T_R op_bodies body) T_R) ->
-  (forall Γ recv op arg E_tag Δ Ts Ss n_α ops n_β sig ret sig_inst ret_inst,
-     Γ ⊢ₜ recv : type_ctor E_tag Δ Ts -> P Γ recv (type_ctor E_tag Δ Ts) ->
+  (forall Γ recv op arg E_tag Delta Ts Ss n_α ops n_β sig ret sig_inst ret_inst,
+     Γ ⊢ₜ recv : type_ctor E_tag Delta Ts -> P Γ recv (type_ctor E_tag Delta Ts) ->
      ctx_lookup_eff Γ E_tag = Some (n_α, ops) ->
      nth_error ops op = Some (n_β, sig, ret) ->
      List.length Ts = n_α ->
@@ -429,54 +481,51 @@ Lemma typing_ind2 :
      Γ ⊢ₜ arg : sig_inst -> P Γ arg sig_inst ->
      P Γ (term_perform recv op Ss ret_inst arg) ret_inst) ->
   (forall Γ m T_B T_R t,
-    ty_wf Γ T_B ->
-    ty_wf Γ T_R ->
-    Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
-    Γ ⊢ T_B <:: T_R ->
-    Γ ⊢ₜ t : T_B -> P Γ t T_B ->
-    P Γ (term_handler_m m T_B T_R t) T_R) ->
+      ty_wf Γ T_B ->
+      ty_wf Γ T_R ->
+      Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
+      Γ ⊢ T_B <:: T_R ->
+      Γ ⊢ₜ t : T_B -> P Γ t T_B ->
+      P Γ (term_handler_m m T_B T_R t) T_R) ->
   forall Γ t T, Γ ⊢ₜ t : T -> P Γ t T.
 Proof.
   intros P HVar HSub HLam HApp HTyLam HTyApp HLtLam HLtApp HCtor HMatch
          HCap HHandle HPerform HHandlerM.
-  fix IH 4.
-  intros Γ t T H. destruct H.
-  - eapply HVar; (eassumption || (apply IH; eassumption)).
-  - eapply HSub; (eassumption || (apply IH; eassumption)).
-  - eapply HLam; (eassumption || (apply IH; eassumption)).
-  - eapply HApp; (eassumption || (apply IH; eassumption)).
-  - eapply HTyLam; (eassumption || (apply IH; eassumption)).
-  - eapply HTyApp; (eassumption || (apply IH; eassumption)).
-  - eapply HLtLam; (eassumption || (apply IH; eassumption)).
-  - eapply HLtApp; (eassumption || (apply IH; eassumption)).
-  - (* T_Ctor: build the Forall2 of IHs inline so the recursive calls    *)
-    (* stay on structural subterms of the derivation (guardedness).      *)
-    eapply HCtor; try (eassumption || (apply IH; eassumption)).
-    match goal with
-    | HF : Forall2 (fun v rho => _ ⊢ₜ v : rho) ?vs ?rf |- Forall2 _ ?vs ?rf =>
-        clear -IH HF; induction HF
-    end.
-    + constructor.
-    + constructor; [ apply IH; assumption | assumption ].
-  - eapply HMatch; (eassumption || (apply IH; eassumption)).
-  - (* T_Cap: build the per-op Forall2 of IHs inline (guardedness). *)
-    eapply HCap; try (eassumption || (apply IH; eassumption)).
-    match goal with
-    | HF : Forall2 _ ?obs ?ops |- Forall2 _ ?obs ?ops =>
-        clear -IH HF; induction HF
-    end.
-    + constructor.
-    + constructor; [ apply IH; assumption | assumption ].
-  - (* T_Handle: same per-op Forall2 construction. *)
-    eapply HHandle; try (eassumption || (apply IH; eassumption)).
-    match goal with
-    | HF : Forall2 _ ?obs ?ops |- Forall2 _ ?obs ?ops =>
-        clear -IH HF; induction HF
-    end.
-    + constructor.
-    + constructor; [ apply IH; assumption | assumption ].
-  - eapply HPerform; (eassumption || (apply IH; eassumption)).
-  - eapply HHandlerM; (eassumption || (apply IH; eassumption)).
+  apply (typing_mut_ind P
+    (fun Γ vs rhos => Forall2 (fun v rho => P Γ v rho) vs rhos)
+    (fun Γ n_α Ts T_R obs ops =>
+       Forall2 (fun ob osig =>
+         P (op_body_ctx Γ (op_nb osig)
+              (inst_op_ty_args n_α Ts (op_nb osig) (op_sig_ty osig))
+              (inst_op_ty_args n_α Ts (op_nb osig) (op_ret_ty osig)) T_R)
+           (snd ob) (shift_ty (op_nb osig) 0 T_R)) obs ops));
+    try assumption.
+  - (* T_Ctor: recover the Forall2-of-typings via the bridge. *)
+    intros Γ K n_lt n_ty sigma_fields result_ty_schema lts Ts rho_fields
+           result_ty result_tag l vs
+           Hlk Heff Hlts Hwflts Hrho HTs HwfTs Hres Hshape Hreseff Hwfl
+           Hesc Hbound Hlen Hvs IHvs.
+    eapply HCtor; try eassumption.
+    apply typings_Forall2; exact Hvs.
+  - (* T_Cap *)
+    intros Γ E_tag m Ts op_bodies n_α ops T_R
+           Heff Hlen HwfTs HwfTR Hfst Hops IHops.
+    eapply HCap; try eassumption.
+    apply typing_ops_Forall2; exact Hops.
+  - (* T_Handle *)
+    intros Γ E_tag Ts op_bodies body n_α ops T_B T_R
+           Heff Hlen HwfTs HwfTB HwfTR Hnl Hsub Hfst Hops IHops Hbody IHbody.
+    eapply HHandle; try eassumption.
+    apply typing_ops_Forall2; exact Hops.
+  - (* T_HandlerM (binder order differs from the constructor's) *)
+    intros Γ m t T_B T_R HwfTB HwfTR Hnl Hsub Ht IHt.
+    apply HHandlerM; assumption.
+  - (* typings nil *) intros Γ. cbv beta. constructor.
+  - (* typings cons *) intros Γ v rho vs rhos Hv IHv Hvs IHvs.
+    cbv beta. constructor; assumption.
+  - (* typing_ops nil *) intros Γ n_α Ts T_R. cbv beta. constructor.
+  - (* typing_ops cons *) intros Γ n_α Ts T_R ob osig obs ops Hob IHob Hobs IHobs.
+    cbv beta. constructor; assumption.
 Qed.
 
-#[export] Hint Constructors lt_wf ty_wf types_wf lifetimes_wf lt_sub sub typing : lang.
+#[export] Hint Constructors lt_wf ty_wf types_wf lifetimes_wf lt_sub sub typing typings typing_ops : lang.

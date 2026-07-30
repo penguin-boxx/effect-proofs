@@ -13,6 +13,7 @@ core/Elim.v
 core/Subtyping.v
 core/Instantiate.v
 core/Typing.v
+subst/SubstTactics.v
 subst/ShiftLaws.v
 subst/Weakening.v
 subst/SubstLt.v
@@ -20,7 +21,6 @@ subst/SubstTy.v
 subst/ProgramCtx.v
 subst/SubstTm.v
 subst/TypingSubst.v
-subst/SubstTactics.v
 subst/Subst.v
 subst/Narrowing.v
 subst/Variance.v

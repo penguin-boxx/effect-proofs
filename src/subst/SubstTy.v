@@ -8,6 +8,7 @@ Require Import Typing.
 Require Import ShiftLaws.
 Require Import Weakening.
 Require Import SubstLt.
+Require Import SubstTactics.
 
 (* ================================================================== *)
 (* SubstTy : substitute a type for a ty-binder at depth n             *)
@@ -118,6 +119,7 @@ Proof.
     + apply (IHHwf1 Sb n G' HS).
     + apply (IHHwf2 Sb n G' HS).
 Qed.
+#[export] Hint Resolve lt_wf_SubstTy : ctxmap.
 
 Lemma lt_sub_SubstTy : forall G l1 l2, G ⊢ₗ l1 <: l2 ->
   forall Sb n G', SubstTy Sb n G G' -> G' ⊢ₗ l1 <: l2.
@@ -127,21 +129,22 @@ Proof.
                  |Γ l1 l2 l3 H1 IH1 H2 IH2|Γ l1 l2 l H1 IH1 H2 IH2
                  |Γ l l1 l2 H1 IH1 Hwf2|Γ l l1 l2 H1 IH1 Hwf1];
     intros Sb n G' HS.
-  - apply LS_Free. eapply lt_wf_SubstTy; eauto.
-  - apply LS_Local. eapply lt_wf_SubstTy; eauto.
+  - apply LS_Free. wf_transport.
+  - apply LS_Local. wf_transport.
   - apply LS_Var.
     + rewrite (SubstTy_lookup_lt Sb n Γ G' HS x). exact Hlk.
-    + eapply lt_wf_SubstTy; eauto.
-  - apply LS_Refl. eapply lt_wf_SubstTy; eauto.
+    + wf_transport.
+  - apply LS_Refl. wf_transport.
   - eapply LS_Trans; [apply (IH1 Sb n G' HS) | apply (IH2 Sb n G' HS)].
   - apply LS_JoinL; [apply (IH1 Sb n G' HS) | apply (IH2 Sb n G' HS)].
   - apply LS_JoinR1.
     + apply (IH1 Sb n G' HS).
-    + eapply lt_wf_SubstTy; eauto.
+    + wf_transport.
   - apply LS_JoinR2.
     + apply (IH1 Sb n G' HS).
-    + eapply lt_wf_SubstTy; eauto.
+    + wf_transport.
 Qed.
+#[export] Hint Resolve lt_sub_SubstTy : ctxmap.
 
 Lemma lt_of_ty_G_wf : forall G T,
   ty_wf G T -> lt_wf G (lt_of_ty_G G T)
@@ -332,21 +335,8 @@ Lemma lt_of_ty_shift_ty_amt : forall T k c, lt_of_ty (shift_ty k c T) = lt_of_ty
 Proof.
   apply (type_list_ind
     (fun T => forall k c, lt_of_ty (shift_ty k c T) = lt_of_ty T)
-    (fun Ts => forall k c, lt_of_ty_list (List.map (shift_ty k c) Ts) = lt_of_ty_list Ts)).
-  - intros x k c. reflexivity.
-  - intros A l B HA HB k c. reflexivity.
-  - intros K l Ts HTs k c. rewrite shift_ty_ctor_eq. cbn [lt_of_ty]. f_equal.
-    change ((fix go_list (Ts0 : list type) : lifetime :=
-       match Ts0 with [] => lt_free | A :: rest => lt_join (lt_of_ty A) (go_list rest) end)
-       (List.map (shift_ty k c) Ts)) with (lt_of_ty_list (List.map (shift_ty k c) Ts)).
-    change ((fix go_list (Ts0 : list type) : lifetime :=
-       match Ts0 with [] => lt_free | A :: rest => lt_join (lt_of_ty A) (go_list rest) end) Ts)
-       with (lt_of_ty_list Ts).
-    apply HTs.
-  - intros A HA k c. reflexivity.
-  - intros B A HB HA k c. reflexivity.
-  - intros k c. reflexivity.
-  - intros A Ts HA HTs k c. cbn [List.map]. rewrite !lt_of_ty_list_cons. rewrite HA, HTs. reflexivity.
+    (fun Ts => forall k c, lt_of_ty_list (List.map (shift_ty k c) Ts) = lt_of_ty_list Ts));
+    go_traverse.
 Qed.
 
 (* UPPER bound through type-variable instantiation (inst_ty_vars is      *)
@@ -386,20 +376,8 @@ Proof.
       lt_of_ty (multi_subst_lt_in_ty c lts T) = multi_subst_lt c lts (lt_of_ty T))
     (fun Ts => forall c lts,
       lt_of_ty_list (List.map (multi_subst_lt_in_ty c lts) Ts)
-      = multi_subst_lt c lts (lt_of_ty_list Ts))).
-  - intros x c lts. reflexivity.
-  - intros A l B HA HB c lts. reflexivity.
-  - intros K l Ts IHTs c lts. cbn [multi_subst_lt_in_ty]. rewrite !lt_of_ty_ctor_eq.
-    cbn [multi_subst_lt]. f_equal.
-    change ((fix go (Ts0 : list type) : list type :=
-       match Ts0 with [] => [] | A :: rest => multi_subst_lt_in_ty c lts A :: go rest end) Ts)
-       with (List.map (multi_subst_lt_in_ty c lts) Ts).
-    apply IHTs.
-  - intros A HA c lts. reflexivity.
-  - intros B A HB HA c lts. reflexivity.
-  - intros c lts. reflexivity.
-  - intros A Ts HA HTs c lts. cbn [List.map]. rewrite !lt_of_ty_list_cons.
-    cbn [multi_subst_lt]. rewrite HA, HTs. reflexivity.
+      = multi_subst_lt c lts (lt_of_ty_list Ts)));
+    go_traverse.
 Qed.
 
 Lemma lt_of_ty_inst_lt_vars : forall n lts T,
@@ -777,11 +755,11 @@ Proof.
         -- apply (IHHwf Sb n G' HS).
     + rewrite subst_ty_fun_eq. constructor.
       * apply IHHwf1. exact HS.
-      * eapply lt_wf_SubstTy; eauto.
+      * wf_transport.
       * apply IHHwf2. exact HS.
     + rewrite subst_ty_ctor_eq. constructor.
-      * eapply lt_wf_SubstTy; eauto.
-      * eapply types_wf_SubstTy; eauto.
+      * wf_transport.
+      * wf_transport.
     + rewrite subst_ty_ltall_eq. constructor.
       apply IHHwf. apply SubstTy_lt. exact HS.
     + rewrite subst_ty_tyall_eq. constructor.
@@ -790,9 +768,11 @@ Proof.
   - intros G Ts Hwf. induction Hwf; intros Sb n G' HS; cbn [List.map].
     + constructor.
     + constructor.
-      * eapply ty_wf_SubstTy; eauto.
+      * wf_transport.
       * apply (IHHwf Sb n G' HS).
 Qed.
+#[export] Hint Resolve types_wf_SubstTy : ctxmap.
+#[export] Hint Resolve ty_wf_SubstTy : ctxmap.
 
 Lemma lt_of_ty_ctx_SubstTy_le : forall Sb n G G', SubstTy Sb n G G' ->
   forall f T k, ty_wf G T -> VB k T -> length G <= k + f ->
@@ -816,11 +796,11 @@ Proof.
       rewrite !(lt_of_ty_ctx_var 0). apply LS_Refl. constructor.
     + inversion HwfT; subst.
       rewrite subst_ty_fun_eq. rewrite !lt_of_ty_ctx_fun. apply LS_Refl.
-      eapply lt_wf_SubstTy; eauto.
+      wf_transport.
     + rewrite subst_ty_ctor_eq. rewrite !lt_of_ty_ctx_ctor.
       inversion HwfT; subst. rewrite VB_ctor in HVB.
       apply lt_join_mono.
-      * apply LS_Refl. eapply lt_wf_SubstTy; eauto.
+      * apply LS_Refl. wf_transport.
       * eapply IHT; eauto.
     + rewrite subst_ty_ltall_eq. rewrite !lt_of_ty_ctx_ltall. apply LS_Refl. constructor.
     + rewrite subst_ty_tyall_eq. rewrite !lt_of_ty_ctx_tyall. apply LS_Refl. constructor.
@@ -860,11 +840,11 @@ Proof.
         -- apply LS_Refl. constructor.
     + inversion HwfT; subst.
       rewrite subst_ty_fun_eq. rewrite !lt_of_ty_ctx_fun. apply LS_Refl.
-      eapply lt_wf_SubstTy; eauto.
+      wf_transport.
     + rewrite subst_ty_ctor_eq. rewrite !lt_of_ty_ctx_ctor.
       inversion HwfT; subst. rewrite VB_ctor in HVB.
       apply lt_join_mono.
-      * apply LS_Refl. eapply lt_wf_SubstTy; eauto.
+      * apply LS_Refl. wf_transport.
       * eapply IHT; eauto.
     + rewrite subst_ty_ltall_eq. rewrite !lt_of_ty_ctx_ltall. apply LS_Refl. constructor.
     + rewrite subst_ty_tyall_eq. rewrite !lt_of_ty_ctx_tyall. apply LS_Refl. constructor.
@@ -895,20 +875,20 @@ Proof.
                  |Γ A A' l l' B B' H1 IH1 Hl H2 IH2
                  |Γ A A' H1 IH1|Γ B B' A A' HwfA HwfA' H1 IH1 H2 IH2];
     intros Sb n G' HS.
-  - apply SA_Refl. eapply ty_wf_SubstTy; eauto.
+  - apply SA_Refl. wf_transport.
   - eapply SA_Trans; [apply (IH1 Sb n G' HS) | apply (IH2 Sb n G' HS)].
   - destruct (Nat.eq_dec α n) as [Hae|Hane].
     + subst α. rewrite subst_ty_var_eq, Nat.eqb_refl.
       apply (SubstTy_sub_target Sb n Γ G' HS B Hlk).
     + rewrite (subst_ty_var_neq n Sb α Hane). apply SA_VarCtx.
       * rewrite (SubstTy_lookup_ty Sb n Γ G' HS α Hane). rewrite Hlk. reflexivity.
-      * eapply ty_wf_SubstTy; eauto.
+      * wf_transport.
   - rewrite !subst_ty_ctor_eq. apply SA_Data.
     + apply (lt_sub_SubstTy Γ l l' Hls Sb n G' HS).
-    + eapply types_wf_SubstTy; eauto.
+    + wf_transport.
   - rewrite subst_ty_ctor_eq. cbn [List.map]. apply SA_Any.
-    + eapply ty_wf_SubstTy; eauto.
-    + eapply lt_wf_SubstTy; eauto.
+    + wf_transport.
+    + wf_transport.
     + eapply LS_Trans.
       * apply (lt_of_ty_G_SubstTy_le Sb n Γ G' HS T HwfT).
       * apply (lt_sub_SubstTy Γ (lt_of_ty_G Γ T) Δ Hls Sb n G' HS).
@@ -926,6 +906,7 @@ Proof.
     + apply (IH2 (shift_ty 1 0 Sb) (S n) (bind_ty (subst_ty n Sb B') :: G')
                (SubstTy_ty Sb n Γ G' B' HS)).
 Qed.
+#[export] Hint Resolve sub_SubstTy : ctxmap.
 
 (* Subtyping is preserved by type-substitution at the head binder.    *)
 Lemma sub_subst_ty : forall Γ B U0 U S,
@@ -1126,4 +1107,3 @@ Proof.
   - exact Hsub.
   - apply SA_Refl. eapply ty_wf_NT; [apply NT_here; exact Hsub|exact HwfU].
 Qed.
-

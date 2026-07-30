@@ -149,12 +149,6 @@ Definition is_abs (t : term) : bool :=
 (* ================================================================== *)
 
 Fixpoint has_rt_cap (t : term) : bool :=
-  let fix go (ts : list term) : bool :=
-    match ts with
-    | []        => false
-    | u :: rest => orb (has_rt_cap u) (go rest)
-    end
-  in
   match t with
   | term_var _                  => false
   | term_app t1 t2              => orb (has_rt_cap t1) (has_rt_cap t2)
@@ -163,15 +157,11 @@ Fixpoint has_rt_cap (t : term) : bool :=
   | term_ty_lam _ body          => has_rt_cap body
   | term_lt_app t' _            => has_rt_cap t'
   | term_lt_lam body            => has_rt_cap body
-  | term_ctor _ _ _ _ ts        => go ts
+  | term_ctor _ _ _ _ ts        => existsb has_rt_cap ts
   | term_match scrut _ _ _ y n  =>
       orb (has_rt_cap scrut) (orb (has_rt_cap y) (has_rt_cap n))
   | term_handle _ _ _ _ op_bodies body =>
-      orb ((fix go_ops (obs : list (nat * term)) : bool :=
-              match obs with
-              | []              => false
-              | (_, ob) :: rest => orb (has_rt_cap ob) (go_ops rest)
-              end) op_bodies)
+      orb (existsb (fun '(_, ob) => has_rt_cap ob) op_bodies)
           (has_rt_cap body)
   | term_perform t' _ _ _ arg   => orb (has_rt_cap t') (has_rt_cap arg)
   | term_cap _ _ _ _ _          => true
