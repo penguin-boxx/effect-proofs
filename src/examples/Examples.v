@@ -193,8 +193,10 @@ Definition T_Cmd (l : lifetime) (S : type) : type := type_ctor cmd_tag l [S].
 Definition reader_sig : binding := bind_eff Reader_tag 1 [(0, T_Unit, `T 0)].
 
 (* effect State<s> { op get(): s; op put(s): Unit }                    *)
-(* The core calculus has one operation per effect, so State is encoded *)
-(* as a command effect Cmd<s> -> s. Put returns the new state.         *)
+(* Historical command-datatype encoding: a SINGLE operation of type    *)
+(* Cmd<s> -> s whose clause dispatches on the command. Kept alongside  *)
+(* the honest two-operation declaration [statem_sig] below for         *)
+(* comparison. Put returns the new state.                              *)
 Definition get_sig : binding := bind_ctor get_tag 0 1 [] (T_Cmd `Lf (`T 0)).
 Definition put_sig : binding := bind_ctor put_tag 0 1 [`T 0] (T_Cmd `Lf (`T 0)).
 Definition state_sig : binding := bind_eff State_tag 1 [(0, T_Cmd `Lf (`T 0), `T 0)].
@@ -359,8 +361,9 @@ Definition readerExample : term :=
        }
        let x: r = f() in
        fun(s: s) x
-   The core calculus has one operation per effect, so State is encoded with a
-   command type Cmd<s> -> s: [get] reads the state, [put] writes and returns it. *)
+   This is the command-datatype ENCODING of State (a single clause
+   dispatching on Cmd<s> -> s: [get] reads the state, [put] writes and
+   returns it); the honest two-operation version is [statemExample]. *)
 Definition state_op_body : term :=
   λ: `T 1 \\
     term_match ($$ 1) get_tag 0 0

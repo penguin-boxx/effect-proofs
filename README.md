@@ -77,16 +77,20 @@ terms; types occur in terms; never the reverse).
   continuation delimiter `term_handler_m`, both carrying a *marker*
   (a runtime identity for the dynamically nearest delimiter).
 
-Effects are deliberately minimal: **one operation per effect**
-(multi-op effects are encoded with a command datatype, see `State` in
-the examples), and a `perform` carries its **instantiated result type**
-as an annotation. That annotation is what lets the operational
-semantics reify the captured continuation as an *ordinary lambda*:
+Effect declarations carry a **list of operations** — `bind_eff E n_α
+[(n_β, σ, ρ); …]`, one `(β-arity, signature, result)` triple per
+operation, identified by its **list index**. A handler supplies one
+clause per operation, a `perform` names its operation by index, and
+`H_Perform` selects the fired clause with `nth_error`. Each `perform`
+also carries its **instantiated result type** as an annotation; that
+annotation is what lets the operational semantics reify the captured
+continuation as an *ordinary lambda*:
 
 ```
-handler_m m T_B T_R (P[ perform (cap E m T_R op) S̄ A v ])
-  -->h  op[ β̄ := S̄ ][ arg := v,
+handler_m m T_B T_R (P[ perform (cap E m T_R ops) i S̄ A v ])
+  -->h  opᵢ[ β̄ := S̄ ][ arg := v,
               k := λ(x:A). handler_m m T_B T_R ((↑P)[x]) ]
+      where  nth_error ops i = Some (n_β, opᵢ)
 ```
 
 There is no dedicated "reified resumption" constructor: applying the
@@ -217,7 +221,9 @@ vacuously on source terms (`has_rt_cap t = false`), which is how the
 
 `Examples.v` declares data types (Option, Result, List, lazy lists with
 existential lifetimes, …) and effects (Reader, State-as-command,
-Exception with a β-polymorphic `throw`, Id, Optionality).
+Exception with a β-polymorphic `throw`, Id, Optionality, and the
+two-operation `StateM` — `get` at index 0, `put` at index 1 — whose
+handler exercises one clause per operation).
 `ExamplesProofs.v` type-checks them and runs the reduction sequences
 end-to-end (including a **multi-shot** handler that resumes twice and a
 **forwarding** example where a `throw` crosses a live unrelated Reader
