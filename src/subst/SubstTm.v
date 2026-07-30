@@ -41,10 +41,10 @@ Inductive SubstTm : term -> nat -> ctx -> ctx -> Prop :=
       SubstTm v n G G' ->
       SubstTm v n (bind_ctor K n_lt n_ty fields result :: G)
                   (bind_ctor K n_lt n_ty fields result :: G')
-  | SubstTm_eff : forall v n G G' E n_a n_b sig ret,
+  | SubstTm_eff : forall v n G G' E n_a ops,
       SubstTm v n G G' ->
-      SubstTm v n (bind_eff E n_a n_b sig ret :: G)
-                  (bind_eff E n_a n_b sig ret :: G').
+      SubstTm v n (bind_eff E n_a ops :: G)
+                  (bind_eff E n_a ops :: G').
 
 Lemma SubstTm_length : forall v n G G', SubstTm v n G G' -> length G = S (length G').
 Proof. intros v n G G' H. induction H; simpl; lia. Qed.
@@ -102,7 +102,7 @@ Proof.
                  |v n G G' B H IH
                  |v n G G' D H IH
                  |v n G G' K0 n_lt n_ty fields result H IH
-                 |v n G G' E n_a n_b sig ret H IH]; intro K; simpl.
+                 |v n G G' E n_a ops H IH]; intro K; simpl.
   - reflexivity.
   - apply IH.
   - rewrite IH. reflexivity.
@@ -120,7 +120,7 @@ Proof.
                  |v n G G' B H IH
                  |v n G G' D H IH
                  |v n G G' K n_lt n_ty fields result H IH
-                 |v n G G' E0 n_a n_b sig ret H IH]; intro E; simpl.
+                 |v n G G' E0 n_a ops H IH]; intro E; simpl.
   - reflexivity.
   - apply IH.
   - rewrite IH. reflexivity.

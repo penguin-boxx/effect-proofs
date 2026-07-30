@@ -110,15 +110,15 @@ Qed.
 (* the descent has no choice.                                         *)
 (* ------------------------------------------------------------------ *)
 
-Lemma stepf_go_esc_plug : forall fresh Et m nb Ts TR op Ss A arg P,
+Lemma stepf_go_esc_plug : forall fresh Et m Ts TR ops opix Ss A arg P,
   pure_ectx_m m P ->
   ectx_wf P ->
   value arg ->
   stepf_go fresh
-    (plug P (term_perform (term_cap Et m nb Ts TR op) Ss A arg))
-  = SR_esc (mk_esc Et m nb Ts TR op Ss A arg) P.
+    (plug P (term_perform (term_cap Et m Ts TR ops) opix Ss A arg))
+  = SR_esc (mk_esc Et m Ts TR ops opix Ss A arg) P.
 Proof.
-  intros fresh Et m nb Ts TR op Ss A arg P Hpure.
+  intros fresh Et m Ts TR ops opix Ss A arg P Hpure.
   induction Hpure; intros Hwf Hval; inversion Hwf; subst; simpl.
   - (* hole *)
     rewrite (stepf_go_value fresh arg Hval). reflexivity.
@@ -180,9 +180,11 @@ Proof.
   - (* H_Return *)
     rewrite (stepf_go_value fresh v) by assumption. reflexivity.
   - (* H_Perform *)
-    rewrite (stepf_go_esc_plug fresh E_tag m n_beta Ts T_R op_body Ss A v P)
+    rewrite (stepf_go_esc_plug fresh E_tag m Ts T_R op_bodies op Ss A v P)
       by assumption.
-    simpl. rewrite Nat.eqb_refl, ty_eqb_refl. reflexivity.
+    simpl. rewrite Nat.eqb_refl, ty_eqb_refl.
+    match goal with Hn : nth_error _ _ = Some _ |- _ => rewrite Hn end.
+    reflexivity.
 Qed.
 
 (* Head reduction is a genuine partial function — no modulo needed.   *)
@@ -253,21 +255,21 @@ Proof.
     + apply marker_alpha_equiv_refl.
   - (* S_HandleCtx: the evaluator allocates marker_bound instead *)
     match goal with
-    | |- context [plug ?E0 (term_handle ?Et ?nb ?Ts0 ?TB ?TR ?ob ?bd)] =>
-        set (t0 := plug E0 (term_handle Et nb Ts0 TB TR ob bd))
+    | |- context [plug ?E0 (term_handle ?Et ?Ts0 ?TB ?TR ?ob ?bd)] =>
+        set (t0 := plug E0 (term_handle Et Ts0 TB TR ob bd))
     end.
     exists (plug E (term_handler_m (marker_bound t0) T_B T_R
               (subst_tm 0
-                 (term_cap E_tag (marker_bound t0) n_beta Ts T_R op_body)
+                 (term_cap E_tag (marker_bound t0) Ts T_R op_bodies)
                  body))).
     split.
     + unfold stepf. unfold t0 at 2.
       assert (Hh : stepf_go (marker_bound t0)
-                     (term_handle E_tag n_beta Ts T_B T_R op_body body)
+                     (term_handle E_tag Ts T_B T_R op_bodies body)
                    = SR_step (term_handler_m (marker_bound t0) T_B T_R
                         (subst_tm 0
-                           (term_cap E_tag (marker_bound t0) n_beta Ts T_R
-                                     op_body)
+                           (term_cap E_tag (marker_bound t0) Ts T_R
+                                     op_bodies)
                            body)))
         by reflexivity.
       rewrite (stepf_go_plug_step _ _ _ _ H Hh).

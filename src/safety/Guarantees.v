@@ -49,17 +49,17 @@ Record source_guarantees (Γ : ctx) (t : term) (T : type) : Prop := {
   (* Capability confinement, active form: a capability in redex       *)
   (* position always sits under its own delimiter.                    *)
   sg_capabilities_confined :
-      forall E E_tag m n_beta Ts T_R op_body,
-      multi_step t (plug E (term_cap E_tag m n_beta Ts T_R op_body)) ->
+      forall E E_tag m Ts T_R op_bodies,
+      multi_step t (plug E (term_cap E_tag m Ts T_R op_bodies)) ->
       ~ pure_ectx_m m E;
 
   (* Capability confinement, occurrence form: EVERY syntactic         *)
   (* occurrence — under lambdas, inside data, inside stored op        *)
   (* bodies — has its marker in scope along its path.                 *)
   sg_capability_occurrences_delimited :
-      forall u p E_tag m n_beta Ts T_R op_body,
+      forall u p E_tag m Ts T_R op_bodies,
       multi_step t u ->
-      subterm_at u p = Some (term_cap E_tag m n_beta Ts T_R op_body) ->
+      subterm_at u p = Some (term_cap E_tag m Ts T_R op_bodies) ->
       exists ms', scope_at [] u p = Some ms' /\ In m ms';
 
   (* Results at an escapable type contain no runtime capability or    *)
@@ -86,14 +86,16 @@ Record source_guarantees (Γ : ctx) (t : term) (T : type) : Prop := {
       forall u u' v,
       multi_step t u ->
       boundary_step u u' operation_argument_in v ->
-      exists E m T_B T_R E_tag n_beta Ts op_body Ss A P resumption,
+      exists E m T_B T_R E_tag Ts op_bodies op Ss A P resumption,
         resumption = term_lam (term_handler_m m T_B T_R
                                  (plug (shift_ectx_tm 1 0 P) (term_var 0))) A /\
         u = plug E (term_handler_m m T_B T_R
               (plug P (term_perform
-                         (term_cap E_tag m n_beta Ts T_R op_body) Ss A v))) /\
-        u' = plug E (subst_list_tm [v; resumption]
-                       (subst_list_ty_in_tm Ss op_body)) /\
+                         (term_cap E_tag m Ts T_R op_bodies) op Ss A v))) /\
+        (exists n_beta op_body,
+           nth_error op_bodies op = Some (n_beta, op_body) /\
+           u' = plug E (subst_list_tm [v; resumption]
+                          (subst_list_ty_in_tm Ss op_body))) /\
         Γ ⊢ₜ resumption : type_fun A lt_local T_R
 }.
 
@@ -110,9 +112,9 @@ Proof.
   - intros u Hms.
     eapply multi_step_preserves_safety_invariants; eauto.
     apply source_safety_invariants; assumption.
-  - intros E E_tag m n_beta Ts T_R op_body Hms.
+  - intros E E_tag m Ts T_R op_bodies Hms.
     eapply source_capability_never_exposed; eauto.
-  - intros u p E_tag m n_beta Ts T_R op_body Hms Hsub.
+  - intros u p E_tag m Ts T_R op_bodies Hms Hsub.
     eapply source_capability_occurrence_delimited; eauto.
   - intros Hnl v Hms Hval.
     eapply source_noloc_result_no_runtime_forms; eauto.

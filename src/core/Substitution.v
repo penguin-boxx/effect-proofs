@@ -114,14 +114,23 @@ Fixpoint shift_tm (amount cutoff : nat) (t : term) : term :=
                     (shift_tm amount cutoff no_body)
   (* handle: body under +1 term binder; op_body under +2 (arg + k);   *)
   (* the n_β outer type-binders of op_body don't bind term vars.       *)
-    | term_handle E n_β Ts T_B T_R op_body body =>
-      term_handle E n_β Ts T_B T_R
-                  (shift_tm amount (cutoff + 2) op_body)
+    | term_handle E Ts T_B T_R op_bodies body =>
+      term_handle E Ts T_B T_R
+                  ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
+          match obs with
+          | []              => []
+          | (nb, ob) :: rest => (nb, shift_tm amount (cutoff + 2) ob) :: go_ops rest
+          end) op_bodies)
                   (shift_tm amount (S cutoff) body)
-  | term_perform t Ss A arg =>
-      term_perform (shift_tm amount cutoff t) Ss A (shift_tm amount cutoff arg)
-    | term_cap E m n_β Ts T_R op_body =>
-      term_cap E m n_β Ts T_R (shift_tm amount (cutoff + 2) op_body)
+  | term_perform t op Ss A arg =>
+      term_perform (shift_tm amount cutoff t) op Ss A (shift_tm amount cutoff arg)
+    | term_cap E m Ts T_R op_bodies =>
+      term_cap E m Ts T_R
+               ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
+          match obs with
+          | []              => []
+          | (nb, ob) :: rest => (nb, shift_tm amount (cutoff + 2) ob) :: go_ops rest
+          end) op_bodies)
   | term_handler_m m T_B T_R t => term_handler_m m T_B T_R (shift_tm amount cutoff t)
   end.
 
@@ -156,21 +165,30 @@ Fixpoint shift_ty_in_tm (amount cutoff : nat) (t : term) : term :=
                     (shift_ty_in_tm amount cutoff yes_body)
                     (shift_ty_in_tm amount cutoff no_body)
   (* handle/cap: op_body is under n_β type binders; body is not.       *)
-    | term_handle E n_β Ts T_B T_R op_body body =>
-      term_handle E n_β (shift_ty_list amount cutoff Ts)
+    | term_handle E Ts T_B T_R op_bodies body =>
+      term_handle E (shift_ty_list amount cutoff Ts)
                   (shift_ty amount cutoff T_B)
                   (shift_ty amount cutoff T_R)
-                  (shift_ty_in_tm amount (cutoff + n_β) op_body)
+                  ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
+          match obs with
+          | []              => []
+          | (nb, ob) :: rest => (nb, shift_ty_in_tm amount (cutoff + nb) ob) :: go_ops rest
+          end) op_bodies)
                   (shift_ty_in_tm amount cutoff body)
-  | term_perform t Ss A arg =>
+  | term_perform t op Ss A arg =>
       term_perform (shift_ty_in_tm amount cutoff t)
+                   op
                    (shift_ty_list amount cutoff Ss)
                    (shift_ty amount cutoff A)
                    (shift_ty_in_tm amount cutoff arg)
-  | term_cap E m n_β Ts T_R op_body =>
-      term_cap E m n_β (shift_ty_list amount cutoff Ts)
+  | term_cap E m Ts T_R op_bodies =>
+      term_cap E m (shift_ty_list amount cutoff Ts)
                (shift_ty amount cutoff T_R)
-               (shift_ty_in_tm amount (cutoff + n_β) op_body)
+               ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
+          match obs with
+          | []              => []
+          | (nb, ob) :: rest => (nb, shift_ty_in_tm amount (cutoff + nb) ob) :: go_ops rest
+          end) op_bodies)
   | term_handler_m m T_B T_R t =>
       term_handler_m m (shift_ty amount cutoff T_B) (shift_ty amount cutoff T_R)
         (shift_ty_in_tm amount cutoff t)
@@ -208,21 +226,30 @@ Fixpoint shift_lt_in_tm (amount cutoff : nat) (t : term) : term :=
       term_match (shift_lt_in_tm amount cutoff scrut) tag n_lt arity
                     (shift_lt_in_tm amount (cutoff + n_lt) yes_body)
                     (shift_lt_in_tm amount cutoff no_body)
-    | term_handle E n_β Ts T_B T_R op_body body =>
-      term_handle E n_β (shift_lt_in_ty_list amount cutoff Ts)
+    | term_handle E Ts T_B T_R op_bodies body =>
+      term_handle E (shift_lt_in_ty_list amount cutoff Ts)
                   (shift_lt_in_ty amount cutoff T_B)
                   (shift_lt_in_ty amount cutoff T_R)
-                  (shift_lt_in_tm amount cutoff op_body)
+                  ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
+          match obs with
+          | []              => []
+          | (nb, ob) :: rest => (nb, shift_lt_in_tm amount cutoff ob) :: go_ops rest
+          end) op_bodies)
                   (shift_lt_in_tm amount cutoff body)
-  | term_perform t Ss A arg =>
+  | term_perform t op Ss A arg =>
       term_perform (shift_lt_in_tm amount cutoff t)
+                   op
                    (shift_lt_in_ty_list amount cutoff Ss)
                    (shift_lt_in_ty amount cutoff A)
                    (shift_lt_in_tm amount cutoff arg)
-    | term_cap E m n_β Ts T_R op_body =>
-      term_cap E m n_β (shift_lt_in_ty_list amount cutoff Ts)
+    | term_cap E m Ts T_R op_bodies =>
+      term_cap E m (shift_lt_in_ty_list amount cutoff Ts)
                (shift_lt_in_ty amount cutoff T_R)
-               (shift_lt_in_tm amount cutoff op_body)
+               ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
+          match obs with
+          | []              => []
+          | (nb, ob) :: rest => (nb, shift_lt_in_tm amount cutoff ob) :: go_ops rest
+          end) op_bodies)
   | term_handler_m m T_B T_R t =>
       term_handler_m m (shift_lt_in_ty amount cutoff T_B) (shift_lt_in_ty amount cutoff T_R)
         (shift_lt_in_tm amount cutoff t)
@@ -338,16 +365,24 @@ Fixpoint subst_tm (var : nat) (replacement t : term) : term :=
                        (shift_tm arity 0 (shift_lt_in_tm n_lt 0 replacement))
                        yes_body)
                     (subst_tm var replacement no_body)
-    | term_handle E n_β Ts T_B T_R op_body body =>
-      term_handle E n_β Ts T_B T_R
-                  (subst_tm (var + 2) (shift_tm 2 0 replacement) op_body)
+    | term_handle E Ts T_B T_R op_bodies body =>
+      term_handle E Ts T_B T_R
+                  ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
+          match obs with
+          | []              => []
+          | (nb, ob) :: rest => (nb, subst_tm (var + 2) (shift_tm 2 0 replacement) ob) :: go_ops rest
+          end) op_bodies)
                   (subst_tm (S var) (shift_tm 1 0 replacement) body)
-  | term_perform t Ss A arg =>
-      term_perform (subst_tm var replacement t) Ss A
+  | term_perform t op Ss A arg =>
+      term_perform (subst_tm var replacement t) op Ss A
                    (subst_tm var replacement arg)
-    | term_cap E m n_β Ts T_R op_body =>
-      term_cap E m n_β Ts T_R
-               (subst_tm (var + 2) (shift_tm 2 0 replacement) op_body)
+    | term_cap E m Ts T_R op_bodies =>
+      term_cap E m Ts T_R
+               ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
+          match obs with
+          | []              => []
+          | (nb, ob) :: rest => (nb, subst_tm (var + 2) (shift_tm 2 0 replacement) ob) :: go_ops rest
+          end) op_bodies)
   | term_handler_m m T_B T_R t => term_handler_m m T_B T_R (subst_tm var replacement t)
   end.
 
@@ -382,21 +417,30 @@ Fixpoint subst_ty_in_tm (var : nat) (replacement : type) (t : term) : term :=
       term_match (subst_ty_in_tm var replacement scrut) tag n_lt arity
                     (subst_ty_in_tm var (shift_lt_in_ty n_lt 0 replacement) yes_body)
                     (subst_ty_in_tm var replacement no_body)
-  | term_handle E n_β Ts T_B T_R op_body body =>
-      term_handle E n_β (subst_ty_list var replacement Ts)
+  | term_handle E Ts T_B T_R op_bodies body =>
+      term_handle E (subst_ty_list var replacement Ts)
                   (subst_ty var replacement T_B)
                   (subst_ty var replacement T_R)
-                  (subst_ty_in_tm (var + n_β) (shift_ty n_β 0 replacement) op_body)
+                  ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
+          match obs with
+          | []              => []
+          | (nb, ob) :: rest => (nb, subst_ty_in_tm (var + nb) (shift_ty nb 0 replacement) ob) :: go_ops rest
+          end) op_bodies)
                   (subst_ty_in_tm var replacement body)
-  | term_perform t Ss A arg =>
+  | term_perform t op Ss A arg =>
       term_perform (subst_ty_in_tm var replacement t)
+                   op
                    (subst_ty_list var replacement Ss)
                    (subst_ty var replacement A)
                    (subst_ty_in_tm var replacement arg)
-    | term_cap E m n_β Ts T_R op_body =>
-      term_cap E m n_β (subst_ty_list var replacement Ts)
+    | term_cap E m Ts T_R op_bodies =>
+      term_cap E m (subst_ty_list var replacement Ts)
       (subst_ty var replacement T_R)
-               (subst_ty_in_tm (var + n_β) (shift_ty n_β 0 replacement) op_body)
+               ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
+          match obs with
+          | []              => []
+          | (nb, ob) :: rest => (nb, subst_ty_in_tm (var + nb) (shift_ty nb 0 replacement) ob) :: go_ops rest
+          end) op_bodies)
     | term_handler_m m T_B T_R t =>
         term_handler_m m (subst_ty var replacement T_B) (subst_ty var replacement T_R)
           (subst_ty_in_tm var replacement t)
@@ -436,21 +480,30 @@ Fixpoint subst_lt_in_tm (var : nat) (replacement : lifetime) (t : term) : term :
       term_match (subst_lt_in_tm var replacement scrut) tag n_lt arity
                     (subst_lt_in_tm (n_lt + var) (shift_lt n_lt 0 replacement) yes_body)
                     (subst_lt_in_tm var replacement no_body)
-    | term_handle E n_β Ts T_B T_R op_body body =>
-      term_handle E n_β (subst_lt_in_ty_list var replacement Ts)
+    | term_handle E Ts T_B T_R op_bodies body =>
+      term_handle E (subst_lt_in_ty_list var replacement Ts)
                   (subst_lt_in_ty var replacement T_B)
                   (subst_lt_in_ty var replacement T_R)
-                  (subst_lt_in_tm var replacement op_body)
+                  ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
+          match obs with
+          | []              => []
+          | (nb, ob) :: rest => (nb, subst_lt_in_tm var replacement ob) :: go_ops rest
+          end) op_bodies)
                   (subst_lt_in_tm var replacement body)
-  | term_perform t Ss A arg =>
+  | term_perform t op Ss A arg =>
       term_perform (subst_lt_in_tm var replacement t)
+                   op
                    (subst_lt_in_ty_list var replacement Ss)
                    (subst_lt_in_ty var replacement A)
                    (subst_lt_in_tm var replacement arg)
-    | term_cap E m n_β Ts T_R op_body =>
-      term_cap E m n_β (subst_lt_in_ty_list var replacement Ts)
+    | term_cap E m Ts T_R op_bodies =>
+      term_cap E m (subst_lt_in_ty_list var replacement Ts)
                (subst_lt_in_ty var replacement T_R)
-               (subst_lt_in_tm var replacement op_body)
+               ((fix go_ops (obs : list (nat * term)) : list (nat * term) :=
+          match obs with
+          | []              => []
+          | (nb, ob) :: rest => (nb, subst_lt_in_tm var replacement ob) :: go_ops rest
+          end) op_bodies)
   | term_handler_m m T_B T_R t =>
       term_handler_m m (subst_lt_in_ty var replacement T_B) (subst_lt_in_ty var replacement T_R)
         (subst_lt_in_tm var replacement t)

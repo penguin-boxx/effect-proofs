@@ -55,11 +55,11 @@ Inductive pstep : Type :=
   | P_match_scrut    : pstep
   | P_match_yes      : pstep
   | P_match_no       : pstep
-  | P_handle_op      : pstep
+  | P_handle_op      : nat -> pstep   (* i-th operation clause         *)
   | P_handle_body    : pstep
   | P_perform_recv   : pstep
   | P_perform_arg    : pstep
-  | P_cap_op_body    : pstep          (* the op-body STORED in a cap   *)
+  | P_cap_op_body    : nat -> pstep   (* i-th op-body STORED in a cap  *)
   | P_handler_m_body : pstep.
 
 Definition path : Type := list pstep.
@@ -78,11 +78,11 @@ Definition child_at (t : term) (s : pstep) : option term :=
   | term_match scrut _ _ _ _ _,    P_match_scrut    => Some scrut
   | term_match _ _ _ _ yes _,      P_match_yes      => Some yes
   | term_match _ _ _ _ _ no,       P_match_no       => Some no
-  | term_handle _ _ _ _ _ op _,    P_handle_op      => Some op
-  | term_handle _ _ _ _ _ _ body,  P_handle_body    => Some body
-  | term_perform recv _ _ _,       P_perform_recv   => Some recv
-  | term_perform _ _ _ arg,        P_perform_arg    => Some arg
-  | term_cap _ _ _ _ _ op,         P_cap_op_body    => Some op
+  | term_handle _ _ _ _ ops _,     P_handle_op i    => option_map snd (nth_error ops i)
+  | term_handle _ _ _ _ _ body,    P_handle_body    => Some body
+  | term_perform recv _ _ _ _,     P_perform_recv   => Some recv
+  | term_perform _ _ _ _ arg,      P_perform_arg    => Some arg
+  | term_cap _ _ _ _ ops,          P_cap_op_body i  => option_map snd (nth_error ops i)
   | term_handler_m _ _ _ body,     P_handler_m_body => Some body
   | _, _ => None
   end.
@@ -112,7 +112,7 @@ Fixpoint subterm_at (t : term) (p : path) : option term :=
 Definition scope_step (ms : list marker) (t : term) (s : pstep) : list marker :=
   match t, s with
   | term_handler_m m _ _ _, P_handler_m_body => m :: ms
-  | term_cap _ m _ _ _ _,   P_cap_op_body    => scope_below m ms
+  | term_cap _ m _ _ _,     P_cap_op_body _  => scope_below m ms
   | _, _ => ms
   end.
 
@@ -158,6 +158,18 @@ Proof.
     + exact (IH i u (proj2 Hws) Hnth).
 Qed.
 
+(* Ops-clause variant, through the [option_map snd] child selector. *)
+Lemma ops_well_scoped_child : forall ms (obs : list (nat * term)) i u,
+  ops_well_scoped ms obs ->
+  option_map snd (nth_error obs i) = Some u ->
+  well_scoped ms u.
+Proof.
+  intros ms obs i u Hws Hnth.
+  destruct (nth_error obs i) as [[nb ob]|] eqn:Hn; simpl in Hnth; [|discriminate].
+  injection Hnth as <-.
+  eapply ops_well_scoped_nth; eauto.
+Qed.
+
 (* The single-step kernel of the occurrence theorem.  Each case reads *)
 (* off the corresponding conjunct of the matching [well_scoped]       *)
 (* clause; the cap and handler_m cases are the two where the scope    *)
@@ -182,12 +194,13 @@ Proof.
   - (* match / P_match_scrut *) injection Hchild as <-. exact (proj1 Hws).
   - (* match / P_match_yes *)   injection Hchild as <-. exact (proj1 (proj2 Hws)).
   - (* match / P_match_no *)    injection Hchild as <-. exact (proj2 (proj2 Hws)).
-  - (* handle / P_handle_op *)  injection Hchild as <-. exact (proj1 Hws).
+  - (* handle / P_handle_op i *)
+    eapply ops_well_scoped_child; [exact (proj1 Hws) | exact Hchild].
   - (* handle / P_handle_body *) injection Hchild as <-. exact (proj2 Hws).
   - (* perform / P_perform_recv *) injection Hchild as <-. exact (proj1 Hws).
   - (* perform / P_perform_arg *)  injection Hchild as <-. exact (proj2 Hws).
-  - (* cap / P_cap_op_body: scope_below re-scope, per well_scoped *)
-    injection Hchild as <-. exact (proj2 Hws).
+  - (* cap / P_cap_op_body i: scope_below re-scope, per well_scoped *)
+    eapply ops_well_scoped_child; [exact (proj2 Hws) | exact Hchild].
   - (* handler_m / P_handler_m_body: marker push, per well_scoped *)
     injection Hchild as <-. exact Hws.
 Qed.
@@ -206,12 +219,12 @@ Qed.
 (* ================================================================== *)
 
 Theorem well_scoped_occurrence_delimited :
-  forall p ms t E_tag m n_beta Ts T_R op_body,
+  forall p ms t E_tag m Ts T_R op_bodies,
   well_scoped ms t ->
-  subterm_at t p = Some (term_cap E_tag m n_beta Ts T_R op_body) ->
+  subterm_at t p = Some (term_cap E_tag m Ts T_R op_bodies) ->
   exists ms', scope_at ms t p = Some ms' /\ In m ms'.
 Proof.
-  induction p as [|s p IH]; intros ms t E_tag m n_beta Ts T_R op_body Hws Hsub;
+  induction p as [|s p IH]; intros ms t E_tag m Ts T_R op_bodies Hws Hsub;
     simpl in Hsub |- *.
   - (* Empty path: t IS the cap; its well_scoped clause has In m ms. *)
     injection Hsub as ->. simpl in Hws.
@@ -228,15 +241,15 @@ Qed.
 (* [source_capability_never_exposed], Escape.v), so the guarantee      *)
 (* needs only the initial typing.                                      *)
 Corollary source_capability_occurrence_delimited :
-  forall Γ t T u p E_tag m n_beta Ts T_R op_body,
+  forall Γ t T u p E_tag m Ts T_R op_bodies,
   eval_ctx Γ ->
   has_rt_cap t = false ->
   Γ ⊢ₜ t : T ->
   multi_step t u ->
-  subterm_at u p = Some (term_cap E_tag m n_beta Ts T_R op_body) ->
+  subterm_at u p = Some (term_cap E_tag m Ts T_R op_bodies) ->
   exists ms', scope_at [] u p = Some ms' /\ In m ms'.
 Proof.
-  intros Γ t T u p E_tag m n_beta Ts T_R op_body Hec Hsrc Hty Hms Hsub.
+  intros Γ t T u p E_tag m Ts T_R op_bodies Hec Hsrc Hty Hms Hsub.
   destruct (multi_step_preserves_safety_invariants _ _ _ _ Hec
               (source_safety_invariants _ _ _ Hsrc Hty) Hms)
     as [_ [[Hws _] _]].
@@ -268,8 +281,8 @@ Fixpoint path_of_ectx (E : ectx) : path :=
   | EC_ctor _ _ _ _ vs E1 _  => P_ctor_arg (List.length vs) :: path_of_ectx E1
   | EC_match E1 _ _ _ _ _    => P_match_scrut :: path_of_ectx E1
   | EC_handler_m _ _ _ E1    => P_handler_m_body :: path_of_ectx E1
-  | EC_perform_r E1 _ _ _    => P_perform_recv :: path_of_ectx E1
-  | EC_perform_a _ _ _ E1    => P_perform_arg :: path_of_ectx E1
+  | EC_perform_r E1 _ _ _ _  => P_perform_recv :: path_of_ectx E1
+  | EC_perform_a _ _ _ _ E1  => P_perform_arg :: path_of_ectx E1
   end.
 
 (* The hole of EC_ctor sits at index (length vs) of vs ++ hole :: ts. *)
@@ -327,14 +340,14 @@ Qed.
 (* the empty-scope, eval-ctx-path instance of                         *)
 (* [well_scoped_occurrence_delimited].                                *)
 Theorem capability_confined_from_occurrence :
-  forall E E_tag m n_beta Ts T_R op_body,
-  well_scoped [] (plug E (term_cap E_tag m n_beta Ts T_R op_body)) ->
+  forall E E_tag m Ts T_R op_bodies,
+  well_scoped [] (plug E (term_cap E_tag m Ts T_R op_bodies)) ->
   ~ pure_ectx_m m E.
 Proof.
-  intros E E_tag m n_beta Ts T_R op_body Hws Hpure.
-  destruct (well_scoped_occurrence_delimited (path_of_ectx E) [] _ _ _ _ _ _ _
+  intros E E_tag m Ts T_R op_bodies Hws Hpure.
+  destruct (well_scoped_occurrence_delimited (path_of_ectx E) [] _ _ _ _ _ _
               Hws (subterm_at_plug E _)) as [ms' [Hscope Hin]].
-  destruct (scope_at_plug_pure m E (term_cap E_tag m n_beta Ts T_R op_body) [] Hpure)
+  destruct (scope_at_plug_pure m E (term_cap E_tag m Ts T_R op_bodies) [] Hpure)
     as [ms'' [Hscope' Himp]].
   rewrite Hscope in Hscope'. injection Hscope' as Heq. subst ms''.
   destruct (Himp Hin).

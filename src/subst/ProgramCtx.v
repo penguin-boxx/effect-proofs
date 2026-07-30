@@ -36,11 +36,11 @@ Inductive eval_ctx : ctx -> Prop :=
       ty_lt_closed n_lt r ->
       tys_ty_closed n_ty f ->
       eval_ctx Γ -> eval_ctx (bind_ctor K n_lt n_ty f r :: Γ)
-  | ec_eff   : forall E n_α n_β sig ret Γ,
+  | ec_eff   : forall E n_α ops Γ,
       E <> any_tag ->
-      ty_lt_closed 0 sig ->
-      ty_lt_closed 0 ret ->
-      eval_ctx Γ -> eval_ctx (bind_eff E n_α n_β sig ret :: Γ).
+      Forall (fun osig => ty_lt_closed 0 (op_sig_ty osig) /\
+                          ty_lt_closed 0 (op_ret_ty osig)) ops ->
+      eval_ctx Γ -> eval_ctx (bind_eff E n_α ops :: Γ).
 
 Lemma eval_ctx_no_tm : forall Γ x,
   eval_ctx Γ -> ctx_lookup_tm Γ x = None.
@@ -73,7 +73,10 @@ Proof.
     (fun t => forall c y, In y (free_tm_vars (S c) t) -> In (S y) (free_tm_vars c t))
     (fun ts => forall c y,
        In y (List.concat (List.map (free_tm_vars (S c)) ts)) ->
-       In (S y) (List.concat (List.map (free_tm_vars c) ts)))).
+       In (S y) (List.concat (List.map (free_tm_vars c) ts)))
+    (fun obs => forall c y,
+       In y (List.concat (List.map (fun p => free_tm_vars (S c) (snd p)) obs)) ->
+       In (S y) (List.concat (List.map (fun p => free_tm_vars c (snd p)) obs)))).
   - intros x c y. simpl.
     destruct (Nat.ltb x (S c)) eqn:E1.
     + intros [].
@@ -94,17 +97,22 @@ Proof.
     + left. apply IHs. exact H.
     + right; left. apply IHy. exact H.
     + right; right. apply IHn. exact H.
-  - intros E n_beta Ts T_B T_R op_body body IHop IHb c y. simpl.
+  - intros E Ts T_B T_R op_bodies body IHops IHb c y. simpl.
+    rewrite !free_tm_vars_go_ops_eq_concat.
     rewrite !List.in_app_iff. intros [H|H].
-    + left. apply IHop. exact H.
+    + left. apply IHops. exact H.
     + right. apply IHb. exact H.
-  - intros t Ss A_ret arg IHt IHa c y. simpl.
+  - intros t op Ss A_ret arg IHt IHa c y. simpl.
     rewrite !List.in_app_iff. intros [H|H]; [left; apply IHt; exact H | right; apply IHa; exact H].
-  - intros E m n_beta Ts T_R op_body IHop c y. simpl. apply IHop.
+  - intros E m Ts T_R op_bodies IHops c y. simpl.
+    rewrite !free_tm_vars_go_ops_eq_concat. apply IHops.
   - intros m T_B T_R t IH c y. simpl. apply IH.
   - intros c y. simpl. intros [].
   - intros t ts IHt IHts c y. simpl.
     rewrite !List.in_app_iff. intros [H|H]; [left; apply IHt; exact H | right; apply IHts; exact H].
+  - intros c y. simpl. intros [].
+  - intros nb ob obs IHob IHobs c y. simpl.
+    rewrite !List.in_app_iff. intros [H|H]; [left; apply IHob; exact H | right; apply IHobs; exact H].
 Qed.
 
 Lemma fv_add : forall k t c y,
@@ -228,22 +236,37 @@ Proof.
       rewrite lookup_tm_skip_bind_tm_many in IHyes.
       intros Hnone. apply IHyes. apply lookup_tm_push_match_bound_None. exact Hnone.
     + apply IHno. exact Hn.
-  - intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
-           Heff Hlen HwfTs HwfTR Hsig Hret Hop IHop x Hin.
-    simpl in Hin. apply (fv_add 2 op_body 0 x) in Hin.
-    specialize (IHop (x + 2) Hin).
-    replace (x + 2) with (S (S x)) in IHop by lia. simpl in IHop.
-    intros Hnone. apply IHop. apply lookup_tm_push_ty_None. exact Hnone.
-  - intros Γ E_tag Ts op_body body n_α n_β sig ret T_B T_R sig_β ret_β
-           Heff Hlen HwfTs HwfTB HwfTR HnoLocal Hsub Hsig Hret Hop IHop Hbody IHbody x Hin.
-    simpl in Hin. rewrite List.in_app_iff in Hin. destruct Hin as [HopFree | HbodyFree].
-    + apply (fv_add 2 op_body 0 x) in HopFree. specialize (IHop (x + 2) HopFree).
-      replace (x + 2) with (S (S x)) in IHop by lia. simpl in IHop.
-      intros Hnone. apply IHop. apply lookup_tm_push_ty_None. exact Hnone.
+  - intros Γ E_tag m Ts op_bodies n_α ops T_R
+           Heff Hlen HwfTs HwfTR Hfst Hops IHops x Hin.
+    simpl in Hin.
+    rewrite free_tm_vars_go_ops_eq_concat in Hin.
+    clear - IHops Hin.
+    revert Hin. induction IHops as [|ob osig obs' ops' Hp Hrest IH]; intros Hin.
+    + simpl in Hin. contradiction.
+    + simpl in Hin. rewrite List.in_app_iff in Hin.
+      destruct Hin as [H|H]; [| apply IH; exact H].
+      apply (fv_add 2 (snd ob) 0 x) in H.
+      specialize (Hp (x + 2) H).
+      replace (x + 2) with (S (S x)) in Hp by lia. simpl in Hp.
+      intros Hnone. apply Hp. apply lookup_tm_push_ty_None. exact Hnone.
+  - intros Γ E_tag Ts op_bodies body n_α ops T_B T_R
+           Heff Hlen HwfTs HwfTB HwfTR HnoLocal Hsub Hfst Hops IHops Hbody IHbody x Hin.
+    simpl in Hin.
+    rewrite free_tm_vars_go_ops_eq_concat in Hin.
+    rewrite List.in_app_iff in Hin. destruct Hin as [HopsFree | HbodyFree].
+    + clear - IHops HopsFree.
+      revert HopsFree. induction IHops as [|ob osig obs' ops' Hp Hrest IH]; intros Hin.
+      * simpl in Hin. contradiction.
+      * simpl in Hin. rewrite List.in_app_iff in Hin.
+        destruct Hin as [H|H]; [| apply IH; exact H].
+        apply (fv_add 2 (snd ob) 0 x) in H.
+        specialize (Hp (x + 2) H).
+        replace (x + 2) with (S (S x)) in Hp by lia. simpl in Hp.
+        intros Hnone. apply Hp. apply lookup_tm_push_ty_None. exact Hnone.
     + apply fv_succ in HbodyFree. specialize (IHbody (S x) HbodyFree).
       simpl in IHbody. exact IHbody.
-  - intros Γ recv arg E_tag Delta Ts Ss n_α n_β sig ret sig_inst ret_inst
-           Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs HnoSs Hsig HnoSig Hret HwfRet Harg IHarg x Hin.
+  - intros Γ recv op arg E_tag Delta Ts Ss n_α ops n_β sig ret sig_inst ret_inst
+           Hrecv IHrecv Heff Hnth Hlen_Ts Hlen_Ss HwfSs HnoSs Hsig HnoSig Hret HwfRet Harg IHarg x Hin.
     simpl in Hin. rewrite List.in_app_iff in Hin.
     destruct Hin as [H|H]; [apply IHrecv | apply IHarg]; exact H.
   - intros Γ m T_B T_R t HwfTB HwfTR HnoLocal Hsub Ht IH x Hin. apply IH. exact Hin.
@@ -269,7 +292,7 @@ Proof.
   intros Γ K n_lt n_ty fields result Hec.
   induction Hec as
       [|K0 n_lt0 n_ty0 fields0 result0 Γ Hfields0 Hresult0 Htyc0 Hec IH
-       |E0 n_α n_β sig ret Γ Hne Hsig Hret Hec IH]; intro Hlk; simpl in Hlk.
+       |E0 n_α ops0 Γ Hne Hops0 Hec IH]; intro Hlk; simpl in Hlk.
   - discriminate.
   - destruct (Nat.eqb K K0) eqn:Heq.
     + inversion Hlk; subst. split; assumption.
@@ -277,19 +300,20 @@ Proof.
   - apply IH. exact Hlk.
 Qed.
 
-Lemma eval_ctx_lookup_eff_lt_closed : forall Γ E n_α n_β sig ret,
+Lemma eval_ctx_lookup_eff_lt_closed : forall Γ E n_α ops,
   eval_ctx Γ ->
-  ctx_lookup_eff Γ E = Some (n_α, n_β, sig, ret) ->
-  ty_lt_closed 0 sig /\ ty_lt_closed 0 ret.
+  ctx_lookup_eff Γ E = Some (n_α, ops) ->
+  Forall (fun osig => ty_lt_closed 0 (op_sig_ty osig) /\
+                      ty_lt_closed 0 (op_ret_ty osig)) ops.
 Proof.
-  intros Γ E n_α n_β sig ret Hec.
+  intros Γ E n_α ops Hec.
   induction Hec as
       [|K0 n_lt n_ty fields result Γ Hfields Hresult Htyc Hec IH
-       |E0 n_α0 n_β0 sig0 ret0 Γ Hne Hsig0 Hret0 Hec IH]; intro Hlk; simpl in Hlk.
+       |E0 n_α0 ops0 Γ Hne Hops0 Hec IH]; intro Hlk; simpl in Hlk.
   - discriminate.
   - apply IH. exact Hlk.
   - destruct (Nat.eqb E E0) eqn:Heq.
-    + inversion Hlk; subst. split; assumption.
+    + inversion Hlk; subst. exact Hops0.
     + apply IH. exact Hlk.
 Qed.
 
@@ -302,7 +326,7 @@ Proof.
   intros Γ K n_lt n_ty fields result Hec.
   induction Hec as
       [|K0 n_lt0 n_ty0 fields0 result0 Γ Hfields0 Hresult0 Htyc0 Hec IH
-       |E0 n_α n_β sig ret Γ Hne Hsig Hret Hec IH]; intro Hlk; simpl in Hlk.
+       |E0 n_α ops0 Γ Hne Hops0 Hec IH]; intro Hlk; simpl in Hlk.
   - discriminate.
   - destruct (Nat.eqb K K0) eqn:Heq.
     + inversion Hlk; subst. exact Htyc0.
@@ -401,9 +425,10 @@ Definition ctx_ctor_schemas_lt_closed_from (c : nat) (Γ : ctx) : Prop :=
     tys_lt_closed (n_lt + c) fields /\ ty_lt_closed (n_lt + c) result.
 
 Definition ctx_eff_schemas_lt_closed_from (c : nat) (Γ : ctx) : Prop :=
-  forall E n_α n_β sig ret,
-    ctx_lookup_eff Γ E = Some (n_α, n_β, sig, ret) ->
-    ty_lt_closed c sig /\ ty_lt_closed c ret.
+  forall E n_α ops,
+    ctx_lookup_eff Γ E = Some (n_α, ops) ->
+    Forall (fun osig => ty_lt_closed c (op_sig_ty osig) /\
+                        ty_lt_closed c (op_ret_ty osig)) ops.
 
 Definition ctx_schemas_lt_closed_from (c : nat) (Γ : ctx) : Prop :=
   ctx_ctor_schemas_lt_closed_from c Γ /\ ctx_eff_schemas_lt_closed_from c Γ.
@@ -415,7 +440,7 @@ Proof.
   - intros K n_lt n_ty fields result Hlk.
     destruct (eval_ctx_lookup_ctor_lt_closed Γ K n_lt n_ty fields result Hec Hlk) as [Hfields Hresult].
     replace (n_lt + 0) with n_lt by lia. split; assumption.
-  - intros E n_α n_β sig ret Hlk.
+  - intros E n_α ops Hlk.
     eapply eval_ctx_lookup_eff_lt_closed; eauto.
 Qed.
 
@@ -425,7 +450,7 @@ Lemma ctx_schemas_lt_closed_from_bind_tm : forall c Γ A,
 Proof.
   intros c Γ A [Hctor Heff]. split.
   - intros K n_lt n_ty fields result Hlk. simpl in Hlk. eapply Hctor; eauto.
-  - intros E n_α n_β sig ret Hlk. simpl in Hlk. eapply Heff; eauto.
+  - intros E n_α ops Hlk. simpl in Hlk. eapply Heff; eauto.
 Qed.
 
 Lemma ctx_schemas_lt_closed_from_bind_ty : forall c Γ B,
@@ -440,13 +465,16 @@ Proof.
     split.
     + apply tys_lt_closed_shift_ty. exact Hfields.
     + apply ty_lt_closed_shift_ty. exact Hresult.
-  - intros E n_α n_β sig ret Hlk. simpl in Hlk.
-    destruct (ctx_lookup_eff Γ E) as [[[[n_α0 n_β0] sig0] ret0]|] eqn:Hbase; [|discriminate].
-    destruct (Heff E n_α0 n_β0 sig0 ret0 Hbase) as [Hsig Hret].
+  - intros E n_α ops Hlk. simpl in Hlk.
+    destruct (ctx_lookup_eff Γ E) as [[n_α0 ops0]|] eqn:Hbase; [|discriminate].
+    specialize (Heff E n_α0 ops0 Hbase).
     inversion Hlk; subst; clear Hlk.
-    split.
-    + apply ty_lt_closed_shift_ty. exact Hsig.
-    + apply ty_lt_closed_shift_ty. exact Hret.
+    clear - Heff.
+    induction Heff as [|[[nβ s] r] ops0' [Hs Hr] Hrest IH]; simpl.
+    + constructor.
+    + constructor; [| exact IH].
+      unfold op_sig_ty, op_ret_ty in *; simpl in *.
+      split; apply ty_lt_closed_shift_ty; assumption.
 Qed.
 
 Lemma ctx_schemas_lt_closed_from_bind_lt : forall c Γ D,
@@ -462,14 +490,17 @@ Proof.
     split.
     + eapply tys_lt_closed_shift_lt_below; [lia|exact Hfields].
     + eapply ty_lt_closed_shift_lt_below; [lia|exact Hresult].
-  - intros E n_α n_β sig ret Hlk. simpl in Hlk.
-    destruct (ctx_lookup_eff Γ E) as [[[[n_α0 n_β0] sig0] ret0]|] eqn:Hbase; [|discriminate].
-    destruct (Heff E n_α0 n_β0 sig0 ret0 Hbase) as [Hsig Hret].
+  - intros E n_α ops Hlk. simpl in Hlk.
+    destruct (ctx_lookup_eff Γ E) as [[n_α0 ops0]|] eqn:Hbase; [|discriminate].
+    specialize (Heff E n_α0 ops0 Hbase).
     inversion Hlk; subst; clear Hlk.
-    replace (S c) with (1 + c) by lia.
-    split.
-    + eapply ty_lt_closed_shift_lt_below; [lia|exact Hsig].
-    + eapply ty_lt_closed_shift_lt_below; [lia|exact Hret].
+    clear - Heff.
+    induction Heff as [|[[nβ s] r] ops0' [Hs Hr] Hrest IH]; simpl.
+    + constructor.
+    + constructor; [| exact IH].
+      unfold op_sig_ty, op_ret_ty in *; simpl in *.
+      replace (S c) with (1 + c) by lia.
+      split; (eapply ty_lt_closed_shift_lt_below; [lia|assumption]).
 Qed.
 
 
@@ -787,24 +818,36 @@ Proof.
     + apply IHyes. apply ctx_ty_closed_from_fold_bind_tm.
       apply ctx_ty_closed_from_push_match_bound. exact Hctx.
     + apply IHno. exact Hctx.
-  - intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
-           Heff Hlen HwfTs HwfTR Hsig Hret Hop IHop c Hctx.
+  - intros Γ E_tag m Ts op_bodies n_α ops T_R
+           Heff Hlen HwfTs HwfTR Hfst Hops IHops c Hctx.
     simpl. repeat split.
     + eapply types_wf_ty_closed_from; eauto.
     + eapply ty_wf_ty_closed_from; eauto.
-    + apply IHop. repeat apply ctx_ty_closed_from_bind_tm.
-      apply ctx_ty_closed_from_push_ty_vars. exact Hctx.
-  - intros Γ E_tag Ts op_body body n_α n_β sig ret T_B T_R sig_β ret_β
-           Heff Hlen HwfTs HwfTB HwfTR HnoLocal Hsub Hsig Hret Hop IHop Hbody IHbody c Hctx.
+    + clear Hops Heff. revert Hfst.
+      induction IHops as [|ob osig obs' ops' Hone Hrest IH]; intros Hfst; simpl.
+      * exact I.
+      * simpl in Hfst. injection Hfst as Hnb Hfstrest.
+        destruct ob as [nb obt]. simpl in Hnb. subst nb.
+        split; [| apply IH; exact Hfstrest].
+        apply Hone. repeat apply ctx_ty_closed_from_bind_tm.
+        apply ctx_ty_closed_from_push_ty_vars. exact Hctx.
+  - intros Γ E_tag Ts op_bodies body n_α ops T_B T_R
+           Heff Hlen HwfTs HwfTB HwfTR HnoLocal Hsub Hfst Hops IHops Hbody IHbody c Hctx.
     simpl. repeat split.
     + eapply types_wf_ty_closed_from; eauto.
     + eapply ty_wf_ty_closed_from; eauto.
     + eapply ty_wf_ty_closed_from; eauto.
-    + apply IHop. repeat apply ctx_ty_closed_from_bind_tm.
-      apply ctx_ty_closed_from_push_ty_vars. exact Hctx.
+    + clear Hops Heff. revert Hfst.
+      induction IHops as [|ob osig obs' ops' Hone Hrest IH]; intros Hfst; simpl.
+      * exact I.
+      * simpl in Hfst. injection Hfst as Hnb Hfstrest.
+        destruct ob as [nb obt]. simpl in Hnb. subst nb.
+        split; [| apply IH; exact Hfstrest].
+        apply Hone. repeat apply ctx_ty_closed_from_bind_tm.
+        apply ctx_ty_closed_from_push_ty_vars. exact Hctx.
     + apply IHbody. apply ctx_ty_closed_from_bind_tm. exact Hctx.
-  - intros Γ recv arg E_tag Delta Ts Ss n_α n_β sig ret sig_inst ret_inst
-           Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs HnoSs Hsig HnoSig Hret HwfRet Harg IHarg c Hctx.
+  - intros Γ recv op arg E_tag Delta Ts Ss n_α ops n_β sig ret sig_inst ret_inst
+           Hrecv IHrecv Heff Hnth Hlen_Ts Hlen_Ss HwfSs HnoSs Hsig HnoSig Hret HwfRet Harg IHarg c Hctx.
     simpl. repeat split.
     + apply IHrecv. exact Hctx.
     + eapply types_wf_ty_closed_from; eauto.
@@ -863,24 +906,34 @@ Proof.
     + apply IHyes. apply ctx_lt_closed_from_fold_bind_tm.
       apply ctx_lt_closed_from_push_match_bound. exact Hctx.
     + apply IHno. exact Hctx.
-  - intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
-           Heff Hlen HwfTs HwfTR Hsig Hret Hop IHop c Hctx.
+  - intros Γ E_tag m Ts op_bodies n_α ops T_R
+           Heff Hlen HwfTs HwfTR Hfst Hops IHops c Hctx.
     simpl. repeat split.
     + eapply types_wf_lt_closed_from; eauto.
     + eapply ty_wf_lt_closed_from; eauto.
-    + apply IHop. repeat apply ctx_lt_closed_from_bind_tm.
-      apply ctx_lt_closed_from_push_ty_vars. exact Hctx.
-  - intros Γ E_tag Ts op_body body n_α n_β sig ret T_B T_R sig_β ret_β
-           Heff Hlen HwfTs HwfTB HwfTR HnoLocal Hsub Hsig Hret Hop IHop Hbody IHbody c Hctx.
+    + clear Hops Heff Hfst.
+      induction IHops as [|ob osig obs' ops' Hone Hrest IH]; simpl.
+      * exact I.
+      * destruct ob as [nb obt].
+        split; [| exact IH].
+        apply Hone. repeat apply ctx_lt_closed_from_bind_tm.
+        apply ctx_lt_closed_from_push_ty_vars. exact Hctx.
+  - intros Γ E_tag Ts op_bodies body n_α ops T_B T_R
+           Heff Hlen HwfTs HwfTB HwfTR HnoLocal Hsub Hfst Hops IHops Hbody IHbody c Hctx.
     simpl. repeat split.
     + eapply types_wf_lt_closed_from; eauto.
     + eapply ty_wf_lt_closed_from; eauto.
     + eapply ty_wf_lt_closed_from; eauto.
-    + apply IHop. repeat apply ctx_lt_closed_from_bind_tm.
-      apply ctx_lt_closed_from_push_ty_vars. exact Hctx.
+    + clear Hops Heff Hfst.
+      induction IHops as [|ob osig obs' ops' Hone Hrest IH]; simpl.
+      * exact I.
+      * destruct ob as [nb obt].
+        split; [| exact IH].
+        apply Hone. repeat apply ctx_lt_closed_from_bind_tm.
+        apply ctx_lt_closed_from_push_ty_vars. exact Hctx.
     + apply IHbody. apply ctx_lt_closed_from_bind_tm. exact Hctx.
-  - intros Γ recv arg E_tag Delta Ts Ss n_α n_β sig ret sig_inst ret_inst
-           Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs HnoSs Hsig HnoSig Hret HwfRet Harg IHarg c Hctx.
+  - intros Γ recv op arg E_tag Delta Ts Ss n_α ops n_β sig ret sig_inst ret_inst
+           Hrecv IHrecv Heff Hnth Hlen_Ts Hlen_Ss HwfSs HnoSs Hsig HnoSig Hret HwfRet Harg IHarg c Hctx.
     simpl. repeat split.
     + apply IHrecv. exact Hctx.
     + eapply types_wf_lt_closed_from; eauto.
@@ -955,14 +1008,14 @@ Proof.
            Hscrut_result Hscrut_shape Hresult_eff Hresult_ne HwfDelta Hresult_l Hscrut IHscrut
            Harity HGamma' Hyes IHyes Helim Hno IHno.
     exact IHno.
-  - intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
-           Heff Hlen HwfTs HwfTR Hsig Hret Hop IHop.
+  - intros Γ E_tag m Ts op_bodies n_α ops T_R
+           Heff Hlen HwfTs HwfTR Hfst Hops IHops.
     constructor; [constructor|exact HwfTs].
-  - intros Γ E_tag Ts op_body body n_α n_β sig ret T_B T_R sig_β ret_β
-           Heff Hlen HwfTs HwfTB HwfTR HnoLocal Hsub Hsig Hret Hop IHop Hbody IHbody.
+  - intros Γ E_tag Ts op_bodies body n_α ops T_B T_R
+           Heff Hlen HwfTs HwfTB HwfTR HnoLocal Hsub Hfst Hops IHops Hbody IHbody.
     exact HwfTR.
-  - intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
-      Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs HnoSs Hsig HnoSig Hret HwfRet Harg IHarg.
+  - intros Γ recv op arg E_tag Δ Ts Ss n_α ops n_β sig ret sig_inst ret_inst
+      Hrecv IHrecv Heff Hnth Hlen_Ts Hlen_Ss HwfSs HnoSs Hsig HnoSig Hret HwfRet Harg IHarg.
     exact HwfRet.
   - intros Γ m T_B T_R t HwfTB HwfTR HnoLocal Hsub Ht IH. exact HwfTR.
 Qed.
@@ -1434,74 +1487,66 @@ Proof.
         -- apply replacement_capture_bound_push_match_bound; assumption.
     + exact Helim.
     + apply (IHno repl n G' HSub Hfree HtmTy HtmLt HtargetTy HtargetLt HrepAll c Hlt Hschemas Hcap).
-  - intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
-      Heff Hlen HwfTs HwfTR Hsig Hret Hop IHop repl n G' HSub Hfree HtmTy HtmLt
+  - intros Γ E_tag m Ts op_bodies n_α ops T_R
+      Heff Hlen HwfTs HwfTR Hfst Hops IHops repl n G' HSub Hfree HtmTy HtmLt
       HtargetTy HtargetLt HrepAll c Hlt Hschemas Hcap.
-    simpl.
-    set (rho_k := type_fun ret_β lt_local (shift_ty n_β 0 T_R)).
-    replace (subst_tm (n + 2) (shift_tm 2 0 repl) op_body)
-      with (subst_tm (n + List.length [sig_β; rho_k])
-        (shift_tm (List.length [sig_β; rho_k]) 0 (shift_ty_in_tm n_β 0 repl)) op_body).
-    2:{ simpl. rewrite shift_ty_in_tm_closed by exact HtmTy. reflexivity. }
-    eapply T_Cap with
-      (n_α := n_α) (n_β := n_β) (sig := sig) (ret := ret)
-      (sig_β := sig_β) (ret_β := ret_β).
+    simpl. rewrite subst_tm_go_ops_eq_map.
+    eapply T_Cap with (ops := ops).
     + rewrite (SubstTm_lookup_eff repl n Γ G' HSub E_tag). exact Heff.
     + exact Hlen.
     + eapply types_wf_SubstTm; eauto.
     + eapply ty_wf_SubstTm; eauto.
-    + exact Hsig.
-    + exact Hret.
-      + unfold rho_k.
-        refine (IHop (shift_tm (List.length [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)]) 0
-          (shift_ty_in_tm n_β 0 repl)) (n + List.length [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)])
+    + rewrite List.map_map. exact Hfst.
+    +       clear Hops Heff Hfst.
+      induction IHops as [|ob osig obs' ops' Hone Hrest IH]; simpl.
+      * constructor.
+      * constructor; [| exact IH].
+        simpl.
+        set (sig_b := inst_op_ty_args n_α Ts (op_nb osig) (op_sig_ty osig)).
+        set (ret_b := inst_op_ty_args n_α Ts (op_nb osig) (op_ret_ty osig)).
+        set (rho_k := type_fun ret_b lt_local (shift_ty (op_nb osig) 0 T_R)).
+        replace (subst_tm (n + 2) (shift_tm 2 0 repl) (snd ob))
+          with (subst_tm (n + List.length [sig_b; rho_k])
+            (shift_tm (List.length [sig_b; rho_k]) 0 (shift_ty_in_tm (op_nb osig) 0 repl)) (snd ob)).
+        2:{ simpl. rewrite shift_ty_in_tm_closed by exact HtmTy. reflexivity. }
+        refine (Hone (shift_tm (List.length [sig_b; rho_k]) 0
+            (shift_ty_in_tm (op_nb osig) 0 repl)) (n + List.length [sig_b; rho_k])
           (fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
-            (push_ty_vars n_β any_at_free G') [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)])
+            (push_ty_vars (op_nb osig) any_at_free G') [sig_b; rho_k])
           _ _ _ _ _ _
           (SubstTm_replacement_typed_fold_bind_tm
-            [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)] (shift_ty_in_tm n_β 0 repl) n
-            (push_ty_vars n_β any_at_free Γ) (push_ty_vars n_β any_at_free G')
-            (SubstTm_replacement_typed_push_ty_vars n_β any_at_free repl n Γ G' HrepAll))
+            [sig_b; rho_k] (shift_ty_in_tm (op_nb osig) 0 repl) n
+            (push_ty_vars (op_nb osig) any_at_free Γ) (push_ty_vars (op_nb osig) any_at_free G')
+            (SubstTm_replacement_typed_push_ty_vars (op_nb osig) any_at_free repl n Γ G' HrepAll))
           c _ _ _).
-      * exact (SubstTm_fold_bind_tm
-        [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)]
-        (shift_ty_in_tm n_β 0 repl) n
-        (push_ty_vars n_β any_at_free Γ)
-        (push_ty_vars n_β any_at_free G')
-        (SubstTm_push_ty_vars_any_at_free n_β repl n Γ G' HSub)).
-      * apply free_tm_vars_closed_shift_tm_any. rewrite free_tm_vars_shift_ty_in_tm_any. exact Hfree.
-      * apply tm_ty_closed_shift_tm. apply tm_ty_closed_shift_ty_closed0. exact HtmTy.
-      * apply tm_lt_closed_shift_tm. apply tm_lt_closed_shift_ty. exact HtmLt.
-      * exact (SubstTm_target_ty_closed0_fold_bind_tm
-        [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)] n
-        (push_ty_vars n_β any_at_free Γ)
-        (SubstTm_target_ty_closed0_push_ty_vars n_β any_at_free n Γ HtargetTy)).
-      * exact (SubstTm_target_lt_closed0_fold_bind_tm
-        [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)] n
-        (push_ty_vars n_β any_at_free Γ)
-        (SubstTm_target_lt_closed0_push_ty_vars n_β any_at_free n Γ HtargetLt)).
-      * apply ctx_lt_closed_from_fold_bind_tm. apply ctx_lt_closed_from_push_ty_vars. exact Hlt.
-      * apply ctx_schemas_lt_closed_from_fold_bind_tm. apply ctx_schemas_lt_closed_from_push_ty_vars. exact Hschemas.
-        * exact (replacement_capture_bound_fold_bind_tm
-            [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)]
-            (push_ty_vars n_β any_at_free Γ)
-            (push_ty_vars n_β any_at_free G')
-            (shift_ty_in_tm n_β 0 repl) n
-            ltac:(rewrite free_tm_vars_shift_ty_in_tm_any; exact Hfree)
-            (replacement_capture_bound_push_ty_vars_any_at_free
-              n_β Γ G' repl n Hfree Hcap)).
-  - intros Γ E_tag Ts op_body body n_α n_β sig ret T_B T_R sig_β ret_β
-      Heff Hlen HwfTs HwfTB HwfTR HnoLocal Hsub Hsig Hret Hop IHop Hbody IHbody repl n G' HSub Hfree HtmTy HtmLt
+        -- exact (SubstTm_fold_bind_tm [sig_b; rho_k]
+             (shift_ty_in_tm (op_nb osig) 0 repl) n
+             (push_ty_vars (op_nb osig) any_at_free Γ)
+             (push_ty_vars (op_nb osig) any_at_free G')
+             (SubstTm_push_ty_vars_any_at_free (op_nb osig) repl n Γ G' HSub)).
+        -- apply free_tm_vars_closed_shift_tm_any. rewrite free_tm_vars_shift_ty_in_tm_any. exact Hfree.
+        -- apply tm_ty_closed_shift_tm. apply tm_ty_closed_shift_ty_closed0. exact HtmTy.
+        -- apply tm_lt_closed_shift_tm. apply tm_lt_closed_shift_ty. exact HtmLt.
+        -- exact (SubstTm_target_ty_closed0_fold_bind_tm [sig_b; rho_k] n
+             (push_ty_vars (op_nb osig) any_at_free Γ)
+             (SubstTm_target_ty_closed0_push_ty_vars (op_nb osig) any_at_free n Γ HtargetTy)).
+        -- exact (SubstTm_target_lt_closed0_fold_bind_tm [sig_b; rho_k] n
+             (push_ty_vars (op_nb osig) any_at_free Γ)
+             (SubstTm_target_lt_closed0_push_ty_vars (op_nb osig) any_at_free n Γ HtargetLt)).
+        -- apply ctx_lt_closed_from_fold_bind_tm. apply ctx_lt_closed_from_push_ty_vars. exact Hlt.
+        -- apply ctx_schemas_lt_closed_from_fold_bind_tm. apply ctx_schemas_lt_closed_from_push_ty_vars. exact Hschemas.
+        -- exact (replacement_capture_bound_fold_bind_tm [sig_b; rho_k]
+             (push_ty_vars (op_nb osig) any_at_free Γ)
+             (push_ty_vars (op_nb osig) any_at_free G')
+             (shift_ty_in_tm (op_nb osig) 0 repl) n
+             ltac:(rewrite free_tm_vars_shift_ty_in_tm_any; exact Hfree)
+             (replacement_capture_bound_push_ty_vars_any_at_free
+               (op_nb osig) Γ G' repl n Hfree Hcap)).
+  - intros Γ E_tag Ts op_bodies body n_α ops T_B T_R
+      Heff Hlen HwfTs HwfTB HwfTR HnoLocal Hsub Hfst Hops IHops Hbody IHbody repl n G' HSub Hfree HtmTy HtmLt
       HtargetTy HtargetLt HrepAll c Hlt Hschemas Hcap.
-    simpl.
-    set (rho_k := type_fun ret_β lt_local (shift_ty n_β 0 T_R)).
-    replace (subst_tm (n + 2) (shift_tm 2 0 repl) op_body)
-      with (subst_tm (n + List.length [sig_β; rho_k])
-        (shift_tm (List.length [sig_β; rho_k]) 0 (shift_ty_in_tm n_β 0 repl)) op_body).
-    2:{ simpl. rewrite shift_ty_in_tm_closed by exact HtmTy. reflexivity. }
-    eapply T_Handle with
-      (n_α := n_α) (n_β := n_β) (sig := sig) (ret := ret)
-      (T_B := T_B) (sig_β := sig_β) (ret_β := ret_β).
+    simpl. rewrite subst_tm_go_ops_eq_map.
+    eapply T_Handle with (ops := ops) (T_B := T_B).
     + rewrite (SubstTm_lookup_eff repl n Γ G' HSub E_tag). exact Heff.
     + exact Hlen.
     + eapply types_wf_SubstTm; eauto.
@@ -1509,46 +1554,52 @@ Proof.
     + eapply ty_wf_SubstTm; eauto.
     + eapply sub_free_SubstTm; eauto.
     + eapply sub_SubstTm; eauto.
-    + exact Hsig.
-    + exact Hret.
-    + unfold rho_k.
-      refine (IHop (shift_tm (List.length [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)]) 0
-          (shift_ty_in_tm n_β 0 repl)) (n + List.length [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)])
+    + rewrite List.map_map. exact Hfst.
+    +       clear Hops Heff Hfst.
+      induction IHops as [|ob osig obs' ops' Hone Hrest IH]; simpl.
+      * constructor.
+      * constructor; [| exact IH].
+        simpl.
+        set (sig_b := inst_op_ty_args n_α Ts (op_nb osig) (op_sig_ty osig)).
+        set (ret_b := inst_op_ty_args n_α Ts (op_nb osig) (op_ret_ty osig)).
+        set (rho_k := type_fun ret_b lt_local (shift_ty (op_nb osig) 0 T_R)).
+        replace (subst_tm (n + 2) (shift_tm 2 0 repl) (snd ob))
+          with (subst_tm (n + List.length [sig_b; rho_k])
+            (shift_tm (List.length [sig_b; rho_k]) 0 (shift_ty_in_tm (op_nb osig) 0 repl)) (snd ob)).
+        2:{ simpl. rewrite shift_ty_in_tm_closed by exact HtmTy. reflexivity. }
+        refine (Hone (shift_tm (List.length [sig_b; rho_k]) 0
+            (shift_ty_in_tm (op_nb osig) 0 repl)) (n + List.length [sig_b; rho_k])
           (fold_right (fun rho Γ0 => bind_tm rho :: Γ0)
-            (push_ty_vars n_β any_at_free G') [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)])
+            (push_ty_vars (op_nb osig) any_at_free G') [sig_b; rho_k])
           _ _ _ _ _ _
           (SubstTm_replacement_typed_fold_bind_tm
-            [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)] (shift_ty_in_tm n_β 0 repl) n
-            (push_ty_vars n_β any_at_free Γ) (push_ty_vars n_β any_at_free G')
-            (SubstTm_replacement_typed_push_ty_vars n_β any_at_free repl n Γ G' HrepAll))
+            [sig_b; rho_k] (shift_ty_in_tm (op_nb osig) 0 repl) n
+            (push_ty_vars (op_nb osig) any_at_free Γ) (push_ty_vars (op_nb osig) any_at_free G')
+            (SubstTm_replacement_typed_push_ty_vars (op_nb osig) any_at_free repl n Γ G' HrepAll))
           c _ _ _).
-        * exact (SubstTm_fold_bind_tm
-          [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)]
-          (shift_ty_in_tm n_β 0 repl) n
-          (push_ty_vars n_β any_at_free Γ)
-          (push_ty_vars n_β any_at_free G')
-          (SubstTm_push_ty_vars_any_at_free n_β repl n Γ G' HSub)).
-      * apply free_tm_vars_closed_shift_tm_any. rewrite free_tm_vars_shift_ty_in_tm_any. exact Hfree.
-      * apply tm_ty_closed_shift_tm. apply tm_ty_closed_shift_ty_closed0. exact HtmTy.
-      * apply tm_lt_closed_shift_tm. apply tm_lt_closed_shift_ty. exact HtmLt.
-        * exact (SubstTm_target_ty_closed0_fold_bind_tm
-          [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)] n
-          (push_ty_vars n_β any_at_free Γ)
-          (SubstTm_target_ty_closed0_push_ty_vars n_β any_at_free n Γ HtargetTy)).
-        * exact (SubstTm_target_lt_closed0_fold_bind_tm
-          [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)] n
-          (push_ty_vars n_β any_at_free Γ)
-          (SubstTm_target_lt_closed0_push_ty_vars n_β any_at_free n Γ HtargetLt)).
-      * apply ctx_lt_closed_from_fold_bind_tm. apply ctx_lt_closed_from_push_ty_vars. exact Hlt.
-      * apply ctx_schemas_lt_closed_from_fold_bind_tm. apply ctx_schemas_lt_closed_from_push_ty_vars. exact Hschemas.
-      * exact (replacement_capture_bound_fold_bind_tm
-          [sig_β; type_fun ret_β lt_local (shift_ty n_β 0 T_R)]
-          (push_ty_vars n_β any_at_free Γ)
-          (push_ty_vars n_β any_at_free G')
-          (shift_ty_in_tm n_β 0 repl) n
-          ltac:(rewrite free_tm_vars_shift_ty_in_tm_any; exact Hfree)
-          (replacement_capture_bound_push_ty_vars_any_at_free
-            n_β Γ G' repl n Hfree Hcap)).
+        -- exact (SubstTm_fold_bind_tm [sig_b; rho_k]
+             (shift_ty_in_tm (op_nb osig) 0 repl) n
+             (push_ty_vars (op_nb osig) any_at_free Γ)
+             (push_ty_vars (op_nb osig) any_at_free G')
+             (SubstTm_push_ty_vars_any_at_free (op_nb osig) repl n Γ G' HSub)).
+        -- apply free_tm_vars_closed_shift_tm_any. rewrite free_tm_vars_shift_ty_in_tm_any. exact Hfree.
+        -- apply tm_ty_closed_shift_tm. apply tm_ty_closed_shift_ty_closed0. exact HtmTy.
+        -- apply tm_lt_closed_shift_tm. apply tm_lt_closed_shift_ty. exact HtmLt.
+        -- exact (SubstTm_target_ty_closed0_fold_bind_tm [sig_b; rho_k] n
+             (push_ty_vars (op_nb osig) any_at_free Γ)
+             (SubstTm_target_ty_closed0_push_ty_vars (op_nb osig) any_at_free n Γ HtargetTy)).
+        -- exact (SubstTm_target_lt_closed0_fold_bind_tm [sig_b; rho_k] n
+             (push_ty_vars (op_nb osig) any_at_free Γ)
+             (SubstTm_target_lt_closed0_push_ty_vars (op_nb osig) any_at_free n Γ HtargetLt)).
+        -- apply ctx_lt_closed_from_fold_bind_tm. apply ctx_lt_closed_from_push_ty_vars. exact Hlt.
+        -- apply ctx_schemas_lt_closed_from_fold_bind_tm. apply ctx_schemas_lt_closed_from_push_ty_vars. exact Hschemas.
+        -- exact (replacement_capture_bound_fold_bind_tm [sig_b; rho_k]
+             (push_ty_vars (op_nb osig) any_at_free Γ)
+             (push_ty_vars (op_nb osig) any_at_free G')
+             (shift_ty_in_tm (op_nb osig) 0 repl) n
+             ltac:(rewrite free_tm_vars_shift_ty_in_tm_any; exact Hfree)
+             (replacement_capture_bound_push_ty_vars_any_at_free
+               (op_nb osig) Γ G' repl n Hfree Hcap)).
     + refine (IHbody (shift_tm 1 0 repl) (S n) (bind_tm (type_ctor E_tag lt_local Ts) :: G')
       _ _ _ _ _ _
       (SubstTm_replacement_typed_bind_tm (type_ctor E_tag lt_local Ts) repl n Γ G' HrepAll)
@@ -1562,14 +1613,15 @@ Proof.
       * apply ctx_lt_closed_from_bind_tm. exact Hlt.
       * apply ctx_schemas_lt_closed_from_bind_tm. exact Hschemas.
       * apply replacement_capture_bound_tm; assumption.
-  - intros Γ recv arg E_tag Delta Ts Ss n_α n_β sig ret sig_inst ret_inst
-      Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs HnoSs Hsig HnoSig Hret HwfRet Harg IHarg repl n G' HSub Hfree HtmTy HtmLt
+  - intros Γ recv op arg E_tag Delta Ts Ss n_α ops n_β sig ret sig_inst ret_inst
+      Hrecv IHrecv Heff Hnth Hlen_Ts Hlen_Ss HwfSs HnoSs Hsig HnoSig Hret HwfRet Harg IHarg repl n G' HSub Hfree HtmTy HtmLt
       HtargetTy HtargetLt HrepAll c Hlt Hschemas Hcap.
     simpl. eapply T_Perform with
-      (n_α := n_α) (n_β := n_β) (sig := sig) (ret := ret)
+      (n_α := n_α) (ops := ops) (n_β := n_β) (sig := sig) (ret := ret)
       (sig_inst := sig_inst) (ret_inst := ret_inst).
     + apply (IHrecv repl n G' HSub Hfree HtmTy HtmLt HtargetTy HtargetLt HrepAll c Hlt Hschemas Hcap).
     + rewrite (SubstTm_lookup_eff repl n Γ G' HSub E_tag). exact Heff.
+    + exact Hnth.
     + exact Hlen_Ts.
     + exact Hlen_Ss.
     + eapply types_wf_SubstTm; eauto.
@@ -1714,19 +1766,19 @@ Proof.
            elim_result no_body HKne Hlk Heff Hlts Hrho Hlen_Ts HwfTs
            Hscrut_result Hscrut_shape Hresult_eff Hresult_ne HwfDelta Hresult_l Hscrut IHscrut
            Harity HGamma' Hyes IHyes Helim Hno IHno Hec Hval Hfree. inversion Hval.
-  - intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
-           Heff Hlen HwfTs HwfTR Hsig Hret Hop IHop Hec Hval Hfree.
+  - intros Γ E_tag m Ts op_bodies n_α ops T_R
+           Heff Hlen HwfTs HwfTR Hfst Hops IHops Hec Hval Hfree.
     inversion Hval; subst.
-    rewrite (capture_lt_closed Γ (term_cap E_tag m n_β Ts T_R op_body) Hfree). simpl.
+    rewrite (capture_lt_closed Γ (term_cap E_tag m Ts T_R op_bodies) Hfree). simpl.
     unfold lt_of_ty_G. rewrite lt_of_ty_ctx_ctor.
     apply LS_MinR1.
     + apply LS_Refl. constructor.
     + eapply lt_of_ty_G_list_wf; eauto.
-  - intros Γ E_tag Ts op_body body n_α n_β sig ret T_B T_R sig_β ret_β
-           Heff Hlen HwfTs HwfTB HwfTR HnoLocal Hsub Hsig Hret Hop IHop Hbody IHbody Hec Hval Hfree.
+  - intros Γ E_tag Ts op_bodies body n_α ops T_B T_R
+           Heff Hlen HwfTs HwfTB HwfTR HnoLocal Hsub Hfst Hops IHops Hbody IHbody Hec Hval Hfree.
     inversion Hval.
-  - intros Γ recv arg E_tag Delta Ts Ss n_α n_β sig ret sig_inst ret_inst
-           Hrecv IHrecv Heff Hlen_Ts Hlen_Ss HwfSs HnoSs Hsig HnoSig Hret HwfRet Harg IHarg Hec Hval Hfree.
+  - intros Γ recv op arg E_tag Delta Ts Ss n_α ops n_β sig ret sig_inst ret_inst
+           Hrecv IHrecv Heff Hnth Hlen_Ts Hlen_Ss HwfSs HnoSs Hsig HnoSig Hret HwfRet Harg IHarg Hec Hval Hfree.
     inversion Hval.
   - intros Γ m T_B T_R t HwfTB HwfTR HnoLocal Hsub Ht IH Hec Hval Hfree.
     inversion Hval.

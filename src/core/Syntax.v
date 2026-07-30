@@ -40,9 +40,8 @@ Definition any_tag : ctor_tag := 0.
 (* data-constructor-tags is enforced at typing time by side conditions *)
 (* on T_Ctor / T_Match (`ctx_lookup_eff Γ K = None`).                  *)
 (*                                                                     *)
-(* SIMPLIFICATION: each effect declares exactly one operation.         *)
-(* Hence there is no `op_tag`, `term_handle` carries a single          *)
-(* op-body, and `term_perform` takes no op-tag.                        *)
+(* Effects declare a LIST of operations; an operation is identified    *)
+(* by its declaration index, which `term_perform` carries.             *)
 (* =================================================================== *)
 
 Definition eff_tag := nat.
@@ -72,24 +71,30 @@ Inductive term : Type :=
   (* binders.                                                          *)
   | term_match : term -> ctor_tag -> nat -> nat -> term -> term -> term
   (* ----- effect handlers -----                                       *)
-  (* handle cap : E n_β Ts { op_body } in body                         *)
+  (* handle cap : E Ts { op_bodies } in body                           *)
   (* The body has 1 extra term-binder for the cap value (variable 0).  *)
-  (* op_body has n_β type-binders (outermost) followed by 2 term-      *)
-  (* binders:                                                          *)
-  (*   index 0 = the (single) op argument                              *)
+  (* op_bodies is one (n_β, body) pair PER OPERATION of the effect,    *)
+  (* in declaration order; operation i's body has n_β_i type-binders   *)
+  (* (outermost) followed by 2 term-binders:                           *)
+  (*   index 0 = the op argument                                       *)
   (*   index 1 = the resumption k                                      *)
-  (* effect, number of op's polymorphic type variables, effect type    *)
-  (* parameters, body's no-local type, public result type, op's body,  *)
-  (* handler's body.                                                   *)
-  | term_handle : eff_tag -> nat -> list type -> type -> type -> term -> term -> term
-  (* perform x Ss A arg — Ss instantiates the operation's β-args; A    *)
-  (* is the instantiated operation result type (T_Perform pins it to   *)
+  (* The per-op n_β annotation is what lets the type-substitution      *)
+  (* functions know how many type binders they are crossing.           *)
+  (* effect, effect type parameters, body's no-local type, public      *)
+  (* result type, per-op (n_β, body) list, handler's body.             *)
+  | term_handle : eff_tag -> list type -> type -> type
+                    -> list (nat * term) -> term -> term
+  (* perform x op Ss A arg — op selects the effect's operation by      *)
+  (* declaration index; Ss instantiates that operation's β-args; A is  *)
+  (* the instantiated operation result type (T_Perform pins it to      *)
   (* ret_inst).  H_Perform reads it off the redex to annotate the      *)
   (* continuation lambda it reifies.                                   *)
-  | term_perform : term -> list type -> type -> term -> term
-  (* runtime-only: capability value                      .             *)
-  (* Carries effect tag, marker, β-arity, α-type-args, and op_body.    *)
-  | term_cap : eff_tag -> marker -> nat -> list type -> type -> term -> term
+  | term_perform : term -> nat -> list type -> type -> term -> term
+  (* runtime-only: capability value.                                   *)
+  (* Carries effect tag, marker, α-type-args, the delimiter's public   *)
+  (* answer type, and the per-op (n_β, body) list.                     *)
+  | term_cap : eff_tag -> marker -> list type -> type
+                 -> list (nat * term) -> term
   (* runtime-only: continuation delimiter with body/public answers.    *)
   | term_handler_m : marker -> type -> type -> term -> term
   .
@@ -107,8 +112,8 @@ Inductive value : term -> Prop :=
   | value_ctor   : forall K l lts Ts vs,
       Forall value vs ->
       value (term_ctor K l lts Ts vs)
-  | value_cap    : forall E m n_β Ts T_R op_body,
-      value (term_cap E m n_β Ts T_R op_body)
+  | value_cap    : forall E m Ts T_R op_bodies,
+      value (term_cap E m Ts T_R op_bodies)
   .
 
 Hint Constructors value : core.
@@ -162,9 +167,14 @@ Fixpoint has_rt_cap (t : term) : bool :=
   | term_ctor _ _ _ _ ts        => go ts
   | term_match scrut _ _ _ y n  =>
       orb (has_rt_cap scrut) (orb (has_rt_cap y) (has_rt_cap n))
-  | term_handle _ _ _ _ _ op_body body =>
-      orb (has_rt_cap op_body) (has_rt_cap body)
-  | term_perform t' _ _ arg     => orb (has_rt_cap t') (has_rt_cap arg)
-  | term_cap _ _ _ _ _ _        => true
+  | term_handle _ _ _ _ op_bodies body =>
+      orb ((fix go_ops (obs : list (nat * term)) : bool :=
+              match obs with
+              | []              => false
+              | (_, ob) :: rest => orb (has_rt_cap ob) (go_ops rest)
+              end) op_bodies)
+          (has_rt_cap body)
+  | term_perform t' _ _ _ arg   => orb (has_rt_cap t') (has_rt_cap arg)
+  | term_cap _ _ _ _ _          => true
   | term_handler_m _ _ _ _      => true
   end.

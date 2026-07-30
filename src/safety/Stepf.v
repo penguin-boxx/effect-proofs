@@ -140,22 +140,22 @@ Qed.
 (* ------------------------------------------------------------------ *)
 
 Record esc_info : Type := mk_esc {
-  esc_eff : eff_tag;
-  esc_mk  : marker;
-  esc_nb  : nat;
-  esc_Ts  : list type;
-  esc_TR  : type;
-  esc_op  : term;
-  esc_Ss  : list type;
-  esc_A   : type;
-  esc_arg : term
+  esc_eff  : eff_tag;
+  esc_mk   : marker;
+  esc_Ts   : list type;
+  esc_TR   : type;
+  esc_ops  : list (nat * term);
+  esc_opix : nat;
+  esc_Ss   : list type;
+  esc_A    : type;
+  esc_arg  : term
 }.
 
 (* The escaping perform-redex an esc_info denotes. *)
 Definition esc_redex (e : esc_info) : term :=
   term_perform
-    (term_cap (esc_eff e) (esc_mk e) (esc_nb e) (esc_Ts e) (esc_TR e) (esc_op e))
-    (esc_Ss e) (esc_A e) (esc_arg e).
+    (term_cap (esc_eff e) (esc_mk e) (esc_Ts e) (esc_TR e) (esc_ops e))
+    (esc_opix e) (esc_Ss e) (esc_A e) (esc_arg e).
 
 Inductive stepf_res : Type :=
   | SR_val   : stepf_res
@@ -206,7 +206,7 @@ Fixpoint stepf_go (fresh : marker) (t : term) : stepf_res :=
   | term_lam _ _ => SR_val
   | term_ty_lam _ _ => SR_val
   | term_lt_lam _ => SR_val
-  | term_cap _ _ _ _ _ _ => SR_val
+  | term_cap _ _ _ _ _ => SR_val
   | term_app t1 t2 =>
       match stepf_go fresh t1 with
       | SR_val =>
@@ -269,25 +269,25 @@ Fixpoint stepf_go (fresh : marker) (t : term) : stepf_res :=
       | SR_esc e P => SR_esc e (EC_match P K n_lt arity yes_body no_body)
       | SR_stuck => SR_stuck
       end
-  | term_handle E_tag n_beta Ts T_B T_R op_body body =>
+  | term_handle E_tag Ts T_B T_R op_bodies body =>
       SR_step (term_handler_m fresh T_B T_R
-                 (subst_tm 0 (term_cap E_tag fresh n_beta Ts T_R op_body) body))
-  | term_perform recv Ss A arg =>
+                 (subst_tm 0 (term_cap E_tag fresh Ts T_R op_bodies) body))
+  | term_perform recv op Ss A arg =>
       match stepf_go fresh recv with
       | SR_val =>
           match stepf_go fresh arg with
           | SR_val =>
               match recv with
-              | term_cap E_tag m n_beta Ts T_R op_body =>
-                  SR_esc (mk_esc E_tag m n_beta Ts T_R op_body Ss A arg) EC_hole
+              | term_cap E_tag m Ts T_R op_bodies =>
+                  SR_esc (mk_esc E_tag m Ts T_R op_bodies op Ss A arg) EC_hole
               | _ => SR_stuck
               end
-          | SR_step a' => SR_step (term_perform recv Ss A a')
-          | SR_esc e P => SR_esc e (EC_perform_a recv Ss A P)
+          | SR_step a' => SR_step (term_perform recv op Ss A a')
+          | SR_esc e P => SR_esc e (EC_perform_a recv op Ss A P)
           | SR_stuck => SR_stuck
           end
-      | SR_step r' => SR_step (term_perform r' Ss A arg)
-      | SR_esc e P => SR_esc e (EC_perform_r P Ss A arg)
+      | SR_step r' => SR_step (term_perform r' op Ss A arg)
+      | SR_esc e P => SR_esc e (EC_perform_r P op Ss A arg)
       | SR_stuck => SR_stuck
       end
   | term_handler_m m0 T_B T_R body =>
@@ -297,13 +297,17 @@ Fixpoint stepf_go (fresh : marker) (t : term) : stepf_res :=
       | SR_esc e P =>
           if Nat.eqb (esc_mk e) m0
           then if ty_eqb (esc_TR e) T_R
-               then SR_step
-                      (subst_list_tm
-                         [esc_arg e;
-                          term_lam (term_handler_m m0 T_B T_R
-                                      (plug (shift_ectx_tm 1 0 P) (term_var 0)))
-                                   (esc_A e)]
-                         (subst_list_ty_in_tm (esc_Ss e) (esc_op e)))
+               then match nth_error (esc_ops e) (esc_opix e) with
+                    | Some (n_beta, op_body) =>
+                        SR_step
+                          (subst_list_tm
+                             [esc_arg e;
+                              term_lam (term_handler_m m0 T_B T_R
+                                          (plug (shift_ectx_tm 1 0 P) (term_var 0)))
+                                       (esc_A e)]
+                             (subst_list_ty_in_tm (esc_Ss e) op_body))
+                    | None => SR_stuck
+                    end
                else SR_stuck
           else SR_esc e (EC_handler_m m0 T_B T_R P)
       | SR_stuck => SR_stuck
@@ -391,10 +395,10 @@ Definition stepf (t : term) : option term :=
 (* ------------------------------------------------------------------ *)
 
 Definition handle_alloc (fresh : marker) (r r' : term) : Prop :=
-  exists E_tag n_beta Ts T_B T_R op_body body,
-    r = term_handle E_tag n_beta Ts T_B T_R op_body body /\
+  exists E_tag Ts T_B T_R op_bodies body,
+    r = term_handle E_tag Ts T_B T_R op_bodies body /\
     r' = term_handler_m fresh T_B T_R
-           (subst_tm 0 (term_cap E_tag fresh n_beta Ts T_R op_body) body).
+           (subst_tm 0 (term_cap E_tag fresh Ts T_R op_bodies) body).
 
 Definition esc_ok (e : esc_info) (P : ectx) : Prop :=
   pure_ectx_m (esc_mk e) P /\ ectx_wf P /\ value (esc_arg e).
@@ -432,7 +436,7 @@ Ltac lspec_absurd :=
 Lemma stepf_go_sound : forall fresh t, go_spec fresh t.
 Proof.
   intros fresh.
-  apply (term_list_ind (go_spec fresh) (go_list_spec fresh)).
+  apply (term_list_ind (go_spec fresh) (go_list_spec fresh) (fun _ => True)).
   - (* term_var *)
     intros n. unfold go_spec. simpl. spec_absurd.
   - (* term_app *)
@@ -444,8 +448,8 @@ Proof.
       * (* both values: beta or stuck *)
         specialize (IH2v eq_refl).
         destruct t1 as [x|ta tb|body T1|ta T1|bound bd|ta la|bd
-                       |K' l' lts' Ts' vs|s tg nl ar y n|Et nb Ts' TB TR ob bd
-                       |rc Ss' A' ag|Et mm nb Ts' TR ob|mm TB TR bd];
+                       |K' l' lts' Ts' vs|s tg nl ar y n|Et Ts' TB TR ob bd
+                       |rc opx Ss' A' ag|Et mm Ts' TR ob|mm TB TR bd];
           try spec_absurd.
         (* t1 = term_lam body T1 *)
         split; [intros H; discriminate H|].
@@ -500,8 +504,8 @@ Proof.
     destruct (stepf_go fresh t1) as [|t1'|e1 P1|] eqn:Hs1.
     + specialize (IH1v eq_refl).
       destruct t1 as [x|ta tb|body T1|ta T1|bound bd|ta la|bd
-                     |K' l' lts' Ts' vs|s tg nl ar y n|Et nb Ts' TB TR ob bd
-                     |rc Ss' A' ag|Et mm nb Ts' TR ob|mm TB TR bd];
+                     |K' l' lts' Ts' vs|s tg nl ar y n|Et Ts' TB TR ob bd
+                     |rc opx Ss' A' ag|Et mm Ts' TR ob|mm TB TR bd];
         try spec_absurd.
       (* t1 = term_ty_lam bound bd *)
       split; [intros H; discriminate H|].
@@ -537,8 +541,8 @@ Proof.
     destruct (stepf_go fresh t1) as [|t1'|e1 P1|] eqn:Hs1.
     + specialize (IH1v eq_refl).
       destruct t1 as [x|ta tb|body T1|ta T1|bound bd|ta la|bd
-                     |K' l' lts' Ts' vs|s tg nl ar y n|Et nb Ts' TB TR ob bd
-                     |rc Ss' A' ag|Et mm nb Ts' TR ob|mm TB TR bd];
+                     |K' l' lts' Ts' vs|s tg nl ar y n|Et Ts' TB TR ob bd
+                     |rc opx Ss' A' ag|Et mm Ts' TR ob|mm TB TR bd];
         try spec_absurd.
       (* t1 = term_lt_lam bd *)
       split; [intros H; discriminate H|].
@@ -596,8 +600,8 @@ Proof.
     destruct (stepf_go fresh scrut) as [|s'|e P|] eqn:Hsc.
     + specialize (IHv eq_refl).
       destruct scrut as [x|ta tb|body T1|ta T1|bound bd|ta la|bd
-                        |K' l' lts' Ts' vs|s tg nl ar y n|Et nb Ts' TB TR ob bd
-                        |rc Ss' A' ag|Et mm nb Ts' TR ob|mm TB TR bd];
+                        |K' l' lts' Ts' vs|s tg nl ar y n|Et Ts' TB TR ob bd
+                        |rc opx Ss' A' ag|Et mm Ts' TR ob|mm TB TR bd];
         try spec_absurd.
       (* scrut = term_ctor K' l' lts' Ts' vs *)
       inversion IHv; subst.
@@ -643,19 +647,19 @@ Proof.
       simpl. rewrite <- Heq. reflexivity.
     + spec_absurd.
   - (* term_handle: allocate the fresh delimiter marker *)
-    intros E_tag n_beta Ts T_B T_R op_body body _ _.
+    intros E_tag Ts T_B T_R op_bodies body _ _.
     unfold go_spec. simpl.
     split; [intros H; discriminate H|].
     split; [|intros ? ? H; discriminate H].
     intros u Hu. injection Hu as Hu. subst u.
-    exists EC_hole, (term_handle E_tag n_beta Ts T_B T_R op_body body),
+    exists EC_hole, (term_handle E_tag Ts T_B T_R op_bodies body),
       (term_handler_m fresh T_B T_R
-        (subst_tm 0 (term_cap E_tag fresh n_beta Ts T_R op_body) body)).
+        (subst_tm 0 (term_cap E_tag fresh Ts T_R op_bodies) body)).
     split; [constructor|]. split; [reflexivity|]. split; [reflexivity|].
     right. unfold handle_alloc.
-    do 7 eexists. split; reflexivity.
+    do 6 eexists. split; reflexivity.
   - (* term_perform *)
-    intros recv Ss A arg [IHrv [IHrs IHre]] [IHav [IHas IHae]].
+    intros recv op Ss A arg [IHrv [IHrs IHre]] [IHav [IHas IHae]].
     unfold go_spec. simpl.
     destruct (stepf_go fresh recv) as [|r'|er Pr|] eqn:Hr.
     + specialize (IHrv eq_refl).
@@ -664,8 +668,8 @@ Proof.
         specialize (IHav eq_refl).
         destruct recv as [x|ta tb|body T1|ta T1|bound bd|ta la|bd
                          |K' l' lts' Ts' vs|s tg nl ar y n
-                         |Et nb Ts' TB TR ob bd|rc Ss' A' ag
-                         |Et mm nb Ts' TR ob|mm TB TR bd];
+                         |Et Ts' TB TR ob bd|rc opx Ss' A' ag
+                         |Et mm Ts' TR ob|mm TB TR bd];
           try spec_absurd.
         (* recv = term_cap Et mm nb Ts' TR ob *)
         split; [intros H; discriminate H|].
@@ -677,7 +681,7 @@ Proof.
         split; [|intros ? ? H; discriminate H].
         intros u Hu. injection Hu as Hu. subst u.
         destruct (IHas _ eq_refl) as (E & r & r'' & HE & Harg & Harg' & Hred).
-        exists (EC_perform_a recv Ss A E), r, r''.
+        exists (EC_perform_a recv op Ss A E), r, r''.
         split; [constructor; assumption|].
         split; [simpl; rewrite <- Harg; reflexivity|].
         split; [simpl; rewrite <- Harg'; reflexivity|]. exact Hred.
@@ -693,7 +697,7 @@ Proof.
       split; [|intros ? ? H; discriminate H].
       intros u Hu. injection Hu as Hu. subst u.
       destruct (IHrs _ eq_refl) as (E & r & r'' & HE & Hrecv & Hrecv' & Hred).
-      exists (EC_perform_r E Ss A arg), r, r''.
+      exists (EC_perform_r E op Ss A arg), r, r''.
       split; [constructor; assumption|].
       split; [simpl; rewrite <- Hrecv; reflexivity|].
       split; [simpl; rewrite <- Hrecv'; reflexivity|]. exact Hred.
@@ -706,7 +710,7 @@ Proof.
       simpl. rewrite <- Heq. reflexivity.
     + spec_absurd.
   - (* term_cap *)
-    intros E m n_beta Ts T_R op_body _. unfold go_spec. simpl.
+    intros E m Ts T_R op_bodies _. unfold go_spec. simpl.
     split; [intros _; constructor|].
     split; [intros ? H; discriminate H|intros ? ? H; discriminate H].
   - (* term_handler_m *)
@@ -734,8 +738,10 @@ Proof.
       destruct (Nat.eqb (esc_mk e) m0) eqn:Hm.
       * apply Nat.eqb_eq in Hm.
         destruct (ty_eqb (esc_TR e) T_R) eqn:HTR.
-        -- (* matching delimiter: H_Perform fires *)
+        -- (* matching delimiter: H_Perform fires on the selected clause *)
            apply ty_eqb_eq in HTR.
+           destruct (nth_error (esc_ops e) (esc_opix e)) as [[nb ob]|] eqn:Hnth;
+             [|spec_absurd].
            split; [intros H; discriminate H|].
            split; [|intros ? ? H; discriminate H].
            intros u Hu. injection Hu as Hu. subst u.
@@ -746,13 +752,13 @@ Proof.
                  term_lam (term_handler_m m0 T_B T_R
                              (plug (shift_ectx_tm 1 0 P) (term_var 0)))
                           (esc_A e)]
-                (subst_list_ty_in_tm (esc_Ss e) (esc_op e))).
+                (subst_list_ty_in_tm (esc_Ss e) ob)).
            split; [constructor|]. split; [reflexivity|]. split; [reflexivity|].
            left. rewrite Heq.
-           destruct e as [Et mm nb Ts TRc op Ss A v].
-           simpl in Hm, HTR, Hpure, Hv |- *. subst mm TRc.
+           destruct e as [Et mm Ts TRc ops opix Ss A v].
+           simpl in Hm, HTR, Hpure, Hv, Hnth |- *. subst mm TRc.
            unfold esc_redex. simpl.
-           apply H_Perform; assumption.
+           eapply H_Perform; eassumption.
         -- spec_absurd.
       * (* different marker: forward the escape one delimiter out *)
         apply Nat.eqb_neq in Hm.
@@ -811,6 +817,8 @@ Proof.
       split; [constructor|].
       simpl. rewrite <- Hueq. reflexivity.
     + lspec_absurd.
+  - exact I.
+  - intros. exact I.
 Qed.
 
 Theorem stepf_sound : forall t u, stepf t = Some u -> t ==> u.
@@ -824,7 +832,7 @@ Proof.
   subst u t.
   destruct Hred as [Hhead | Halloc].
   - apply S_step; assumption.
-  - destruct Halloc as (E_tag & n_beta & Ts & T_B & T_R & op_body & body
+  - destruct Halloc as (E_tag & Ts & T_B & T_R & op_bodies & body
                         & Hr & Hr').
     subst r r'.
     apply S_HandleCtx; [exact HE|].
@@ -840,7 +848,8 @@ Proof.
   intros fresh.
   apply (term_list_ind
     (fun t => value t -> stepf_go fresh t = SR_val)
-    (fun ts => Forall value ts -> stepf_list fresh ts = LR_vals)).
+    (fun ts => Forall value ts -> stepf_list fresh ts = LR_vals)
+    (fun _ => True)).
   - intros n H; inversion H.
   - intros t1 t2 _ _ H; inversion H.
   - intros body T _ _; reflexivity.
@@ -853,13 +862,15 @@ Proof.
     inversion H; subst.
     rewrite (IH ltac:(assumption)). reflexivity.
   - intros scrut tag n_lt arity yes no _ _ _ H; inversion H.
-  - intros E n_beta Ts T_B T_R op_body body _ _ H; inversion H.
-  - intros recv Ss A arg _ _ H; inversion H.
-  - intros E m n_beta Ts T_R op_body _ _; reflexivity.
+  - intros E Ts T_B T_R op_bodies body _ _ H; inversion H.
+  - intros recv op Ss A arg _ _ H; inversion H.
+  - intros E m Ts T_R op_bodies _ _; reflexivity.
   - intros m T_B T_R t _ H; inversion H.
   - intros _; reflexivity.
   - intros t ts IHt IHts H. inversion H; subst. simpl.
     rewrite (IHt ltac:(assumption)), (IHts ltac:(assumption)). reflexivity.
+  - exact I.
+  - intros; exact I.
 Qed.
 
 Theorem stepf_value_none : forall t, value t -> stepf t = None.
@@ -911,8 +922,8 @@ Module StepfSmokeTests.
 
   (* a source handle allocates the marker_bound marker (here 1) *)
   Example stepf_handle_allocates :
-    stepf (term_handle 5 0 [] TU TU (term_var 0) (term_var 0))
-      = Some (term_handler_m 1 TU TU (term_cap 5 1 0 [] TU (term_var 0))).
+    stepf (term_handle 5 [] TU TU [(0, term_var 0)] (term_var 0))
+      = Some (term_handler_m 1 TU TU (term_cap 5 1 [] TU [(0, term_var 0)])).
   Proof. vm_compute. reflexivity. Qed.
 
   (* a perform under its matching delimiter fires H_Perform: the       *)
@@ -921,8 +932,24 @@ Module StepfSmokeTests.
   (* context.                                                          *)
   Example stepf_perform_fires :
     stepf (term_handler_m 3 TU TU
-             (term_perform (term_cap 5 3 0 [] TU (term_var 1)) [] TU idt))
+             (term_perform (term_cap 5 3 [] TU [(0, term_var 1)]) 0 [] TU idt))
       = Some (term_lam (term_handler_m 3 TU TU (term_var 0)) TU).
+  Proof. vm_compute. reflexivity. Qed.
+
+  (* the SECOND operation of a two-op capability fires: index 1        *)
+  (* selects the second clause (which returns the op argument).        *)
+  Example stepf_perform_fires_second_op :
+    stepf (term_handler_m 3 TU TU
+             (term_perform (term_cap 5 3 [] TU [(0, term_var 1); (0, term_var 0)])
+                1 [] TU idt))
+      = Some idt.
+  Proof. vm_compute. reflexivity. Qed.
+
+  (* an out-of-range operation index is stuck, not misdirected *)
+  Example stepf_perform_bad_index_stuck :
+    stepf (term_handler_m 3 TU TU
+             (term_perform (term_cap 5 3 [] TU [(0, term_var 1)]) 7 [] TU idt))
+      = None.
   Proof. vm_compute. reflexivity. Qed.
 
   (* two beta steps through the driver *)

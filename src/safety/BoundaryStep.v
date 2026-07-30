@@ -90,14 +90,15 @@ Inductive boundary_step : term -> term -> boundary_channel -> term -> Prop :=
         (plug E v)
         handler_body_result_out
         v
-  | BS_Perform : forall E E_tag m n_beta Ts T_B T_R op_body Ss A v P,
+  | BS_Perform : forall E E_tag m Ts T_B T_R op_bodies op n_beta op_body Ss A v P,
       value v ->
       pure_ectx_m m P ->
       ectx_wf P ->
       ectx_wf E ->
+      nth_error op_bodies op = Some (n_beta, op_body) ->
       boundary_step
         (plug E (term_handler_m m T_B T_R
-           (plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss A v))))
+           (plug P (term_perform (term_cap E_tag m Ts T_R op_bodies) op Ss A v))))
         (plug E (subst_list_tm
                    [v; term_lam (term_handler_m m T_B T_R
                                    (plug (shift_ectx_tm 1 0 P) (term_var 0))) A]
@@ -113,9 +114,9 @@ Proof.
   intros u u' ch v Hbs.
   destruct Hbs as
     [E m T_B T_R v Hval HwfE
-    |E E_tag m n_beta Ts T_B T_R op_body Ss A v P Hval Hpure HwfP HwfE].
+    |E E_tag m Ts T_B T_R op_bodies op n_beta op_body Ss A v P Hval Hpure HwfP HwfE Hnth].
   - apply S_step; [exact HwfE | apply H_Return; exact Hval].
-  - apply S_step; [exact HwfE | apply H_Perform; assumption].
+  - apply S_step; [exact HwfE | eapply H_Perform; eassumption].
 Qed.
 
 (* Forgetting the reduct (and the ectx_wf premise, which               *)
@@ -204,25 +205,25 @@ Qed.
 (* the matrix); an escape through a LOCAL channel remains possible and *)
 (* is safe because the lambda body re-installs the delimiter.          *)
 Lemma boundary_resumption_typing :
-  forall Γ m T_B T_R E_tag n_beta Ts op_body Ss A v P T,
+  forall Γ m T_B T_R E_tag Ts op_bodies op Ss A v P T,
   eval_ctx Γ ->
   Γ ⊢ₜ term_handler_m m T_B T_R
-        (plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss A v)) : T ->
+        (plug P (term_perform (term_cap E_tag m Ts T_R op_bodies) op Ss A v)) : T ->
   Γ ⊢ₜ term_lam (term_handler_m m T_B T_R
                    (plug (shift_ectx_tm 1 0 P) (term_var 0))) A
       : type_fun A lt_local T_R.
 Proof.
-  intros Γ m T_B T_R E_tag n_beta Ts op_body Ss A v P T Hec Hty.
+  intros Γ m T_B T_R E_tag Ts op_bodies op Ss A v P T Hec Hty.
   apply handler_m_typing_inv in Hty.
   destruct Hty as [Hplug [HTBR [HnlTB _]]].
   destruct (plug_typing_inv P Γ _ _ Hplug) as [Tu Hperf].
   apply perform_typing_inv in Hperf.
   destruct Hperf as
-    (E_t0 & Δ0 & Ts0 & n_α & n_β & sig & ret & sig_inst
-     & Hrecv & _ & _ & _ & _ & _ & _ & _ & _ & HwfRi & _ & _).
+    (E_t0 & Δ0 & Ts0 & n_α & ops0 & n_β & sig & ret & sig_inst
+     & Hrecv & _ & _ & _ & _ & _ & _ & _ & _ & _ & HwfRi & _ & _).
   apply cap_typing_inv in Hrecv.
   destruct Hrecv as
-    (n_α' & sig' & ret' & sig_β & ret_β & _ & _ & _ & HwfTR & _ & _ & _ & _).
+    (n_α' & ops' & _ & _ & _ & HwfTR & _ & _ & _).
   apply T_Lam.
   - exact HwfRi.
   - exact HwfTR.
@@ -250,12 +251,14 @@ Theorem source_boundary_resumption_local : forall Γ t T u u' v,
   Γ ⊢ₜ t : T ->
   multi_step t u ->
   boundary_step u u' operation_argument_in v ->
-  exists E m T_B T_R E_tag n_beta Ts op_body Ss A P resumption,
+  exists E m T_B T_R E_tag Ts op_bodies op Ss A P resumption,
     resumption = term_lam (term_handler_m m T_B T_R
                              (plug (shift_ectx_tm 1 0 P) (term_var 0))) A /\
     u = plug E (term_handler_m m T_B T_R
-          (plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss A v))) /\
-    u' = plug E (subst_list_tm [v; resumption] (subst_list_ty_in_tm Ss op_body)) /\
+          (plug P (term_perform (term_cap E_tag m Ts T_R op_bodies) op Ss A v))) /\
+    (exists n_beta op_body,
+       nth_error op_bodies op = Some (n_beta, op_body) /\
+       u' = plug E (subst_list_tm [v; resumption] (subst_list_ty_in_tm Ss op_body))) /\
     Γ ⊢ₜ resumption : type_fun A lt_local T_R.
 Proof.
   intros Γ t T u u' v Hec Hsrc Hty Hms Hbs.
@@ -264,9 +267,10 @@ Proof.
     as [_ [_ Htyu]].
   inversion Hbs; subst.
   destruct (plug_typing_inv E Γ _ _ Htyu) as [T' Hh].
-  exists E, m, T_B, T_R, E_tag, n_beta, Ts, op_body, Ss, A, P,
+  exists E, m, T_B, T_R, E_tag, Ts, op_bodies, op, Ss, A, P,
     (term_lam (term_handler_m m T_B T_R
                  (plug (shift_ectx_tm 1 0 P) (term_var 0))) A).
   repeat split.
-  eapply boundary_resumption_typing; [exact Hec | exact Hh].
+  - do 2 eexists. split; [eassumption | reflexivity].
+  - eapply boundary_resumption_typing; [exact Hec | exact Hh].
 Qed.

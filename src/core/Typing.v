@@ -28,12 +28,13 @@ Inductive binding : Type :=
   (* fields  : argument types under those binders (de Bruijn)          *)
   (* result  : result type under those binders (de Bruijn)             *)
   | bind_ctor : ctor_tag -> nat -> nat -> list type -> type -> binding
-  (* Effect declaration (single-op, single-argument):                  *)
-  (*   effect E<n_α type-params> { op : ∀n_β type-params. sig → ret }  *)
-  (* sig is the (single) parameter type, ret is the return type;       *)
-  (* both live under (n_α + n_β) type-binders, with α-vars innermost   *)
-  (* (indices 0..n_α-1) and β-vars above them.                         *)
-  | bind_eff : eff_tag -> nat -> nat -> type -> type -> binding
+  (* Effect declaration (multi-operation, single-argument ops):        *)
+  (*   effect E<n_α type-params> { opᵢ : ∀n_βᵢ type-params. sigᵢ → retᵢ } *)
+  (* Each operation is a triple (n_β, sig, ret), identified by its     *)
+  (* index in the list; sig is the parameter type and ret the return   *)
+  (* type, both under (n_α + n_β) type-binders with α-vars innermost   *)
+  (* (indices 0..n_α-1) and that op's β-vars above them.               *)
+  | bind_eff : eff_tag -> nat -> list (nat * type * type) -> binding
   .
 
 Definition ctx := list binding.
@@ -89,18 +90,22 @@ Definition shift_lt_ctor_sig (amount cutoff : nat)
    shift_lt_in_ty amount (n_lt + cutoff) result).
 
 Definition shift_ty_eff_sig (amount cutoff : nat)
-    (sig : nat * nat * type * type) : nat * nat * type * type :=
-  let '(n_α, n_β, sig_ty, ret_ty) := sig in
-  (n_α, n_β,
-   shift_ty amount (n_α + n_β + cutoff) sig_ty,
-   shift_ty amount (n_α + n_β + cutoff) ret_ty).
+    (decl : nat * list (nat * type * type)) : nat * list (nat * type * type) :=
+  let '(n_α, ops) := decl in
+  (n_α,
+   List.map (fun '(n_β, sig_ty, ret_ty) =>
+       (n_β,
+        shift_ty amount (n_α + n_β + cutoff) sig_ty,
+        shift_ty amount (n_α + n_β + cutoff) ret_ty)) ops).
 
 Definition shift_lt_eff_sig (amount cutoff : nat)
-    (sig : nat * nat * type * type) : nat * nat * type * type :=
-  let '(n_α, n_β, sig_ty, ret_ty) := sig in
-  (n_α, n_β,
-   shift_lt_in_ty amount cutoff sig_ty,
-   shift_lt_in_ty amount cutoff ret_ty).
+    (decl : nat * list (nat * type * type)) : nat * list (nat * type * type) :=
+  let '(n_α, ops) := decl in
+  (n_α,
+   List.map (fun '(n_β, sig_ty, ret_ty) =>
+       (n_β,
+        shift_lt_in_ty amount cutoff sig_ty,
+        shift_lt_in_ty amount cutoff ret_ty)) ops).
 
 (* Look up a constructor signature by tag.  Returns                   *)
 (*   Some (n_lt, n_ty, fields, result)                                *)
@@ -121,15 +126,16 @@ Fixpoint ctx_lookup_ctor (Γ : ctx) (K : ctor_tag)
   end.
 
 (* Look up an effect declaration by tag. Returns                      *)
-(*   Some (n_α, n_β, sig, ret).                                       *)
+(*   Some (n_α, ops)  with ops the per-operation (n_β, sig, ret)      *)
+(* triples in declaration order.                                      *)
 (* Type binders are shifted outside the α/β schema binders; lifetime  *)
 (* binders shift throughout because effect schemas bind no lifetimes. *)
 Fixpoint ctx_lookup_eff (Γ : ctx) (E : eff_tag)
-    : option (nat * nat * type * type) :=
+    : option (nat * list (nat * type * type)) :=
   match Γ with
   | [] => None
-  | bind_eff E' n_α n_β sig ret :: rest =>
-      if Nat.eqb E E' then Some (n_α, n_β, sig, ret)
+  | bind_eff E' n_α ops :: rest =>
+      if Nat.eqb E E' then Some (n_α, ops)
       else ctx_lookup_eff rest E
   | bind_ty _ :: rest => option_map (shift_ty_eff_sig 1 0) (ctx_lookup_eff rest E)
   | bind_lt _ :: rest => option_map (shift_lt_eff_sig 1 0) (ctx_lookup_eff rest E)
@@ -403,12 +409,21 @@ Fixpoint free_tm_vars (cutoff : nat) (t : term) : list nat :=
       free_tm_vars cutoff scrut
         ++ free_tm_vars (cutoff + arity) y
         ++ free_tm_vars cutoff n
-  | term_handle _ _ _ _ _ op_body body =>
-      free_tm_vars (cutoff + 2) op_body
+  | term_handle _ _ _ _ op_bodies body =>
+      (fix go_ops (obs : list (nat * term)) : list nat :=
+         match obs with
+         | []              => []
+         | (_, ob) :: rest => free_tm_vars (cutoff + 2) ob ++ go_ops rest
+         end) op_bodies
         ++ free_tm_vars (S cutoff) body
-  | term_perform t _ _ arg =>
+  | term_perform t _ _ _ arg =>
       free_tm_vars cutoff t ++ free_tm_vars cutoff arg
-  | term_cap _ _ _ _ _ op_body => free_tm_vars (cutoff + 2) op_body
+  | term_cap _ _ _ _ op_bodies =>
+      (fix go_ops (obs : list (nat * term)) : list nat :=
+         match obs with
+         | []              => []
+         | (_, ob) :: rest => free_tm_vars (cutoff + 2) ob ++ go_ops rest
+         end) op_bodies
   | term_handler_m _ _ _ t => free_tm_vars cutoff t
   end.
 
@@ -798,6 +813,11 @@ Definition lt_var_list (n : nat) : list lifetime :=
 (* The op-body typing context shared by T_Cap and T_Handle: the        *)
 (* operation argument $0 (innermost), the resumption $1 of type        *)
 (* ret_β -local-> T_R, and the n_β β-type-binders above them.          *)
+(* Projections of a per-operation declaration triple (n_β, sig, ret). *)
+Definition op_nb     (osig : nat * type * type) : nat  := fst (fst osig).
+Definition op_sig_ty (osig : nat * type * type) : type := snd (fst osig).
+Definition op_ret_ty (osig : nat * type * type) : type := snd osig.
+
 Definition op_body_ctx (Γ : ctx) (n_β : nat) (sig_β ret_β T_R : type) : ctx :=
   bind_tm sig_β
     :: bind_tm (type_fun ret_β lt_local (shift_ty n_β 0 T_R))
@@ -942,16 +962,19 @@ Inductive typing : ctx -> term -> type -> Prop :=
   (* β-vars are outermost (n_α..n_α+n_β-1). After instantiating α      *)
   (* with lifted Ts at handle-time, the schema's β-vars become         *)
   (* 0..n_β-1, matching the n_β type-binders of op_body.               *)
-  | T_Cap : forall Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β,
-      ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
+  | T_Cap : forall Γ E_tag m Ts op_bodies n_α ops T_R,
+      ctx_lookup_eff Γ E_tag = Some (n_α, ops) ->
       List.length Ts = n_α ->
       types_wf Γ Ts ->
       ty_wf Γ T_R ->
-      sig_β = inst_op_ty_args n_α Ts n_β sig ->
-      ret_β = inst_op_ty_args n_α Ts n_β ret ->
-      (op_body_ctx Γ n_β sig_β ret_β T_R)
-        ⊢ₜ op_body : shift_ty n_β 0 T_R ->
-      Γ ⊢ₜ term_cap E_tag m n_β Ts T_R op_body : type_ctor E_tag lt_local Ts
+      List.map fst op_bodies = List.map op_nb ops ->
+      Forall2 (fun ob osig =>
+        (op_body_ctx Γ (op_nb osig)
+           (inst_op_ty_args n_α Ts (op_nb osig) (op_sig_ty osig))
+           (inst_op_ty_args n_α Ts (op_nb osig) (op_ret_ty osig)) T_R)
+          ⊢ₜ snd ob : shift_ty (op_nb osig) 0 T_R)
+        op_bodies ops ->
+      Γ ⊢ₜ term_cap E_tag m Ts T_R op_bodies : type_ctor E_tag lt_local Ts
 
   (* NOTE on op-body variable convention (matching H_Perform):         *)
   (* subst_list_tm [v; resume] op_body substitutes:                    *)
@@ -967,20 +990,23 @@ Inductive typing : ctx -> term -> type -> Prop :=
   (* public handler answer [T_R] may also be produced by operation     *)
   (* bodies. This lets deep resumptions escape through operation       *)
   (* results without letting the handler body return its own cap.      *)
-  | T_Handle : forall Γ E_tag Ts op_body body n_α n_β sig ret T_B T_R sig_β ret_β,
-      ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
+  | T_Handle : forall Γ E_tag Ts op_bodies body n_α ops T_B T_R,
+      ctx_lookup_eff Γ E_tag = Some (n_α, ops) ->
       List.length Ts = n_α ->
       types_wf Γ Ts ->
       ty_wf Γ T_B ->
       ty_wf Γ T_R ->
       Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
       Γ ⊢ T_B <:: T_R ->
-      sig_β = inst_op_ty_args n_α Ts n_β sig ->
-      ret_β = inst_op_ty_args n_α Ts n_β ret ->
-      (op_body_ctx Γ n_β sig_β ret_β T_R)
-        ⊢ₜ op_body : shift_ty n_β 0 T_R ->
+      List.map fst op_bodies = List.map op_nb ops ->
+      Forall2 (fun ob osig =>
+        (op_body_ctx Γ (op_nb osig)
+           (inst_op_ty_args n_α Ts (op_nb osig) (op_sig_ty osig))
+           (inst_op_ty_args n_α Ts (op_nb osig) (op_ret_ty osig)) T_R)
+          ⊢ₜ snd ob : shift_ty (op_nb osig) 0 T_R)
+        op_bodies ops ->
       (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) ⊢ₜ body : T_B ->
-      Γ ⊢ₜ term_handle E_tag n_β Ts T_B T_R op_body body : T_R
+      Γ ⊢ₜ term_handle E_tag Ts T_B T_R op_bodies body : T_R
 
   (* (Perform): invoke the (single) operation on a capability value.   *)
   (* Caller supplies the β-type-arguments Ss at the perform site.      *)
@@ -988,10 +1014,11 @@ Inductive typing : ctx -> term -> type -> Prop :=
   (* in [Γ] ([lt_of_ty_G Γ S <: lt_free] for each S among Ss and for   *)
   (* [sig_inst]): a value crossing the operation boundary must not     *)
   (* smuggle a local capability out of scope. *)
-  | T_Perform : forall Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret
+  | T_Perform : forall Γ recv op arg E_tag Δ Ts Ss n_α ops n_β sig ret
                        sig_inst ret_inst,
       Γ ⊢ₜ recv : type_ctor E_tag Δ Ts ->
-      ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
+      ctx_lookup_eff Γ E_tag = Some (n_α, ops) ->
+      nth_error ops op = Some (n_β, sig, ret) ->
       List.length Ts = n_α ->
       List.length Ss = n_β ->
       types_wf Γ Ss ->
@@ -1001,7 +1028,7 @@ Inductive typing : ctx -> term -> type -> Prop :=
       ret_inst = inst_op_all_args n_α Ts n_β Ss ret ->
       ty_wf Γ ret_inst ->
       Γ ⊢ₜ arg : sig_inst ->
-      Γ ⊢ₜ term_perform recv Ss ret_inst arg : ret_inst
+      Γ ⊢ₜ term_perform recv op Ss ret_inst arg : ret_inst
 
   (* (HandlerM, runtime): a delimiter is transparent to typing.        *)
   | T_HandlerM : forall Γ m t T_B T_R,
@@ -1105,34 +1132,53 @@ Lemma typing_ind2 :
      elim_ty_n n_lt (shift_lt n_lt 0 Delta) var_pos eta = Some elim_result ->
      Γ ⊢ₜ no_body : elim_result -> P Γ no_body elim_result ->
     P Γ (term_match scrut K n_lt arity yes_body no_body) elim_result) ->
-  (forall Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β,
-     ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
+  (forall Γ E_tag m Ts op_bodies n_α ops T_R,
+     ctx_lookup_eff Γ E_tag = Some (n_α, ops) ->
      List.length Ts = n_α ->
     types_wf Γ Ts ->
     ty_wf Γ T_R ->
-      sig_β = inst_op_ty_args n_α Ts n_β sig ->
-      ret_β = inst_op_ty_args n_α Ts n_β ret ->
-     (op_body_ctx Γ n_β sig_β ret_β T_R) ⊢ₜ op_body : shift_ty n_β 0 T_R ->
-     P (op_body_ctx Γ n_β sig_β ret_β T_R) op_body (shift_ty n_β 0 T_R) ->
-    P Γ (term_cap E_tag m n_β Ts T_R op_body) (type_ctor E_tag lt_local Ts)) ->
-  (forall Γ E_tag Ts op_body body n_α n_β sig ret T_B T_R sig_β ret_β,
-     ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
+     List.map fst op_bodies = List.map op_nb ops ->
+      Forall2 (fun ob osig =>
+        (op_body_ctx Γ (op_nb osig)
+           (inst_op_ty_args n_α Ts (op_nb osig) (op_sig_ty osig))
+           (inst_op_ty_args n_α Ts (op_nb osig) (op_ret_ty osig)) T_R)
+          ⊢ₜ snd ob : shift_ty (op_nb osig) 0 T_R)
+       op_bodies ops ->
+     Forall2 (fun ob osig =>
+        P (op_body_ctx Γ (op_nb osig)
+             (inst_op_ty_args n_α Ts (op_nb osig) (op_sig_ty osig))
+             (inst_op_ty_args n_α Ts (op_nb osig) (op_ret_ty osig)) T_R)
+          (snd ob) (shift_ty (op_nb osig) 0 T_R))
+       op_bodies ops ->
+    P Γ (term_cap E_tag m Ts T_R op_bodies) (type_ctor E_tag lt_local Ts)) ->
+  (forall Γ E_tag Ts op_bodies body n_α ops T_B T_R,
+     ctx_lookup_eff Γ E_tag = Some (n_α, ops) ->
      List.length Ts = n_α ->
     types_wf Γ Ts ->
     ty_wf Γ T_B ->
     ty_wf Γ T_R ->
     Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free ->
     Γ ⊢ T_B <:: T_R ->
-      sig_β = inst_op_ty_args n_α Ts n_β sig ->
-      ret_β = inst_op_ty_args n_α Ts n_β ret ->
-     (op_body_ctx Γ n_β sig_β ret_β T_R) ⊢ₜ op_body : shift_ty n_β 0 T_R ->
-     P (op_body_ctx Γ n_β sig_β ret_β T_R) op_body (shift_ty n_β 0 T_R) ->
+     List.map fst op_bodies = List.map op_nb ops ->
+      Forall2 (fun ob osig =>
+        (op_body_ctx Γ (op_nb osig)
+           (inst_op_ty_args n_α Ts (op_nb osig) (op_sig_ty osig))
+           (inst_op_ty_args n_α Ts (op_nb osig) (op_ret_ty osig)) T_R)
+          ⊢ₜ snd ob : shift_ty (op_nb osig) 0 T_R)
+       op_bodies ops ->
+     Forall2 (fun ob osig =>
+        P (op_body_ctx Γ (op_nb osig)
+             (inst_op_ty_args n_α Ts (op_nb osig) (op_sig_ty osig))
+             (inst_op_ty_args n_α Ts (op_nb osig) (op_ret_ty osig)) T_R)
+          (snd ob) (shift_ty (op_nb osig) 0 T_R))
+       op_bodies ops ->
       (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) ⊢ₜ body : T_B ->
       P (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) body T_B ->
-     P Γ (term_handle E_tag n_β Ts T_B T_R op_body body) T_R) ->
-  (forall Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst,
+     P Γ (term_handle E_tag Ts T_B T_R op_bodies body) T_R) ->
+  (forall Γ recv op arg E_tag Δ Ts Ss n_α ops n_β sig ret sig_inst ret_inst,
      Γ ⊢ₜ recv : type_ctor E_tag Δ Ts -> P Γ recv (type_ctor E_tag Δ Ts) ->
-     ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) ->
+     ctx_lookup_eff Γ E_tag = Some (n_α, ops) ->
+     nth_error ops op = Some (n_β, sig, ret) ->
      List.length Ts = n_α ->
      List.length Ss = n_β ->
     types_wf Γ Ss ->
@@ -1142,7 +1188,7 @@ Lemma typing_ind2 :
      ret_inst = inst_op_all_args n_α Ts n_β Ss ret ->
     ty_wf Γ ret_inst ->
      Γ ⊢ₜ arg : sig_inst -> P Γ arg sig_inst ->
-     P Γ (term_perform recv Ss ret_inst arg) ret_inst) ->
+     P Γ (term_perform recv op Ss ret_inst arg) ret_inst) ->
   (forall Γ m T_B T_R t,
     ty_wf Γ T_B ->
     ty_wf Γ T_R ->
@@ -1174,8 +1220,22 @@ Proof.
     + constructor.
     + constructor; [ apply IH; assumption | assumption ].
   - eapply HMatch; (eassumption || (apply IH; eassumption)).
-  - eapply HCap; (eassumption || (apply IH; eassumption)).
-  - eapply HHandle; (eassumption || (apply IH; eassumption)).
+  - (* T_Cap: build the per-op Forall2 of IHs inline (guardedness). *)
+    eapply HCap; try (eassumption || (apply IH; eassumption)).
+    match goal with
+    | HF : Forall2 _ ?obs ?ops |- Forall2 _ ?obs ?ops =>
+        clear -IH HF; induction HF
+    end.
+    + constructor.
+    + constructor; [ apply IH; assumption | assumption ].
+  - (* T_Handle: same per-op Forall2 construction. *)
+    eapply HHandle; try (eassumption || (apply IH; eassumption)).
+    match goal with
+    | HF : Forall2 _ ?obs ?ops |- Forall2 _ ?obs ?ops =>
+        clear -IH HF; induction HF
+    end.
+    + constructor.
+    + constructor; [ apply IH; assumption | assumption ].
   - eapply HPerform; (eassumption || (apply IH; eassumption)).
   - eapply HHandlerM; (eassumption || (apply IH; eassumption)).
 Qed.

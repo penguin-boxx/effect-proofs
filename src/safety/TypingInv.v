@@ -199,40 +199,43 @@ Proof.
     apply SA_Refl. assumption.
 Qed.
 
-Lemma cap_typing_inv : forall Γ E_tag m n_β Ts T_R op_body T,
-  Γ ⊢ₜ term_cap E_tag m n_β Ts T_R op_body : T ->
-  exists n_α sig ret sig_β ret_β,
-    ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) /\
+Lemma cap_typing_inv : forall Γ E_tag m Ts T_R op_bodies T,
+  Γ ⊢ₜ term_cap E_tag m Ts T_R op_bodies : T ->
+  exists n_α ops,
+    ctx_lookup_eff Γ E_tag = Some (n_α, ops) /\
     List.length Ts = n_α /\
     types_wf Γ Ts /\
     ty_wf Γ T_R /\
-    sig_β = inst_op_ty_args n_α Ts n_β sig /\
-    ret_β = inst_op_ty_args n_α Ts n_β ret /\
-    (op_body_ctx Γ n_β sig_β ret_β T_R)
-      ⊢ₜ op_body : shift_ty n_β 0 T_R /\
+    List.map fst op_bodies = List.map op_nb ops /\
+    Forall2 (fun ob osig =>
+      (op_body_ctx Γ (op_nb osig)
+         (inst_op_ty_args n_α Ts (op_nb osig) (op_sig_ty osig))
+         (inst_op_ty_args n_α Ts (op_nb osig) (op_ret_ty osig)) T_R)
+        ⊢ₜ snd ob : shift_ty (op_nb osig) 0 T_R)
+      op_bodies ops /\
     Γ ⊢ type_ctor E_tag lt_local Ts <:: T.
 Proof.
-  intros Γ E_tag m n_β Ts T_R op_body T H.
-  remember (term_cap E_tag m n_β Ts T_R op_body) as s eqn:Hs.
+  intros Γ E_tag m Ts T_R op_bodies T H.
+  remember (term_cap E_tag m Ts T_R op_bodies) as s eqn:Hs.
   induction H; try discriminate Hs.
   - (* T_Sub *)
     destruct (IHtyping Hs) as
-      [n_α [sig [ret [sig_β [ret_β [Heff [HlenTs [HwfTs [HwfTR
-        [Hsigβ [Hretβ [Hop Hsub]]]]]]]]]]]].
-    exists n_α, sig, ret, sig_β, ret_β.
+      [n_α [ops [Heff [HlenTs [HwfTs [HwfTR [Hfst [Hops Hsub]]]]]]]].
+    exists n_α, ops.
     split; [exact Heff|]. split; [exact HlenTs|]. split; [exact HwfTs|].
-    split; [exact HwfTR|]. split; [exact Hsigβ|]. split; [exact Hretβ|].
-    split; [exact Hop|]. eapply SA_Trans; [exact Hsub | eassumption].
+    split; [exact HwfTR|]. split; [exact Hfst|]. split; [exact Hops|].
+    eapply SA_Trans; [exact Hsub | eassumption].
   - (* T_Cap *) injection Hs; intros; subst.
-    do 5 eexists. repeat split; try eassumption; try reflexivity.
+    do 2 eexists. repeat split; try eassumption; try reflexivity.
     apply SA_Refl. apply TWF_Ctor; [apply LWF_Local | assumption].
 Qed.
 
-Lemma perform_typing_inv : forall Γ recv Ss ret_inst arg T,
-  Γ ⊢ₜ term_perform recv Ss ret_inst arg : T ->
-  exists E_tag Δ Ts n_α n_β sig ret sig_inst,
+Lemma perform_typing_inv : forall Γ recv op Ss ret_inst arg T,
+  Γ ⊢ₜ term_perform recv op Ss ret_inst arg : T ->
+  exists E_tag Δ Ts n_α ops n_β sig ret sig_inst,
     Γ ⊢ₜ recv : type_ctor E_tag Δ Ts /\
-    ctx_lookup_eff Γ E_tag = Some (n_α, n_β, sig, ret) /\
+    ctx_lookup_eff Γ E_tag = Some (n_α, ops) /\
+    nth_error ops op = Some (n_β, sig, ret) /\
     List.length Ts = n_α /\
     List.length Ss = n_β /\
     types_wf Γ Ss /\
@@ -244,48 +247,52 @@ Lemma perform_typing_inv : forall Γ recv Ss ret_inst arg T,
     Γ ⊢ₜ arg : sig_inst /\
     Γ ⊢ ret_inst <:: T.
 Proof.
-  intros Γ recv Ss ret_inst arg T H.
-  remember (term_perform recv Ss ret_inst arg) as s eqn:Hs.
+  intros Γ recv op Ss ret_inst arg T H.
+  remember (term_perform recv op Ss ret_inst arg) as s eqn:Hs.
   induction H; try discriminate Hs.
   - (* T_Sub *)
     destruct (IHtyping Hs) as
-      [E_tag [Δ [Ts [n_α [n_β [sig [ret [sig_inst
-        [Hrecv [Heff [HlenTs [HlenSs [HwfSs [HnlSs [Hsi [Hnlsi
-          [Hri [HwfRi [Harg Hsub]]]]]]]]]]]]]]]]]]].
-    exists E_tag, Δ, Ts, n_α, n_β, sig, ret, sig_inst.
-    split; [exact Hrecv|]. split; [exact Heff|]. split; [exact HlenTs|].
+      [E_tag [Δ [Ts [n_α [ops [n_β [sig [ret [sig_inst
+        [Hrecv [Heff [Hnth [HlenTs [HlenSs [HwfSs [HnlSs [Hsi [Hnlsi
+          [Hri [HwfRi [Harg Hsub]]]]]]]]]]]]]]]]]]]]].
+    exists E_tag, Δ, Ts, n_α, ops, n_β, sig, ret, sig_inst.
+    split; [exact Hrecv|]. split; [exact Heff|]. split; [exact Hnth|].
+    split; [exact HlenTs|].
     split; [exact HlenSs|]. split; [exact HwfSs|]. split; [exact HnlSs|].
     split; [exact Hsi|]. split; [exact Hnlsi|]. split; [exact Hri|].
     split; [exact HwfRi|]. split; [exact Harg|].
     eapply SA_Trans; [exact Hsub | eassumption].
   - (* T_Perform *) injection Hs; intros; subst.
-    do 8 eexists. repeat split; try eassumption; try reflexivity.
+    do 9 eexists. repeat split; try eassumption; try reflexivity.
     apply SA_Refl. assumption.
 Qed.
 
-Lemma handle_typing_inv : forall Γ E_tag n_beta Ts T_B T_R op_body body T,
-  Γ ⊢ₜ term_handle E_tag n_beta Ts T_B T_R op_body body : T ->
-  exists n_α sig ret sig_β ret_β,
-    ctx_lookup_eff Γ E_tag = Some (n_α, n_beta, sig, ret) /\
+Lemma handle_typing_inv : forall Γ E_tag Ts T_B T_R op_bodies body T,
+  Γ ⊢ₜ term_handle E_tag Ts T_B T_R op_bodies body : T ->
+  exists n_α ops,
+    ctx_lookup_eff Γ E_tag = Some (n_α, ops) /\
     List.length Ts = n_α /\ types_wf Γ Ts /\
     ty_wf Γ T_B /\ ty_wf Γ T_R /\ Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free /\ Γ ⊢ T_B <:: T_R /\
-    sig_β = inst_op_ty_args n_α Ts n_beta sig /\
-    ret_β = inst_op_ty_args n_α Ts n_beta ret /\
-    (op_body_ctx Γ n_beta sig_β ret_β T_R)
-      ⊢ₜ op_body : shift_ty n_beta 0 T_R /\
+    List.map fst op_bodies = List.map op_nb ops /\
+    Forall2 (fun ob osig =>
+      (op_body_ctx Γ (op_nb osig)
+         (inst_op_ty_args n_α Ts (op_nb osig) (op_sig_ty osig))
+         (inst_op_ty_args n_α Ts (op_nb osig) (op_ret_ty osig)) T_R)
+        ⊢ₜ snd ob : shift_ty (op_nb osig) 0 T_R)
+      op_bodies ops /\
     (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) ⊢ₜ body : T_B /\
     Γ ⊢ T_R <:: T.
 Proof.
-  intros Γ E_tag n_beta Ts T_B T_R op_body body T H.
-  remember (term_handle E_tag n_beta Ts T_B T_R op_body body) as s eqn:Hs.
+  intros Γ E_tag Ts T_B T_R op_bodies body T H.
+  remember (term_handle E_tag Ts T_B T_R op_bodies body) as s eqn:Hs.
   induction H; try discriminate Hs.
   - destruct (IHtyping Hs) as
-      (n_α & sig & ret & sig_β & ret_β & Heff & HlenTs & HwfTs & HwfTB & HwfTR
-       & Hnl & Hbr & Hsigβ & Hretβ & Hop & Hbody & Hsub).
-    exists n_α, sig, ret, sig_β, ret_β.
+      (n_α & ops & Heff & HlenTs & HwfTs & HwfTB & HwfTR
+       & Hnl & Hbr & Hfst & Hops & Hbody & Hsub).
+    exists n_α, ops.
     repeat (split; [assumption|]). eapply SA_Trans; eassumption.
   - injection Hs; intros; subst.
-    do 5 eexists.
+    do 2 eexists.
     repeat split; try eassumption; try reflexivity.
     apply SA_Refl. assumption.
 Qed.
@@ -525,28 +532,28 @@ Proof.
     eapply IHP; exact Ht.
   - (* EC_perform_r *)
     apply perform_typing_inv in H.
-    destruct H as (E_tag & Δ & Ts0 & n_α & n_β & sig & ret & si & Hr & _).
+    destruct H as (E_tag & Δ & Ts0 & n_α & ops & n_β & sig & ret & si & Hr & _).
     eapply IHP; exact Hr.
   - (* EC_perform_a *)
     apply perform_typing_inv in H.
-    destruct H as (E_tag & Δ & Ts0 & n_α & n_β & sig & ret & si
-                   & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Ha & _).
+    destruct H as (E_tag & Δ & Ts0 & n_α & ops & n_β & sig & ret & si
+                   & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Ha & _).
     eapply IHP; exact Ha.
 Qed.
 
 Lemma handle_result_closed_from_plug_typing :
-  forall Γ E E_tag n_beta Ts T_B T_R op_body body T,
+  forall Γ E E_tag Ts T_B T_R op_bodies body T,
     eval_ctx Γ ->
-    Γ ⊢ₜ plug E (term_handle E_tag n_beta Ts T_B T_R op_body body) : T ->
+    Γ ⊢ₜ plug E (term_handle E_tag Ts T_B T_R op_bodies body) : T ->
     ty_ty_closed 0 T_R /\ ty_lt_closed 0 T_R.
 Proof.
-  intros Γ E E_tag n_beta Ts T_B T_R op_body body T Hec Hty.
-  destruct (plug_typing_inv E Γ (term_handle E_tag n_beta Ts T_B T_R op_body body) T Hty)
+  intros Γ E E_tag Ts T_B T_R op_bodies body T Hec Hty.
+  destruct (plug_typing_inv E Γ (term_handle E_tag Ts T_B T_R op_bodies body) T Hty)
     as [Th Hhandle].
   apply handle_typing_inv in Hhandle.
   destruct Hhandle as
-    (n_α & sig & ret & sig_β & ret_β & Heff & HlenTs & HwfTs & HwfTB & HwfTR
-     & Hnl & Hbr & Hsigβ & Hretβ & Hop & Hbody & Hsub).
+    (n_α & ops & Heff & HlenTs & HwfTs & HwfTB & HwfTR
+     & Hnl & Hbr & Hfst & Hops & Hbody & Hsub).
   split.
   - eapply ty_wf_eval_ctx_ty_closed; eauto.
   - eapply ty_wf_eval_ctx_lt_closed; eauto.

@@ -42,8 +42,7 @@ Proof.
       | ]
     | apply ec_eff;
       [ cbv; lia
-      | cbn; repeat split; try lia
-      | cbn; repeat split; try lia
+      | repeat constructor
       | ] ].
 Qed.
 
@@ -59,8 +58,7 @@ Proof.
       | ]
     | apply ec_eff;
       [ cbv; lia
-      | cbn; repeat split; try lia
-      | cbn; repeat split; try lia
+      | repeat constructor
       | ] ].
 Qed.
 
@@ -92,13 +90,13 @@ Qed.
 (* Capability confinement, witnessed: no state reachable from the      *)
 (* State example exposes a capability outside its delimiter.           *)
 Theorem withState_example_cap_confined :
-  forall E E_tag m n_beta Ts T_R op_body,
-    multi_step withState_example (plug E (term_cap E_tag m n_beta Ts T_R op_body)) ->
+  forall E E_tag m Ts T_R op_bodies,
+    multi_step withState_example (plug E (term_cap E_tag m Ts T_R op_bodies)) ->
     ~ pure_ectx_m m E.
 Proof.
-  intros E E_tag m n_beta Ts T_R op_body Hms.
+  intros E E_tag m Ts T_R op_bodies Hms.
   apply (source_capability_never_exposed full_ctx withState_example
-           E E_tag m n_beta Ts T_R op_body (T_Nat `Lf) eval_ctx_full_ctx).
+           E E_tag m Ts T_R op_bodies (T_Nat `Lf) eval_ctx_full_ctx).
   - vm_compute; reflexivity.
   - exact typed_withState_example_proof.
   - exact Hms.

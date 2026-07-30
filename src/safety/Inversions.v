@@ -29,7 +29,10 @@ Proof.
     (fun t => forall c y, In y (free_tm_vars (S c) t) -> In (S y) (free_tm_vars c t))
     (fun ts => forall c y,
        In y (List.concat (List.map (free_tm_vars (S c)) ts)) ->
-       In (S y) (List.concat (List.map (free_tm_vars c) ts)))).
+       In (S y) (List.concat (List.map (free_tm_vars c) ts)))
+    (fun obs => forall c y,
+       In y (List.concat (List.map (fun p => free_tm_vars (S c) (snd p)) obs)) ->
+       In (S y) (List.concat (List.map (fun p => free_tm_vars c (snd p)) obs)))).
   - (* var *)
     intros x c y. simpl.
     destruct (Nat.ltb x (S c)) eqn:E1.
@@ -60,15 +63,17 @@ Proof.
     + right; left. apply IHy; exact H.
     + right; right. apply IHn; exact H.
   - (* handle *)
-    intros E n_beta Ts T_B T_R op_body body IHop IHb c y. simpl.
+    intros E Ts T_B T_R op_bodies body IHops IHb c y. simpl.
+    rewrite !free_tm_vars_go_ops_eq_concat.
     rewrite !List.in_app_iff. intros [H|H].
-    + left. apply IHop; exact H.
+    + left. apply IHops; exact H.
     + right. apply IHb; exact H.
   - (* perform *)
-    intros t Ss A_ret arg IHt IHa c y. simpl.
+    intros t op Ss A_ret arg IHt IHa c y. simpl.
     rewrite !List.in_app_iff. intros [H|H]; [left; apply IHt; exact H | right; apply IHa; exact H].
   - (* cap *)
-    intros E m n_beta Ts T_R op_body IHop c y. simpl. apply IHop.
+    intros E m Ts T_R op_bodies IHops c y. simpl.
+    rewrite !free_tm_vars_go_ops_eq_concat. apply IHops.
   - (* handler_m *)
     intros m T_B T_R t IH c y. simpl. apply IH.
   - (* nil *)
@@ -76,6 +81,11 @@ Proof.
   - (* cons *)
     intros t ts IHt IHts c y. simpl.
     rewrite !List.in_app_iff. intros [H|H]; [left; apply IHt; exact H | right; apply IHts; exact H].
+  - (* ops nil *)
+    intros c y. simpl. intros [].
+  - (* ops cons *)
+    intros nb ob obs IHob IHobs c y. simpl.
+    rewrite !List.in_app_iff. intros [H|H]; [left; apply IHob; exact H | right; apply IHobs; exact H].
 Qed.
 
 (* Iterated version of `fv_succ`. *)
@@ -189,24 +199,39 @@ Proof.
       intros Hnone. apply IHyes. apply lookup_tm_push_match_bound_None. exact Hnone.
     + apply IHno; exact Hn.
   - (* T_Cap *)
-    intros Γ E_tag m Ts op_body n_α n_β sig ret T_R sig_β ret_β
-           H1 H2 H3 H4 H5 H6 H7 IHop x Hin.
-    simpl in Hin. apply (fv_add 2 op_body 0 x) in Hin.
-    specialize (IHop (x + 2) Hin).
-    replace (x + 2) with (S (S x)) in IHop by lia. simpl in IHop.
-    intros Hnone. apply IHop. apply lookup_tm_push_ty_None. exact Hnone.
+    intros Γ E_tag m Ts op_bodies n_α ops T_R
+           Heff Hlen HwfTs HwfTR Hfst Hops IHops x Hin.
+    simpl in Hin.
+    rewrite free_tm_vars_go_ops_eq_concat in Hin.
+    clear - IHops Hin.
+    revert Hin. induction IHops as [|ob osig obs' ops' Hp Hrest IH]; intros Hin.
+    + simpl in Hin. contradiction.
+    + simpl in Hin. rewrite List.in_app_iff in Hin.
+      destruct Hin as [H|H]; [| apply IH; exact H].
+      apply (fv_add 2 (snd ob) 0 x) in H.
+      specialize (Hp (x + 2) H).
+      replace (x + 2) with (S (S x)) in Hp by lia. simpl in Hp.
+      intros Hnone. apply Hp. apply lookup_tm_push_ty_None. exact Hnone.
   - (* T_Handle *)
-    intros Γ E_tag Ts op_body body n_α n_β sig ret T_B T_R sig_β ret_β
-           H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 IHop H11 IHbody x Hin.
-    simpl in Hin. rewrite List.in_app_iff in Hin. destruct Hin as [Hop | Hb].
-    + apply (fv_add 2 op_body 0 x) in Hop. specialize (IHop (x + 2) Hop).
-      replace (x + 2) with (S (S x)) in IHop by lia. simpl in IHop.
-      intros Hnone. apply IHop. apply lookup_tm_push_ty_None. exact Hnone.
+    intros Γ E_tag Ts op_bodies body n_α ops T_B T_R
+           Heff Hlen HwfTs HwfTB HwfTR HnoLocal Hsub Hfst Hops IHops Hbody IHbody x Hin.
+    simpl in Hin.
+    rewrite free_tm_vars_go_ops_eq_concat in Hin.
+    rewrite List.in_app_iff in Hin. destruct Hin as [HopsFree | Hb].
+    + clear - IHops HopsFree.
+      revert HopsFree. induction IHops as [|ob osig obs' ops' Hp Hrest IH]; intros Hin.
+      * simpl in Hin. contradiction.
+      * simpl in Hin. rewrite List.in_app_iff in Hin.
+        destruct Hin as [H|H]; [| apply IH; exact H].
+        apply (fv_add 2 (snd ob) 0 x) in H.
+        specialize (Hp (x + 2) H).
+        replace (x + 2) with (S (S x)) in Hp by lia. simpl in Hp.
+        intros Hnone. apply Hp. apply lookup_tm_push_ty_None. exact Hnone.
     + apply fv_succ in Hb. specialize (IHbody (S x) Hb).
       simpl in IHbody. exact IHbody.
   - (* T_Perform *)
-        intros Γ recv arg E_tag Δ Ts Ss n_α n_β sig ret sig_inst ret_inst
-          H1 IHrecv H3 H4 H5 H6 HnoSs H7 HnoSig H8 HwfRet H9 IHarg x Hin.
+        intros Γ recv op arg E_tag Δ Ts Ss n_α ops n_β sig ret sig_inst ret_inst
+          H1 IHrecv H3 Hnth H4 H5 H6 HnoSs H7 HnoSig H8 HwfRet H9 IHarg x Hin.
     simpl in Hin. rewrite List.in_app_iff in Hin.
     destruct Hin as [H|H]; [apply IHrecv | apply IHarg]; exact H.
   - (* T_HandlerM *)

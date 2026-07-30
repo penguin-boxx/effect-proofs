@@ -53,12 +53,12 @@ Inductive boundary_crossing : term -> term -> Prop :=
   | bc_return : forall E m T_B T_R v,
       value v ->
       boundary_crossing (plug E (term_handler_m m T_B T_R v)) v
-  | bc_perform : forall E E_tag m n_beta Ts T_B T_R op_body Ss A v P,
+  | bc_perform : forall E E_tag m Ts T_B T_R op_bodies op Ss A v P,
       value v ->
       pure_ectx_m m P ->
       boundary_crossing
         (plug E (term_handler_m m T_B T_R
-           (plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss A v))))
+           (plug P (term_perform (term_cap E_tag m Ts T_R op_bodies) op Ss A v))))
         v.
 
 Lemma boundary_crossing_value : forall u v,
@@ -83,7 +83,7 @@ Proof.
   intros Γ u T v Hec Hty Hbc. revert Hty.
   destruct Hbc as
     [E m T_B T_R v Hval
-    |E E_tag m n_beta Ts T_B T_R op_body Ss A v P Hval Hpure];
+    |E E_tag m Ts T_B T_R op_bodies op Ss A v P Hval Hpure];
     intros Hty.
   - (* bc_return: v leaves the delimiter *)
     destruct (plug_typing_inv E Γ _ _ Hty) as [T' Hh].
@@ -97,8 +97,8 @@ Proof.
     destruct (plug_typing_inv P Γ _ _ Hplug) as [Tu Hperf].
     apply perform_typing_inv in Hperf.
     destruct Hperf as
-      (E_t & Δ & Ts0 & n_α & n_β & sig & ret & sig_inst
-       & _ & _ & _ & _ & _ & _ & _ & Hnlsi & _ & _ & Harg & _).
+      (E_t & Δ & Ts0 & n_α & ops & n_β & sig & ret & sig_inst
+       & _ & _ & _ & _ & _ & _ & _ & _ & Hnlsi & _ & _ & Harg & _).
     exists sig_inst. split; assumption.
 Qed.
 

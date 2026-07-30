@@ -334,8 +334,8 @@ Ltac solve_cmd :=
    premises of T_Perform for the single State operation [Cmd<Nat> -> Nat]). *)
 Ltac solve_state_perform :=
   eapply T_Perform with (Ss := (@nil type));
-  [ solve_var | cbn; reflexivity | reflexivity | reflexivity | solve_wf
-  | constructor | cbn; reflexivity | cbn; solve_lt_sub | cbn; reflexivity
+  [ solve_var | cbn; reflexivity | cbn; reflexivity | reflexivity | reflexivity
+  | solve_wf | constructor | cbn; reflexivity | cbn; solve_lt_sub | cbn; reflexivity
   | solve_wf | solve_cmd ].
 
 
@@ -467,11 +467,13 @@ Proof.
   unfold typed_readerExample, readerExample, readerExample_op_body.
   eapply T_Handle; try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
   - apply SA_Refl. solve_wf.
-  - cbn. eapply T_App.
+  - constructor; [| constructor].
+    cbn. eapply T_App.
     + solve_var.
     + solve_nat.
   - cbn. eapply T_Perform with (Ss := (@nil type)).
     + solve_var.
+    + cbn; reflexivity.
     + cbn; reflexivity.
     + reflexivity.
     + reflexivity.
@@ -496,7 +498,8 @@ Proof.
     (T_R := `T 1 -{ `Ll }-> `T 0);
     try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
   - eapply SA_Fun; [ apply SA_Refl; solve_wf | solve_lt | apply SA_Refl; solve_wf ].
-  - cbn. apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
+  - constructor; [| constructor].
+    cbn. apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
     eapply T_App with (A := `T 1) (l := `Ll) (B := `T 0).
     + eapply T_App with (A := `T 1) (l := `Ll) (B := `T 1 -{ `Ll }-> `T 0).
       * solve_var.
@@ -528,7 +531,8 @@ Proof.
     (T_R := `T 1 -{ `Ll }-> `T 0);
     try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
   - eapply SA_Fun; [ apply SA_Refl; solve_wf | solve_lt | apply SA_Refl; solve_wf ].
-  - cbn. apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
+  - constructor; [| constructor].
+    cbn. apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
     eapply T_Match with
       (Ts := [`T 1]) (Delta := `Lf) (arity := 0) (lts := [])
       (rho_fields := []) (scrut_result_ty := T_Cmd `Lf (`T 1))
@@ -583,6 +587,7 @@ Proof.
   eapply T_Handle; try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
   - apply SA_Refl. solve_wf.
   - (* op_body: re-raise the caught value as [Error]. *)
+    constructor; [| constructor].
     cbn. unfold error_v. solve_ctor.
   - (* body: wrap the handled computation's result in [Ok]. *)
     cbn. unfold ok_v.
@@ -620,6 +625,7 @@ Proof.
     cbn. eapply T_Perform with (Ss := [T_File `Lf]).
     + solve_var.
     + cbn; reflexivity.
+    + cbn; reflexivity.
     + reflexivity.
     + reflexivity.
     + solve_wf.
@@ -638,7 +644,8 @@ Proof.
   apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
   eapply T_Handle; try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
   - apply SA_Refl. solve_wf.
-  - cbn. eapply T_App; [ solve_var | solve_var ].
+  - constructor; [| constructor].
+    cbn. eapply T_App; [ solve_var | solve_var ].
   - cbn. eapply T_App; [ solve_var | solve_var ].
 Qed.
 
@@ -647,9 +654,11 @@ Proof.
   unfold typed_exampleOptionality, exampleOptionality, optionality_op_body.
   eapply T_Handle; try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
   - apply SA_Refl. solve_wf.
-  - cbn. eapply T_App; [ solve_var | unfold some_v; solve_ctor ].
+  - constructor; [| constructor].
+    cbn. eapply T_App; [ solve_var | unfold some_v; solve_ctor ].
   - cbn. eapply T_Perform with (Ss := [T_Nat `Lf]).
     + solve_var.
+    + cbn; reflexivity.
     + cbn; reflexivity.
     + reflexivity.
     + reflexivity.
@@ -845,14 +854,14 @@ Theorem red_readerExample_proof : red_readerExample.
 Proof.
   unfold red_readerExample, readerExample, readerExample_op_body.
   eapply MS_Step.
-  { apply (S_Handle Reader_tag 0 [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) (($$ 1) @· two_v)
-             (term_perform ($$ 0) [] (T_Nat `Lf) unit_v) 0).
+  { apply (S_Handle Reader_tag [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) [(0, ($$ 1) @· two_v)]
+             (term_perform ($$ 0) 0 [] (T_Nat `Lf) unit_v) 0).
     cbn. intros H. inversion H. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole). constructor.
-    apply (H_Perform Reader_tag 0 0 [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) (($$ 1) @· two_v) [] (T_Nat `Lf) unit_v EC_hole);
-      [apply unit_v_value | constructor | constructor]. }
+    apply (H_Perform Reader_tag 0 [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) [(0, ($$ 1) @· two_v)] 0 0 (($$ 1) @· two_v) [] (T_Nat `Lf) unit_v EC_hole);
+      [apply unit_v_value | constructor | constructor | reflexivity]. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole). constructor. apply H_Beta, two_v_value. }
@@ -866,17 +875,18 @@ Theorem red_exampleOptionality_proof : red_exampleOptionality.
 Proof.
   unfold red_exampleOptionality, exampleOptionality, optionality_op_body, some_v.
   eapply MS_Step.
-  { apply (S_Handle Optionality_tag 1 [] (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf (T_Nat `Lf))
-             (($$ 1) @· term_ctor some_tag `Lf [] [`T 0] [$$ 0])
-             (term_perform ($$ 0) [T_Nat `Lf] (T_Option `Lf (T_Nat `Lf)) three_v) 0).
+  { apply (S_Handle Optionality_tag [] (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf (T_Nat `Lf))
+             [(1, ($$ 1) @· term_ctor some_tag `Lf [] [`T 0] [$$ 0])]
+             (term_perform ($$ 0) 0 [T_Nat `Lf] (T_Option `Lf (T_Nat `Lf)) three_v) 0).
     cbn. intros H. inversion H. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole). constructor.
-    apply (H_Perform Optionality_tag 0 1 [] (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf (T_Nat `Lf))
+    apply (H_Perform Optionality_tag 0 [] (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf (T_Nat `Lf))
+             [(1, ($$ 1) @· term_ctor some_tag `Lf [] [`T 0] [$$ 0])] 0 1
              (($$ 1) @· term_ctor some_tag `Lf [] [`T 0] [$$ 0])
              [T_Nat `Lf] (T_Option `Lf (T_Nat `Lf)) three_v EC_hole);
-      [apply three_v_value | constructor | constructor]. }
+      [apply three_v_value | constructor | constructor | reflexivity]. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole). constructor.
@@ -895,14 +905,14 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 (EC_ty_app EC_hole (T_File `Lf))
                      (λ: T_Exception `Ll (T_Nat `Lf) \\
-                        term_perform ($$ 0) [T_File `Lf] (T_File `Lf) three_v))).
+                        term_perform ($$ 0) 0 [T_File `Lf] (T_File `Lf) three_v))).
     - repeat constructor.
     - apply H_TyBeta. }
   cbn.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole
                      (λ: T_Exception `Ll (T_Nat `Lf) \\
-                        term_perform ($$ 0) [T_File `Lf] (T_File `Lf) three_v))).
+                        term_perform ($$ 0) 0 [T_File `Lf] (T_File `Lf) three_v))).
     - repeat constructor.
     - apply H_TyBeta. }
   cbn.
@@ -912,7 +922,7 @@ Proof.
     - apply H_Beta. constructor. }
   cbn.
   eapply MS_Step.
-  { eapply (S_Handle _ _ _ _ _ _ _ 0).
+  { eapply (S_Handle _ _ _ _ _ _ 0).
     cbn. intros H. inversion H. }
   cbn.
   eapply MS_Step.
@@ -925,11 +935,12 @@ Proof.
   eapply MS_Step.
   { apply (S_step EC_hole).
     - constructor.
-    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ _ _
                 (EC_ctor ok_tag `Lf [] [T_Nat `Lf; T_File `Lf] [] EC_hole [])).
       + apply three_v_value.
       + repeat constructor.
-      + repeat constructor. }
+      + repeat constructor.
+      + reflexivity. }
   cbn. apply MS_Refl.
 Qed.
 
@@ -959,7 +970,7 @@ Proof.
     - apply H_Beta. unfold withState_prog. constructor. }
   cbn.
   eapply MS_Step.
-  { apply (S_HandleCtx (EC_app1 EC_hole two_v) State_tag 0 [T_Nat `Lf] _ _ _ _ 0).
+  { apply (S_HandleCtx (EC_app1 EC_hole two_v) State_tag [T_Nat `Lf] _ _ _ _ 0).
     - repeat constructor.
     - cbn. intros H. inversion H. }
   cbn.
@@ -971,10 +982,11 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole two_v)).
     - repeat constructor.
-    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ (EC_app2 _ (EC_app2 _ EC_hole))).
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ _ _ (EC_app2 _ (EC_app2 _ EC_hole))).
       + repeat constructor.
       + repeat constructor.
-      + repeat constructor. }
+      + repeat constructor.
+      + reflexivity. }
   cbn.
   (* reduct-λ applied to the initial state 2 *)
   eapply MS_Step.
@@ -1004,10 +1016,11 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole two_v)).
     - repeat constructor.
-    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ (EC_app2 _ (EC_app2 _ EC_hole))).
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ _ _ (EC_app2 _ (EC_app2 _ EC_hole))).
       + repeat constructor.
       + repeat constructor.
-      + repeat constructor. }
+      + repeat constructor.
+      + reflexivity. }
   cbn.
   (* reduct-λ applied to the current state 2 *)
   eapply MS_Step.
@@ -1045,10 +1058,11 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole three_v)).
     - repeat constructor.
-    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
       + repeat constructor.
       + repeat constructor.
-      + repeat constructor. }
+      + repeat constructor.
+      + reflexivity. }
   cbn.
   (* reduct-λ applied to the current state 3 *)
   eapply MS_Step.
@@ -1276,6 +1290,7 @@ Proof.
   eapply T_Perform with (Ss := (@nil type)).
   - solve_var.
   - cbn; reflexivity.
+  - cbn; reflexivity.
   - reflexivity.
   - reflexivity.
   - solve_wf.
@@ -1298,6 +1313,7 @@ Proof.
   eapply T_Perform with (Ss := [T_Nat `Lf]).
   - solve_var.
   - cbn; reflexivity.
+  - cbn; reflexivity.
   - reflexivity.
   - reflexivity.
   - solve_wf.
@@ -1315,21 +1331,21 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 (EC_app1 (EC_ty_app (EC_ty_app
       EC_hole (T_Nat `Lf)) (T_Nat `Lf))
-      (λ: T_Reader `Ll (T_Nat `Lf) \\ term_perform ($$ 0) [] (T_Nat `Lf) unit_v)) two_v)).
+      (λ: T_Reader `Ll (T_Nat `Lf) \\ term_perform ($$ 0) 0 [] (T_Nat `Lf) unit_v)) two_v)).
     - repeat constructor.
     - apply H_LtBeta. }
   cbn.
   eapply MS_Step.
   { apply (S_step (EC_app1 (EC_app1 (EC_ty_app
       EC_hole (T_Nat `Lf))
-      (λ: T_Reader `Ll (T_Nat `Lf) \\ term_perform ($$ 0) [] (T_Nat `Lf) unit_v)) two_v)).
+      (λ: T_Reader `Ll (T_Nat `Lf) \\ term_perform ($$ 0) 0 [] (T_Nat `Lf) unit_v)) two_v)).
     - repeat constructor.
     - apply H_TyBeta. }
   cbn.
   eapply MS_Step.
   { apply (S_step (EC_app1 (EC_app1
       EC_hole
-      (λ: T_Reader `Ll (T_Nat `Lf) \\ term_perform ($$ 0) [] (T_Nat `Lf) unit_v)) two_v)).
+      (λ: T_Reader `Ll (T_Nat `Lf) \\ term_perform ($$ 0) 0 [] (T_Nat `Lf) unit_v)) two_v)).
     - repeat constructor.
     - apply H_TyBeta. }
   cbn.
@@ -1339,7 +1355,7 @@ Proof.
     - apply H_Beta. constructor. }
   cbn.
   eapply MS_Step.
-  { apply (S_HandleCtx (EC_app1 EC_hole two_v) Reader_tag 0 [T_Nat `Lf] _ _ _ _ 0).
+  { apply (S_HandleCtx (EC_app1 EC_hole two_v) Reader_tag [T_Nat `Lf] _ _ _ _ 0).
     - repeat constructor.
     - cbn. intros H. inversion H. }
   cbn.
@@ -1351,10 +1367,11 @@ Proof.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole two_v)).
     - repeat constructor.
-    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
       + repeat constructor.
       + repeat constructor.
-      + repeat constructor. }
+      + repeat constructor.
+      + reflexivity. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole).
@@ -1388,7 +1405,7 @@ Proof.
   unfold red_withId_example, withId_example, withId, withId_op_body.
   eapply MS_Step.
   { apply (S_step (EC_app1 EC_hole
-      (λ: T_Id `Ll \\ term_perform ($$ 0) [T_Nat `Lf] (T_Nat `Lf) two_v))).
+      (λ: T_Id `Ll \\ term_perform ($$ 0) 0 [T_Nat `Lf] (T_Nat `Lf) two_v))).
     - repeat constructor.
     - apply H_TyBeta. }
   cbn.
@@ -1398,7 +1415,7 @@ Proof.
     - apply H_Beta. constructor. }
   cbn.
   eapply MS_Step.
-  { eapply (S_Handle _ _ _ _ _ _ _ 0).
+  { eapply (S_Handle _ _ _ _ _ _ 0).
     cbn. intros H. inversion H. }
   cbn.
   eapply MS_Step.
@@ -1409,10 +1426,11 @@ Proof.
   eapply MS_Step.
   { apply (S_step EC_hole).
     - constructor.
-    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ EC_hole).
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ _ _ EC_hole).
       + apply two_v_value.
       + constructor.
-      + constructor. }
+      + constructor.
+      + reflexivity. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole).
@@ -1488,12 +1506,14 @@ Proof.
   unfold typed_multishotExample, multishotExample, multishot_op_body.
   eapply T_Handle; try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
   - apply SA_Refl. solve_wf.
-  - cbn. eapply T_App with (A := T_Nat `Lf) (l := `Ll) (B := T_Nat `Lf).
+  - constructor; [| constructor].
+    cbn. eapply T_App with (A := T_Nat `Lf) (l := `Ll) (B := T_Nat `Lf).
     + apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt_sub ].
       eapply T_App; [ solve_var | solve_nat ].
     + eapply T_App; [ solve_var | solve_nat ].
   - cbn. eapply T_Perform with (Ss := (@nil type)).
     + solve_var.
+    + cbn; reflexivity.
     + cbn; reflexivity.
     + reflexivity.
     + reflexivity.
@@ -1513,6 +1533,7 @@ Proof.
   eapply T_Handle; try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
   - apply SA_Refl. solve_wf.
   - (* throw clause: Error<Nat,File>(e) *)
+    constructor; [| constructor].
     cbn. eapply T_Ctor with
       (n_lt := 0) (n_ty := 2) (lts := []) (Ts := [T_Nat `Lf; T_File `Lf])
       (sigma_fields := [`T 0]) (result_ty_schema := T_Result `Lf (`T 0) (`T 1));
@@ -1529,12 +1550,14 @@ Proof.
       eapply T_Handle; try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
       * apply SA_Refl. solve_wf.
       * (* ask clause: resume(2) *)
+        constructor; [| constructor].
         cbn. eapply T_App; [ solve_var | solve_nat ].
       * (* let x = ask in throw x *)
         cbn. eapply T_App with (A := T_Nat `Lf) (l := `Ll) (B := T_File `Lf).
         -- apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt_sub ].
            eapply T_Perform with (Ss := [T_File `Lf]).
            ++ solve_var.
+           ++ cbn; reflexivity.
            ++ cbn; reflexivity.
            ++ reflexivity.
            ++ reflexivity.
@@ -1547,6 +1570,7 @@ Proof.
            ++ solve_var.
         -- eapply T_Perform with (Ss := (@nil type)).
            ++ solve_var.
+           ++ cbn; reflexivity.
            ++ cbn; reflexivity.
            ++ reflexivity.
            ++ reflexivity.
@@ -1639,16 +1663,17 @@ Theorem red_multishotExample_proof : red_multishotExample.
 Proof.
   unfold red_multishotExample, multishotExample, multishot_op_body.
   eapply MS_Step.
-  { eapply (S_Handle _ _ _ _ _ _ _ 0).
+  { eapply (S_Handle _ _ _ _ _ _ 0).
     cbn. intros H. inversion H. }
   cbn.
   eapply MS_Step.
   { apply (S_step EC_hole).
     - constructor.
-    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ EC_hole).
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ _ _ EC_hole).
       + repeat constructor.
       + constructor.
-      + constructor. }
+      + constructor.
+      + reflexivity. }
   cbn.
   eapply MS_Step.
   { apply (S_step (EC_app2 _ EC_hole)).
@@ -1681,7 +1706,7 @@ Theorem red_forwardExample_proof : red_forwardExample.
 Proof.
   unfold red_forwardExample, forwardExample, forward_inner_body, error_v, ok_v.
   eapply MS_Step.
-  { eapply (S_Handle _ _ _ _ _ _ _ 0).
+  { eapply (S_Handle _ _ _ _ _ _ 0).
     cbn. intros H. inversion H. }
   cbn.
   eapply MS_Step.
@@ -1689,7 +1714,7 @@ Proof.
       (EC_handler_m 0 (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
                       (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
         (EC_ctor ok_tag `Lf [] [T_Nat `Lf; T_File `Lf] [] EC_hole []))
-      Reader_tag 0 [T_Nat `Lf] (T_File `Lf) (T_File `Lf) _ _ 1).
+      Reader_tag [T_Nat `Lf] (T_File `Lf) (T_File `Lf) _ _ 1).
     - repeat constructor.
     - cbn. intros H.
       repeat (destruct H as [H|H]; [ discriminate H |]). exact H. }
@@ -1699,10 +1724,11 @@ Proof.
                       (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
         (EC_ctor ok_tag `Lf [] [T_Nat `Lf; T_File `Lf] [] EC_hole []))).
     - repeat constructor.
-    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
       + repeat constructor.
       + repeat constructor.
-      + repeat constructor. }
+      + repeat constructor.
+      + reflexivity. }
   cbn.
   eapply MS_Step.
   { apply (S_step (EC_handler_m 0 (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
@@ -1722,11 +1748,189 @@ Proof.
   eapply MS_Step.
   { apply (S_step EC_hole).
     - constructor.
-    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ _ _
         (EC_ctor ok_tag `Lf [] [T_Nat `Lf; T_File `Lf] []
           (EC_handler_m 1 (T_File `Lf) (T_File `Lf) EC_hole) [])).
       + apply two_v_value.
       + apply pem_ctor. apply pem_handler_m; [ discriminate | apply pem_hole ].
-      + repeat constructor. }
+      + repeat constructor.
+      + reflexivity. }
+  cbn. apply MS_Refl.
+Qed.
+
+(* ================================================================== *)
+(* MULTI-OPERATION SHOWCASE PROOFS.                                   *)
+(* [statemExample] uses the honest two-operation declaration          *)
+(*   effect StateM<s> { op get(): s ; op put(s): Unit }               *)
+(* The typing exercises T_Handle's per-operation Forall2 (two         *)
+(* clauses); the reduction fires H_Perform three times — get (index   *)
+(* 0), put (index 1), get (index 0) — each clause selected by         *)
+(* nth_error.                                                         *)
+(* ================================================================== *)
+
+Theorem typed_statemExample_proof : typed_statemExample.
+Proof.
+  unfold typed_statemExample, statemExample, statemExample_handler,
+         statem_get_body, statem_put_body.
+  eapply T_App with (A := T_Nat `Lf) (l := `Ll) (B := T_Nat `Lf); [ | solve_nat ].
+  eapply T_Handle with
+    (T_B := T_Nat `Lf -{ `Lf }-> T_Nat `Lf)
+    (T_R := T_Nat `Lf -{ `Ll }-> T_Nat `Lf);
+    try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
+  - eapply SA_Fun; [ apply SA_Refl; solve_wf | solve_lt | apply SA_Refl; solve_wf ].
+  - (* the TWO operation clauses *)
+    constructor; [ | constructor; [ | constructor ] ].
+    + (* get clause (index 0): fun(s) resume(s)(s) *)
+      cbn. apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
+      eapply T_App with (A := T_Nat `Lf) (l := `Ll) (B := T_Nat `Lf).
+      * eapply T_App with (A := T_Nat `Lf) (l := `Ll)
+          (B := T_Nat `Lf -{ `Ll }-> T_Nat `Lf); solve_var.
+      * solve_var.
+    + (* put clause (index 1): fun(_) resume(Unit())(s') *)
+      cbn. apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt ].
+      eapply T_App with (A := T_Nat `Lf) (l := `Ll) (B := T_Nat `Lf).
+      * eapply T_App with (A := T_Unit) (l := `Ll)
+          (B := T_Nat `Lf -{ `Ll }-> T_Nat `Lf);
+          [ solve_var | unfold unit_v; solve_ctor ].
+      * solve_var.
+  - (* body: let a = get in let _ = put 3 in let b = get in fun(s) b *)
+    cbn.
+    eapply T_App with (A := T_Nat `Lf) (l := `Ll)
+      (B := T_Nat `Lf -{ `Lf }-> T_Nat `Lf).
+    + apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt_sub ].
+      cbn.
+      eapply T_App with (A := T_Unit) (l := `Ll)
+        (B := T_Nat `Lf -{ `Lf }-> T_Nat `Lf).
+      * apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt_sub ].
+        cbn.
+        eapply T_App with (A := T_Nat `Lf) (l := `Ll)
+          (B := T_Nat `Lf -{ `Lf }-> T_Nat `Lf).
+        -- apply T_Lam; [ solve_wf | solve_wf | | cbn; solve_lt_sub ].
+           apply T_Lam; [ solve_wf | solve_wf | solve_var | cbn; solve_lt ].
+        -- (* third perform: get, index 0 *)
+           eapply T_Perform with (Ss := (@nil type));
+             [ solve_var | cbn; reflexivity | cbn; reflexivity
+             | reflexivity | reflexivity | solve_wf | constructor
+             | cbn; reflexivity | cbn; solve_lt_sub | cbn; reflexivity
+             | solve_wf | unfold unit_v; solve_ctor ].
+      * (* second perform: put, index 1 *)
+        eapply T_Perform with (Ss := (@nil type));
+          [ solve_var | cbn; reflexivity | cbn; reflexivity
+          | reflexivity | reflexivity | solve_wf | constructor
+          | cbn; reflexivity | cbn; solve_lt_sub | cbn; reflexivity
+          | solve_wf | solve_nat ].
+    + (* first perform: get, index 0 *)
+      eapply T_Perform with (Ss := (@nil type));
+        [ solve_var | cbn; reflexivity | cbn; reflexivity
+        | reflexivity | reflexivity | solve_wf | constructor
+        | cbn; reflexivity | cbn; solve_lt_sub | cbn; reflexivity
+        | solve_wf | unfold unit_v; solve_ctor ].
+Qed.
+
+Theorem red_statemExample_proof : red_statemExample.
+Proof.
+  unfold red_statemExample, statemExample, statemExample_handler,
+         statem_get_body, statem_put_body.
+  (* allocate the capability (fresh marker 0) under the state application *)
+  eapply MS_Step.
+  { apply (S_HandleCtx (EC_app1 EC_hole two_v) StateM_tag [T_Nat `Lf] _ _ _ _ 0).
+    - repeat constructor.
+    - cbn. intros H. inversion H. }
+  cbn.
+  (* first get fires: operation index 0 *)
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole two_v)).
+    - repeat constructor.
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
+      + repeat constructor.
+      + repeat constructor.
+      + repeat constructor.
+      + reflexivity. }
+  cbn.
+  (* the get clause's state lambda meets the initial state 2 *)
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Beta. apply two_v_value. }
+  cbn.
+  (* resume(2): re-install the delimiter *)
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole two_v)).
+    - repeat constructor.
+    - apply H_Beta. apply two_v_value. }
+  cbn.
+  (* continue the body with a = 2 *)
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_handler_m 0 _ _ EC_hole) two_v)).
+    - repeat constructor.
+    - apply H_Beta. apply two_v_value. }
+  cbn.
+  (* put(3) fires: operation index 1 *)
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole two_v)).
+    - repeat constructor.
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
+      + repeat constructor.
+      + repeat constructor.
+      + repeat constructor.
+      + reflexivity. }
+  cbn.
+  (* the put clause discards the old state 2 *)
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Beta. apply two_v_value. }
+  cbn.
+  (* resume(Unit()) *)
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole three_v)).
+    - repeat constructor.
+    - apply H_Beta. repeat constructor. }
+  cbn.
+  (* continue the body with _ = Unit() *)
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_handler_m 0 _ _ EC_hole) three_v)).
+    - repeat constructor.
+    - apply H_Beta. repeat constructor. }
+  cbn.
+  (* second get fires: operation index 0 again *)
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole three_v)).
+    - repeat constructor.
+    - eapply (H_Perform _ _ _ _ _ _ _ _ _ _ _ _ (EC_app2 _ EC_hole)).
+      + repeat constructor.
+      + repeat constructor.
+      + repeat constructor.
+      + reflexivity. }
+  cbn.
+  (* the get clause's state lambda meets the current state 3 *)
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Beta. apply three_v_value. }
+  cbn.
+  (* resume(3) *)
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole three_v)).
+    - repeat constructor.
+    - apply H_Beta. apply three_v_value. }
+  cbn.
+  (* b = 3: the body is exhausted, produce the post-handler λ *)
+  eapply MS_Step.
+  { apply (S_step (EC_app1 (EC_handler_m 0 _ _ EC_hole) three_v)).
+    - repeat constructor.
+    - apply H_Beta. apply three_v_value. }
+  cbn.
+  (* the delimiter's body is a value: H_Return drops the delimiter *)
+  eapply MS_Step.
+  { apply (S_step (EC_app1 EC_hole three_v)).
+    - repeat constructor.
+    - apply H_Return. constructor. }
+  cbn.
+  (* final application: (λs. 3) 3 *)
+  eapply MS_Step.
+  { apply (S_step EC_hole).
+    - constructor.
+    - apply H_Beta. apply three_v_value. }
   cbn. apply MS_Refl.
 Qed.

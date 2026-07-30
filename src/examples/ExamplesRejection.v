@@ -85,8 +85,8 @@ Qed.
 Definition leak_ty : type := T_Option `Lf (T_Reader `Ll T_Unit).
 
 Definition leak_reader : term :=
-  term_handle Reader_tag 0 [T_Unit] leak_ty leak_ty
-    (($$ 1) @· ($$ 0))
+  term_handle Reader_tag [T_Unit] leak_ty leak_ty
+    [(0, ($$ 1) @· ($$ 0))]
     (some_v (T_Reader `Ll T_Unit) ($$ 0)).
 
 Theorem leak_reader_rejected : forall T,
@@ -94,8 +94,7 @@ Theorem leak_reader_rejected : forall T,
 Proof.
   intros T H.
   apply handle_typing_inv in H.
-  destruct H as (n_α & sig & ret & sigβ & retβ &
-                 _ & _ & _ & _ & _ & Hnl & _).
+  destruct H as (n_α & ops & _ & _ & _ & _ & _ & Hnl & _).
   revert Hnl.
   apply nolocb_false_rejects.
   - exact full_ctx_lt_ctx_wf.
@@ -135,15 +134,15 @@ Qed.
 Definition leak_state_cap_ty : type := T_State `Ll leak_ty.
 
 Definition get_local_reader : term :=
-  term_perform ($$ 0) [] leak_ty (term_ctor get_tag `Lf [] [leak_ty] []).
+  term_perform ($$ 0) 0 [] leak_ty (term_ctor get_tag `Lf [] [leak_ty] []).
 
 Theorem get_local_reader_rejected : forall T,
   ~ ((bind_tm leak_state_cap_ty :: full_ctx) ⊢ₜ get_local_reader : T).
 Proof.
   intros T H.
   apply perform_typing_inv in H.
-  destruct H as (E & Δ & Ts & n_α & n_β & sig & ret & sig_inst &
-                 Hrecv & Heff & _ & _ & _ & _ & Hsi & Hnlsi & _).
+  destruct H as (E & Δ & Ts & n_α & ops & n_β & sig & ret & sig_inst &
+                 Hrecv & Heff & Hnth & _ & _ & _ & _ & Hsi & Hnlsi & _).
   (* pin the receiver's effect type: the capability variable's bound  *)
   (* is a State constructor, and constructor subtyping preserves tag  *)
   (* and (invariant) type arguments.                                  *)
@@ -156,8 +155,10 @@ Proof.
     as [l' [Heq _]].
   unfold leak_state_cap_ty, T_State in Heq.
   injection Heq as HeqE Heql HeqTs. subst E l' Ts.
-  vm_compute in Heff. injection Heff as Hnα Hnβ Hsig Hret.
-  subst n_α n_β sig ret. subst sig_inst.
+  vm_compute in Heff. injection Heff as Hnα Hops.
+  subst n_α ops.
+  vm_compute in Hnth. injection Hnth as Hnβ Hsig Hret.
+  subst n_β sig ret. subst sig_inst.
   revert Hnlsi.
   apply nolocb_false_rejects.
   - apply full_ctx_tm_lt_ctx_wf.
@@ -262,7 +263,7 @@ Qed.
 Definition capture_ctx : ctx := bind_tm (T_Reader `Ll T_Unit) :: full_ctx.
 
 Definition ask_closure : term :=
-  λ: T_Unit \\ term_perform ($$ 1) [] T_Unit ($$ 0).
+  λ: T_Unit \\ term_perform ($$ 1) 0 [] T_Unit ($$ 0).
 
 Theorem ask_closure_rejected_at_free : forall B,
   ~ (capture_ctx ⊢ₜ ask_closure : (T_Unit -{ `Lf }-> B)).
@@ -274,7 +275,7 @@ Proof.
     as [A' [l' [B' [Heq [_ [Hl _]]]]]].
   injection Heq as HA Hll HB. subst A' l' B'.
   assert (Hfree : capture_ctx ⊢ₗ
-            capture_lt capture_ctx (term_perform ($$ 1) [] T_Unit ($$ 0))
+            capture_lt capture_ctx (term_perform ($$ 1) 0 [] T_Unit ($$ 0))
             <: lt_free)
     by (eapply LS_Trans; eauto).
   apply lt_subb_complete in Hfree.
@@ -289,6 +290,7 @@ Proof.
   - solve_wf.
   - eapply T_Perform with (Ts := [T_Unit]) (Ss := []).
     + solve_var.
+    + cbn; reflexivity.
     + cbn; reflexivity.
     + reflexivity.
     + reflexivity.
@@ -314,8 +316,8 @@ Definition leak2_ty : type :=
   T_Option `Lf (T_Option `Lf (T_Reader `Ll T_Unit)).
 
 Definition leak_reader2 : term :=
-  term_handle Reader_tag 0 [T_Unit] leak2_ty leak2_ty
-    (($$ 1) @· ($$ 0))
+  term_handle Reader_tag [T_Unit] leak2_ty leak2_ty
+    [(0, ($$ 1) @· ($$ 0))]
     (some_v (T_Option `Lf (T_Reader `Ll T_Unit))
             (some_v (T_Reader `Ll T_Unit) ($$ 0))).
 
@@ -324,8 +326,7 @@ Theorem leak_reader2_rejected : forall T,
 Proof.
   intros T H.
   apply handle_typing_inv in H.
-  destruct H as (n_α & sig & ret & sigβ & retβ &
-                 _ & _ & _ & _ & _ & Hnl & _).
+  destruct H as (n_α & ops & _ & _ & _ & _ & _ & Hnl & _).
   revert Hnl.
   apply nolocb_false_rejects.
   - exact full_ctx_lt_ctx_wf.

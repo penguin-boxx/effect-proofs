@@ -153,12 +153,12 @@ Qed.
 (* capabilities; the runtime `marker_ok` invariant does.              *)
 (* ================================================================== *)
 
-Lemma well_scoped_plug_cap_pure_in : forall ms E E_tag m n_beta Ts T_R op_body,
+Lemma well_scoped_plug_cap_pure_in : forall ms E E_tag m Ts T_R op_bodies,
   pure_ectx_m m E ->
-  well_scoped ms (plug E (term_cap E_tag m n_beta Ts T_R op_body)) ->
+  well_scoped ms (plug E (term_cap E_tag m Ts T_R op_bodies)) ->
   In m ms.
 Proof.
-  intros ms E E_tag m n_beta Ts T_R op_body Hpure.
+  intros ms E E_tag m Ts T_R op_bodies Hpure.
   revert ms. induction Hpure; simpl; intros ms Hmok.
   - exact (proj1 Hmok).
   - apply IHHpure. exact (proj1 Hmok).
@@ -176,23 +176,23 @@ Proof.
   all: tauto.
 Qed.
 
-Theorem capability_confined : forall E E_tag m n_beta Ts T_R op_body,
-  well_scoped [] (plug E (term_cap E_tag m n_beta Ts T_R op_body)) ->
+Theorem capability_confined : forall E E_tag m Ts T_R op_bodies,
+  well_scoped [] (plug E (term_cap E_tag m Ts T_R op_bodies)) ->
   ~ pure_ectx_m m E.
 Proof.
-  intros E E_tag m n_beta Ts T_R op_body Hmok Hpure.
-  pose proof (well_scoped_plug_cap_pure_in [] E E_tag m n_beta Ts T_R op_body Hpure Hmok) as Hin.
+  intros E E_tag m Ts T_R op_bodies Hmok Hpure.
+  pose proof (well_scoped_plug_cap_pure_in [] E E_tag m Ts T_R op_bodies Hpure Hmok) as Hin.
   inversion Hin.
 Qed.
 
-Theorem capability_never_exposed : forall Γ t E E_tag m n_beta Ts T_R op_body T,
+Theorem capability_never_exposed : forall Γ t E E_tag m Ts T_R op_bodies T,
   eval_ctx Γ ->
   (forall u, multi_step t u -> well_scoped [] u) ->
   Γ ⊢ₜ t : T ->
-  multi_step t (plug E (term_cap E_tag m n_beta Ts T_R op_body)) ->
+  multi_step t (plug E (term_cap E_tag m Ts T_R op_bodies)) ->
   ~ pure_ectx_m m E.
 Proof.
-  intros Γ t E E_tag m n_beta Ts T_R op_body T Hec Hmok_reachable Hty Hms Hpure.
+  intros Γ t E E_tag m Ts T_R op_bodies T Hec Hmok_reachable Hty Hms Hpure.
   pose proof (Hmok_reachable _ Hms) as Hmok'.
   eapply capability_confined; eauto.
 Qed.
@@ -202,14 +202,14 @@ Qed.
 (* the marker_ok trace premise is discharged by the step-preserved     *)
 (* runtime invariants, so confinement needs only the initial typing.   *)
 Corollary source_capability_never_exposed :
-  forall Γ t E E_tag m n_beta Ts T_R op_body T,
+  forall Γ t E E_tag m Ts T_R op_bodies T,
   eval_ctx Γ ->
   has_rt_cap t = false ->
   Γ ⊢ₜ t : T ->
-  multi_step t (plug E (term_cap E_tag m n_beta Ts T_R op_body)) ->
+  multi_step t (plug E (term_cap E_tag m Ts T_R op_bodies)) ->
   ~ pure_ectx_m m E.
 Proof.
-  intros Γ t E E_tag m n_beta Ts T_R op_body T Hec Hsrc Hty Hms.
+  intros Γ t E E_tag m Ts T_R op_bodies T Hec Hsrc Hty Hms.
   eapply capability_never_exposed; [exact Hec | | exact Hty | exact Hms].
   intros u Hms'.
   destruct (multi_step_preserves_safety_invariants _ _ _ _ Hec

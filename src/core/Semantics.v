@@ -40,8 +40,8 @@ Inductive ectx : Type :=
                     list term -> ectx -> list term -> ectx
   | EC_match      : ectx -> ctor_tag -> nat -> nat -> term -> term -> ectx
   | EC_handler_m  : marker -> type -> type -> ectx -> ectx
-  | EC_perform_r  : ectx -> list type -> type -> term -> ectx
-  | EC_perform_a  : term -> list type -> type -> ectx -> ectx.
+  | EC_perform_r  : ectx -> nat -> list type -> type -> term -> ectx
+  | EC_perform_a  : term -> nat -> list type -> type -> ectx -> ectx.
 
 Fixpoint plug (E : ectx) (t : term) : term :=
   match E with
@@ -53,8 +53,8 @@ Fixpoint plug (E : ectx) (t : term) : term :=
   | EC_ctor K l lts Ts vs E1 ts   => term_ctor K l lts Ts (vs ++ plug E1 t :: ts)
   | EC_match E1 K nlt ar y n      => term_match (plug E1 t) K nlt ar y n
   | EC_handler_m m T_B T_R E1     => term_handler_m m T_B T_R (plug E1 t)
-  | EC_perform_r E1 Ss A arg      => term_perform (plug E1 t) Ss A arg
-  | EC_perform_a v Ss A E1        => term_perform v Ss A (plug E1 t)
+  | EC_perform_r E1 op Ss A arg   => term_perform (plug E1 t) op Ss A arg
+  | EC_perform_a v op Ss A E1     => term_perform v op Ss A (plug E1 t)
   end.
 
 (* Marker-pure evaluation contexts for marker m:  all ectx shapes     *)
@@ -80,10 +80,10 @@ Inductive pure_ectx_m (m : marker) : ectx -> Prop :=
     | pem_handler_m : forall m' T_B T_R E,
       m <> m' ->
       pure_ectx_m m E -> pure_ectx_m m (EC_handler_m m' T_B T_R E)
-  | pem_perform_r : forall E Ss A arg,
-      pure_ectx_m m E -> pure_ectx_m m (EC_perform_r E Ss A arg)
-  | pem_perform_a : forall v Ss A E,
-      pure_ectx_m m E -> pure_ectx_m m (EC_perform_a v Ss A E).
+  | pem_perform_r : forall E op Ss A arg,
+      pure_ectx_m m E -> pure_ectx_m m (EC_perform_r E op Ss A arg)
+  | pem_perform_a : forall v op Ss A E,
+      pure_ectx_m m E -> pure_ectx_m m (EC_perform_a v op Ss A E).
 
 Hint Constructors pure_ectx_m : core.
 
@@ -107,11 +107,11 @@ Fixpoint shift_ectx_tm (amount cutoff : nat) (E : ectx) : ectx :=
                                     (shift_tm amount (cutoff + ar) y)
                                     (shift_tm amount cutoff n)
   | EC_handler_m m T_B T_R E1   => EC_handler_m m T_B T_R (shift_ectx_tm amount cutoff E1)
-  | EC_perform_r E1 Ss A arg    => EC_perform_r (shift_ectx_tm amount cutoff E1)
-                                                 Ss A
+  | EC_perform_r E1 op Ss A arg => EC_perform_r (shift_ectx_tm amount cutoff E1)
+                                                 op Ss A
                                                  (shift_tm amount cutoff arg)
-  | EC_perform_a v Ss A E1      => EC_perform_a (shift_tm amount cutoff v)
-                                                 Ss A
+  | EC_perform_a v op Ss A E1   => EC_perform_a (shift_tm amount cutoff v)
+                                                 op Ss A
                                                  (shift_ectx_tm amount cutoff E1)
   end.
 
@@ -135,9 +135,19 @@ Fixpoint markers_in (t : term) : list marker :=
   | term_ctor _ _ _ _ ts => markers_in_list_local ts
   | term_match scrut _ _ _ yes_body no_body =>
       markers_in scrut ++ markers_in yes_body ++ markers_in no_body
-  | term_handle _ _ _ _ _ op_body body => markers_in op_body ++ markers_in body
-  | term_perform recv _ _ arg => markers_in recv ++ markers_in arg
-  | term_cap _ m _ _ _ op_body => m :: markers_in op_body
+  | term_handle _ _ _ _ op_bodies body =>
+      (fix go_ops (obs : list (nat * term)) : list marker :=
+         match obs with
+         | []              => []
+         | (_, ob) :: rest => markers_in ob ++ go_ops rest
+         end) op_bodies ++ markers_in body
+  | term_perform recv _ _ _ arg => markers_in recv ++ markers_in arg
+  | term_cap _ m _ _ op_bodies =>
+      m :: (fix go_ops (obs : list (nat * term)) : list marker :=
+              match obs with
+              | []              => []
+              | (_, ob) :: rest => markers_in ob ++ go_ops rest
+              end) op_bodies
   | term_handler_m m _ _ body => m :: markers_in body
   end.
 
@@ -145,6 +155,12 @@ Fixpoint markers_in_list (ts : list term) : list marker :=
   match ts with
   | [] => []
   | u :: rest => markers_in u ++ markers_in_list rest
+  end.
+
+Fixpoint markers_in_ops (obs : list (nat * term)) : list marker :=
+  match obs with
+  | []              => []
+  | (_, ob) :: rest => markers_in ob ++ markers_in_ops rest
   end.
 
 
@@ -202,11 +218,11 @@ Inductive ectx_wf : ectx -> Prop :=
       ectx_wf E -> ectx_wf (EC_match E K nlt ar y n)
     | wf_handler_m  : forall m T_B T_R E,
       ectx_wf E -> ectx_wf (EC_handler_m m T_B T_R E)
-  | wf_perform_r  : forall E Ss A arg,
-      ectx_wf E -> ectx_wf (EC_perform_r E Ss A arg)
-  | wf_perform_a  : forall v Ss A E,
+  | wf_perform_r  : forall E op Ss A arg,
+      ectx_wf E -> ectx_wf (EC_perform_r E op Ss A arg)
+  | wf_perform_a  : forall v op Ss A E,
       value v -> ectx_wf E ->
-      ectx_wf (EC_perform_a v Ss A E).
+      ectx_wf (EC_perform_a v op Ss A E).
 
 Hint Constructors ectx_wf : core.
 
@@ -257,10 +273,11 @@ Inductive head_step : term -> term -> Prop :=
   (* The shift on P accounts for the new term-binder introduced by    *)
   (* the resumption lambda.  Applying the resumption is ordinary      *)
   (* H_Beta: it substitutes the value into the delimited body.        *)
-  | H_Perform : forall E_tag m n_beta Ts T_B T_R op_body Ss A v P,
+  | H_Perform : forall E_tag m Ts T_B T_R op_bodies op n_beta op_body Ss A v P,
       value v -> pure_ectx_m m P -> ectx_wf P ->
+      nth_error op_bodies op = Some (n_beta, op_body) ->
       term_handler_m m T_B T_R
-        (plug P (term_perform (term_cap E_tag m n_beta Ts T_R op_body) Ss A v))
+        (plug P (term_perform (term_cap E_tag m Ts T_R op_bodies) op Ss A v))
         -->h
           subst_list_tm
             [v; term_lam (term_handler_m m T_B T_R
@@ -284,11 +301,11 @@ Inductive step : term -> term -> Prop :=
       ectx_wf E ->
       r -->h r' ->
       plug E r ==> plug E r'
-  | S_HandleCtx : forall E E_tag n_beta Ts T_B T_R op_body body m,
+  | S_HandleCtx : forall E E_tag Ts T_B T_R op_bodies body m,
       ectx_wf E ->
-      ~ In m (markers_in (plug E (term_handle E_tag n_beta Ts T_B T_R op_body body))) ->
-      plug E (term_handle E_tag n_beta Ts T_B T_R op_body body)
-        ==> plug E (term_handler_m m T_B T_R (subst_tm 0 (term_cap E_tag m n_beta Ts T_R op_body) body))
+      ~ In m (markers_in (plug E (term_handle E_tag Ts T_B T_R op_bodies body))) ->
+      plug E (term_handle E_tag Ts T_B T_R op_bodies body)
+        ==> plug E (term_handler_m m T_B T_R (subst_tm 0 (term_cap E_tag m Ts T_R op_bodies) body))
 where "t '==>' t'" := (step t t').
 
 Hint Constructors step : core.
@@ -314,8 +331,8 @@ Fixpoint comp_ectx (E1 E2 : ectx) : ectx :=
   | EC_ctor K l lts Ts vs E ts  => EC_ctor K l lts Ts vs (comp_ectx E E2) ts
   | EC_match E K nlt ar y n     => EC_match (comp_ectx E E2) K nlt ar y n
   | EC_handler_m m T_B T_R E    => EC_handler_m m T_B T_R (comp_ectx E E2)
-  | EC_perform_r E Ss A arg     => EC_perform_r (comp_ectx E E2) Ss A arg
-  | EC_perform_a v Ss A E       => EC_perform_a v Ss A (comp_ectx E E2)
+  | EC_perform_r E op Ss A arg  => EC_perform_r (comp_ectx E E2) op Ss A arg
+  | EC_perform_a v op Ss A E    => EC_perform_a v op Ss A (comp_ectx E E2)
   end.
 
 Lemma plug_comp_ectx : forall E1 E2 u,
@@ -421,13 +438,13 @@ Proof.
   apply (step_in_ctx (EC_match EC_hole tag nlt ar y n)); auto.
 Qed.
 
-Lemma S_Handle : forall E_tag n_beta Ts T_B T_R op_body body m,
-  ~ In m (markers_in (term_handle E_tag n_beta Ts T_B T_R op_body body)) ->
-  term_handle E_tag n_beta Ts T_B T_R op_body body
-    ==> term_handler_m m T_B T_R (subst_tm 0 (term_cap E_tag m n_beta Ts T_R op_body) body).
+Lemma S_Handle : forall E_tag Ts T_B T_R op_bodies body m,
+  ~ In m (markers_in (term_handle E_tag Ts T_B T_R op_bodies body)) ->
+  term_handle E_tag Ts T_B T_R op_bodies body
+    ==> term_handler_m m T_B T_R (subst_tm 0 (term_cap E_tag m Ts T_R op_bodies) body).
 Proof.
-  intros E_tag n_beta Ts T_B T_R op_body body m Hfresh.
-  apply (S_HandleCtx EC_hole E_tag n_beta Ts T_B T_R op_body body m); [constructor | exact Hfresh].
+  intros E_tag Ts T_B T_R op_bodies body m Hfresh.
+  apply (S_HandleCtx EC_hole E_tag Ts T_B T_R op_bodies body m); [constructor | exact Hfresh].
 Qed.
 
 Lemma S_Return : forall m T_B T_R v,
@@ -439,16 +456,16 @@ Lemma S_HandlerM : forall m T_B T_R t,
   exists u, term_handler_m m T_B T_R t ==> u.
 Proof. intros m T_B T_R t. apply (step_in_ctx (EC_handler_m m T_B T_R EC_hole)); auto. Qed.
 
-Lemma S_PerformRecv : forall t Ss A arg,
+Lemma S_PerformRecv : forall t op Ss A arg,
   (exists t', t ==> t') ->
-  exists u, term_perform t Ss A arg ==> u.
-Proof. intros t Ss A arg. apply (step_in_ctx (EC_perform_r EC_hole Ss A arg)); auto. Qed.
+  exists u, term_perform t op Ss A arg ==> u.
+Proof. intros t op Ss A arg. apply (step_in_ctx (EC_perform_r EC_hole op Ss A arg)); auto. Qed.
 
-Lemma S_PerformArg : forall v Ss A t,
+Lemma S_PerformArg : forall v op Ss A t,
   value v ->
   (exists t', t ==> t') ->
-  exists u, term_perform v Ss A t ==> u.
-Proof. intros v Ss A t Hv. apply (step_in_ctx (EC_perform_a v Ss A EC_hole)); auto. Qed.
+  exists u, term_perform v op Ss A t ==> u.
+Proof. intros v op Ss A t Hv. apply (step_in_ctx (EC_perform_a v op Ss A EC_hole)); auto. Qed.
 
 (* ------------------------------------------------------------------ *)
 (* Reflexive-transitive closure of the step relation.                 *)

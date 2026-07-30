@@ -97,13 +97,13 @@ Proof.
     apply Himpl; eassumption.
 Qed.
 
-Lemma perform_recv_replace : forall Γ u u' Ss A arg T,
-  Γ ⊢ₜ term_perform u Ss A arg : T ->
+Lemma perform_recv_replace : forall Γ u u' op Ss A arg T,
+  Γ ⊢ₜ term_perform u op Ss A arg : T ->
   (forall Tu, Γ ⊢ₜ u : Tu -> Γ ⊢ₜ u' : Tu) ->
-  Γ ⊢ₜ term_perform u' Ss A arg : T.
+  Γ ⊢ₜ term_perform u' op Ss A arg : T.
 Proof.
-  intros Γ u u' Ss A arg T H Himpl.
-  remember (term_perform u Ss A arg) as s eqn:Hs. revert Hs.
+  intros Γ u u' op Ss A arg T H Himpl.
+  remember (term_perform u op Ss A arg) as s eqn:Hs. revert Hs.
   induction H; intros Hs; try discriminate Hs.
   - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
   - injection Hs; intros; subst.
@@ -111,13 +111,13 @@ Proof.
       try (apply Himpl; eassumption); try eassumption; try reflexivity.
 Qed.
 
-Lemma perform_arg_replace : forall Γ recv u u' Ss A T,
-  Γ ⊢ₜ term_perform recv Ss A u : T ->
+Lemma perform_arg_replace : forall Γ recv u u' op Ss A T,
+  Γ ⊢ₜ term_perform recv op Ss A u : T ->
   (forall Tu, Γ ⊢ₜ u : Tu -> Γ ⊢ₜ u' : Tu) ->
-  Γ ⊢ₜ term_perform recv Ss A u' : T.
+  Γ ⊢ₜ term_perform recv op Ss A u' : T.
 Proof.
-  intros Γ recv u u' Ss A T H Himpl.
-  remember (term_perform recv Ss A u) as s eqn:Hs. revert Hs.
+  intros Γ recv u u' op Ss A T H Himpl.
+  remember (term_perform recv op Ss A u) as s eqn:Hs. revert Hs.
   induction H; intros Hs; try discriminate Hs.
   - eapply T_Sub; [apply IHtyping; try exact Himpl; exact Hs | assumption].
   - injection Hs; intros; subst.

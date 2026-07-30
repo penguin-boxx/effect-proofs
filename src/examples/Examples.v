@@ -190,24 +190,24 @@ Definition T_Optionality (l : lifetime) : type := type_ctor Optionality_tag l []
 Definition T_Cmd (l : lifetime) (S : type) : type := type_ctor cmd_tag l [S].
 
 (* effect Reader<e> { op ask(): e } *)
-Definition reader_sig : binding := bind_eff Reader_tag 1 0 T_Unit (`T 0).
+Definition reader_sig : binding := bind_eff Reader_tag 1 [(0, T_Unit, `T 0)].
 
 (* effect State<s> { op get(): s; op put(s): Unit }                    *)
 (* The core calculus has one operation per effect, so State is encoded *)
 (* as a command effect Cmd<s> -> s. Put returns the new state.         *)
 Definition get_sig : binding := bind_ctor get_tag 0 1 [] (T_Cmd `Lf (`T 0)).
 Definition put_sig : binding := bind_ctor put_tag 0 1 [`T 0] (T_Cmd `Lf (`T 0)).
-Definition state_sig : binding := bind_eff State_tag 1 0 (T_Cmd `Lf (`T 0)) (`T 0).
+Definition state_sig : binding := bind_eff State_tag 1 [(0, T_Cmd `Lf (`T 0), `T 0)].
 
 (* effect Exception<e> { op throw<a>(e): a } *)
-Definition exception_sig : binding := bind_eff Exception_tag 1 1 (`T 0) (`T 1).
+Definition exception_sig : binding := bind_eff Exception_tag 1 [(1, `T 0, `T 1)].
 
 (* effect Id { op id<a>(a): a } *)
-Definition id_sig : binding := bind_eff Id_tag 0 1 (`T 0) (`T 0).
+Definition id_sig : binding := bind_eff Id_tag 0 [(1, `T 0, `T 0)].
 
 (* effect Optionality { op mkSome<a>(a): Option<a> } *)
 Definition optionality_sig : binding :=
-  bind_eff Optionality_tag 0 1 (`T 0) (T_Option `Lf (`T 0)).
+  bind_eff Optionality_tag 0 [(1, `T 0, T_Option `Lf (`T 0))].
 
 (* [effect_ctx]: the effect declarations (and their command constructors).    *)
 Definition effect_ctx : ctx :=
@@ -335,9 +335,9 @@ Definition withReader : term :=
   Λt: T_Any `Lf \\
   Λt: T_Any `Lf \\
     λ: (T_Reader `Ll (`T 1) -{ `Ll }-> `T 0) \\
-      term_handle Reader_tag 0 [`T 1] (`T 1 -{ `Lf }-> `T 0) (`T 1 -{ `Ll }-> `T 0)
-        (λ: `T 1 \\
-          (($$ 2) @· ($$ 0)) @· ($$ 0))
+      term_handle Reader_tag [`T 1] (`T 1 -{ `Lf }-> `T 0) (`T 1 -{ `Ll }-> `T 0)
+        [(0, λ: `T 1 \\
+          (($$ 2) @· ($$ 0)) @· ($$ 0))]
         (let: `T 0 <- (($$ 1) @· ($$ 0)) in
          λ: `T 1 \\
            $$ 1).
@@ -347,8 +347,8 @@ Definition withReader : term :=
 (*   perform r.ask()                               *)
 Definition readerExample_op_body : term := ($$ 1) @· two_v.
 Definition readerExample : term :=
-  term_handle Reader_tag 0 [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) readerExample_op_body
-    (term_perform ($$ 0) [] (T_Nat `Lf) unit_v).
+  term_handle Reader_tag [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) [(0, readerExample_op_body)]
+    (term_perform ($$ 0) 0 [] (T_Nat `Lf) unit_v).
 
 (* fun withState[lr]<s <: Any'free, r <: Any'free>(
        f: context(State<s>) ()'local -> r
@@ -374,8 +374,8 @@ Definition withState : term :=
   Λt: T_Any `Lf \\
   Λt: T_Any `Lf \\
     λ: (T_State `Ll (`T 1) -{ `Ll }-> `T 0) \\
-      term_handle State_tag 0 [`T 1]
-        (`T 1 -{ `Lf }-> `T 0) (`T 1 -{ `Ll }-> `T 0) state_op_body
+      term_handle State_tag [`T 1]
+        (`T 1 -{ `Lf }-> `T 0) (`T 1 -{ `Ll }-> `T 0) [(0, state_op_body)]
         (let: `T 0 <- (($$ 1) @· ($$ 0)) in
          λ: `T 1 \\
            $$ 1).
@@ -389,12 +389,56 @@ Definition withState : term :=
    The State op is encoded as [Cmd<Nat> -> Nat]: [get] reads, [put n] writes. *)
 Definition withState_prog : term :=
   λ: T_State `Ll (T_Nat `Lf) \\
-    let: T_Nat `Lf <- term_perform ($$ 0) [] (T_Nat `Lf) (term_ctor get_tag `Lf [] [T_Nat `Lf] []) in
-    let: T_Nat `Lf <- term_perform ($$ 1) [] (T_Nat `Lf) (term_ctor put_tag `Lf [] [T_Nat `Lf] [three_v]) in
-    term_perform ($$ 2) [] (T_Nat `Lf) (term_ctor get_tag `Lf [] [T_Nat `Lf] []).
+    let: T_Nat `Lf <- term_perform ($$ 0) 0 [] (T_Nat `Lf) (term_ctor get_tag `Lf [] [T_Nat `Lf] []) in
+    let: T_Nat `Lf <- term_perform ($$ 1) 0 [] (T_Nat `Lf) (term_ctor put_tag `Lf [] [T_Nat `Lf] [three_v]) in
+    term_perform ($$ 2) 0 [] (T_Nat `Lf) (term_ctor get_tag `Lf [] [T_Nat `Lf] []).
 
 Definition withState_example : term :=
   (withState @lt[ `Lf ] @ty[ T_Nat `Lf ] @ty[ T_Nat `Lf ]) @· withState_prog @· two_v.
+
+(* ================================================================== *)
+(* MULTI-OPERATION SHOWCASE: an honest two-operation State effect.    *)
+(*   effect StateM<s> { op get(): s ; op put(s): Unit }               *)
+(* get = operation index 0, put = operation index 1.  Unlike State    *)
+(* above there is NO command-datatype encoding: the declaration       *)
+(* carries both operations and the handler has one clause per op.     *)
+(* ================================================================== *)
+
+Definition StateM_tag : eff_tag := 105.
+Definition T_StateM (l : lifetime) (S : type) : type := type_ctor StateM_tag l [S].
+
+Definition statem_sig : binding :=
+  bind_eff StateM_tag 1 [(0, T_Unit, `T 0); (0, `T 0, T_Unit)].
+
+(* The showcase is typed over [full_ctx] extended with the two-op      *)
+(* declaration (purely additive; existing examples are untouched).     *)
+Definition statem_ctx : ctx := statem_sig :: full_ctx.
+
+(* handle st: StateM<Nat> {
+     op get(u)  = fun(s: Nat) resume(s)(s)      -- clause for index 0
+     op put(s') = fun(_: Nat) resume(Unit())(s') -- clause for index 1
+   }
+   (let a = perform st.get() in     -- fires index 0
+    let _ = perform st.put(3) in    -- fires index 1
+    let b = perform st.get() in     -- fires index 0 again
+    fun(s: Nat) b)
+   — state-passing, applied to the initial state 2; evaluates to 3.   *)
+Definition statem_get_body : term :=
+  λ: T_Nat `Lf \\ (($$ 2) @· ($$ 0)) @· ($$ 0).
+Definition statem_put_body : term :=
+  λ: T_Nat `Lf \\ (($$ 2) @· unit_v) @· ($$ 1).
+
+Definition statemExample_handler : term :=
+  term_handle StateM_tag [T_Nat `Lf]
+    (T_Nat `Lf -{ `Lf }-> T_Nat `Lf)
+    (T_Nat `Lf -{ `Ll }-> T_Nat `Lf)
+    [(0, statem_get_body); (0, statem_put_body)]
+    (let: T_Nat `Lf <- term_perform ($$ 0) 0 [] (T_Nat `Lf) unit_v in
+     let: T_Unit <- term_perform ($$ 1) 1 [] T_Unit three_v in
+     let: T_Nat `Lf <- term_perform ($$ 2) 0 [] (T_Nat `Lf) unit_v in
+     λ: T_Nat `Lf \\ $$ 1).
+
+Definition statemExample : term := statemExample_handler @· two_v.
 
 (* error: testWithState stores a local Reader capability inside free state. *)
 (* The rejection is stated on the REAL noloc premise of T_Perform /     *)
@@ -417,13 +461,13 @@ Definition withException : term :=
   Λt: T_Any `Lf \\
   Λt: T_Any `Lf \\
     λ: (T_Exception `Ll (`T 1) -{ `Lf }-> `T 0) \\
-      term_handle Exception_tag 1 [`T 1]
-        (T_Result `Lf (`T 1) (`T 0)) (T_Result `Lf (`T 1) (`T 0)) withException_op_body
+      term_handle Exception_tag [`T 1]
+        (T_Result `Lf (`T 1) (`T 0)) (T_Result `Lf (`T 1) (`T 0)) [(1, withException_op_body)]
         (ok_v (`T 1) (`T 0) (($$ 1) @· ($$ 0))).
 
 (* let exampleException = withException<Nat, File>(context(h) fun() perform h.throw<File>(3)) *)
 Definition exampleException_body : term :=
-  term_perform ($$ 0) [T_File `Lf] (T_File `Lf) three_v.
+  term_perform ($$ 0) 0 [T_File `Lf] (T_File `Lf) three_v.
 
 Definition exampleException : term :=
   (withException @ty[ T_Nat `Lf ] @ty[ T_File `Lf ]) @·
@@ -526,7 +570,7 @@ Definition withId_op_body : term := ($$ 1) @· ($$ 0).
 Definition withId : term :=
   Λt: T_Any `Lf \\
     λ: (T_Id `Ll -{ `Lf }-> `T 0) \\
-      term_handle Id_tag 1 [] (`T 0) (`T 0) withId_op_body (($$ 1) @· ($$ 0)).
+      term_handle Id_tag [] (`T 0) (`T 0) [(1, withId_op_body)] (($$ 1) @· ($$ 0)).
 
 (* let exampleOptionality =
      handle o: Optionality { op mkSome<b>(x) resume(Some<b>(x)) }
@@ -535,23 +579,23 @@ Definition optionality_op_body : term :=
   ($$ 1) @· (some_v (`T 0) ($$ 0)).
 
 Definition exampleOptionality : term :=
-  term_handle Optionality_tag 1 []
-    (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf (T_Nat `Lf)) optionality_op_body
-    (term_perform ($$ 0) [T_Nat `Lf] (T_Option `Lf (T_Nat `Lf)) three_v).
+  term_handle Optionality_tag []
+    (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf (T_Nat `Lf)) [(1, optionality_op_body)]
+    (term_perform ($$ 0) 0 [T_Nat `Lf] (T_Option `Lf (T_Nat `Lf)) three_v).
 
 (* let withReaderExample = withReader[free]<Nat, Nat>(
        context(rd: Reader<Nat>'local) fun() perform rd.ask()
    )(2)                                              -- = 2 *)
 Definition withReader_example : term :=
   (withReader @lt[ `Lf ] @ty[ T_Nat `Lf ] @ty[ T_Nat `Lf ])
-    @· (λ: T_Reader `Ll (T_Nat `Lf) \\ term_perform ($$ 0) [] (T_Nat `Lf) unit_v)
+    @· (λ: T_Reader `Ll (T_Nat `Lf) \\ term_perform ($$ 0) 0 [] (T_Nat `Lf) unit_v)
     @· two_v.
 
 (* let withIdExample = withId<Nat>(context(h: Id'local) fun()
        perform h.id<Nat>(2))                         -- = 2 *)
 Definition withId_example : term :=
   (withId @ty[ T_Nat `Lf ])
-    @· (λ: T_Id `Ll \\ term_perform ($$ 0) [T_Nat `Lf] (T_Nat `Lf) two_v).
+    @· (λ: T_Id `Ll \\ term_perform ($$ 0) 0 [T_Nat `Lf] (T_Nat `Lf) two_v).
 
 (* let multishotExample =
      handle r: Reader<Nat> { op ask() let _ = resume(2) in resume(3) }
@@ -562,8 +606,8 @@ Definition multishot_op_body : term :=
   let: T_Nat `Lf <- ($$ 1) @· two_v in ($$ 2) @· three_v.
 
 Definition multishotExample : term :=
-  term_handle Reader_tag 0 [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) multishot_op_body
-    (term_perform ($$ 0) [] (T_Nat `Lf) unit_v).
+  term_handle Reader_tag [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf) [(0, multishot_op_body)]
+    (term_perform ($$ 0) 0 [] (T_Nat `Lf) unit_v).
 
 (* let forwardExample =
      handle h: Exception<Nat> { op throw<a>(e) Error<Nat,File>(e) }
@@ -576,16 +620,16 @@ Definition multishotExample : term :=
    the abortive clause discards both the Ok frame and the inner
    delimiter.                                    -- = Error(2) *)
 Definition forward_inner_body : term :=
-  let: T_Nat `Lf <- term_perform ($$ 0) [] (T_Nat `Lf) unit_v in
-  term_perform ($$ 2) [T_File `Lf] (T_File `Lf) ($$ 0).
+  let: T_Nat `Lf <- term_perform ($$ 0) 0 [] (T_Nat `Lf) unit_v in
+  term_perform ($$ 2) 0 [T_File `Lf] (T_File `Lf) ($$ 0).
 
 Definition forwardExample : term :=
-  term_handle Exception_tag 1 [T_Nat `Lf]
+  term_handle Exception_tag [T_Nat `Lf]
     (T_Result `Lf (T_Nat `Lf) (T_File `Lf)) (T_Result `Lf (T_Nat `Lf) (T_File `Lf))
-    (error_v (T_Nat `Lf) (T_File `Lf) ($$ 0))
+    [(1, error_v (T_Nat `Lf) (T_File `Lf) ($$ 0))]
     (ok_v (T_Nat `Lf) (T_File `Lf)
-      (term_handle Reader_tag 0 [T_Nat `Lf] (T_File `Lf) (T_File `Lf)
-        (($$ 1) @· two_v)
+      (term_handle Reader_tag [T_Nat `Lf] (T_File `Lf) (T_File `Lf)
+        [(0, ($$ 1) @· two_v)]
         forward_inner_body)).
 
 (* fun getOrElse<t <: Any'local>(default: t, o: Option<t>): t =
@@ -692,6 +736,10 @@ Definition typed_withState : Prop :=
 (*   withState<Nat,Nat>(get; put 3; get)(2)  :  Nat            *)
 Definition typed_withState_example : Prop :=
   full_ctx ⊢ₜ withState_example : T_Nat `Lf.
+
+(*   statemExample : Nat — the TWO-OPERATION handler showcase   *)
+Definition typed_statemExample : Prop :=
+  statem_ctx ⊢ₜ statemExample : T_Nat `Lf.
 
 (*   withException : <e,r>.                                     *)
 (*     (context(Exception<e>) () -> r) -> Result<e, r>          *)
@@ -820,6 +868,11 @@ Definition red_withFile_example : Prop := withFile_example ==>> unit_v.
 
 (*   withState(get; put(3); get)(2)  ~~>*  3   (the 2nd get)     *)
 Definition red_withState_example : Prop := withState_example ==>> three_v.
+
+(*   statemExample  ~~>*  3 : both operations of the two-op       *)
+(*   declaration fire — get (index 0) twice and put (index 1)     *)
+(*   once, selected by nth_error in H_Perform.                    *)
+Definition red_statemExample : Prop := statemExample ==>> three_v.
 
 (*   mapFirst(Pair(0,0), Pair(2,3), succ)  ~~>*  Pair(3, 3)     *)
 Definition red_mapFirst_example : Prop :=

@@ -605,7 +605,7 @@ Fixpoint valueb (t : term) : bool :=
          | []        => true
          | u :: rest => andb (valueb u) (go rest)
          end) vs
-  | term_cap _ _ _ _ _ _ => true
+  | term_cap _ _ _ _ _ => true
   | _                    => false
   end.
 
@@ -615,8 +615,8 @@ Proof.
   intros t; destruct t as
     [ x | t1 t2 | body T | t' T | B body | t' lft | body
     | K clt lts Ts vs | scrut K nlt ar yb nb
-    | Etag nbeta Ts TB TR opb bod | recv Ss A arg
-    | Ecap m nbeta Ts TR opb | m TB TR inner ];
+    | Etag Ts TB TR opb bod | recv op Ss A arg
+    | Ecap m Ts TR opb | m TB TR inner ];
     simpl; intro H; try discriminate; try (constructor; fail).
   (* ctor *)
   constructor.
@@ -632,8 +632,8 @@ Proof.
   intros t Hv; destruct t as
     [ x | t1 t2 | body T | t' T | B body | t' lft | body
     | K clt lts Ts vs | scrut K nlt ar yb nb
-    | Etag nbeta Ts TB TR opb bod | recv Ss A arg
-    | Ecap m nbeta Ts TR opb | m TB TR inner ];
+    | Etag Ts TB TR opb bod | recv op Ss A arg
+    | Ecap m Ts TR opb | m TB TR inner ];
     simpl; try reflexivity; try (inversion Hv; fail).
   (* ctor *)
   assert (HF : Forall value vs) by (inversion Hv; assumption).
