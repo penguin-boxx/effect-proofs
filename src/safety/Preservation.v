@@ -166,8 +166,10 @@ Proof.
     (subst_list_lt_in_tm lts yes_body) (subst_list_lt_in_ty lts eta)
     Hec Hf2 Hvals) as Hsubst.
   assert (Hfree : List.concat (List.map (free_tm_vars 0) vs) = []).
-  { clear -Hec Hf2. induction Hf2; simpl; [reflexivity|].
-    rewrite (typing_closed _ _ _ Hec H), IHHf2. reflexivity. }
+  { clear -Hec Hf2. revert Hec.
+    induction Hf2 as [Γ0|Γ0 v0 rho0 vs0 rhos0 Hv0 Hf2 IH]; intros Hec; simpl;
+      [reflexivity|].
+    rewrite (typing_closed _ _ _ Hec Hv0), (IH Hec). reflexivity. }
   specialize (Hsubst Hfree Hpeel).
   (* reconcile the branch result type with T via elim soundness. *)
   assert (HwfEta : ty_wf (push_match_bound n_lt Delta Γ) eta).
@@ -178,21 +180,6 @@ Proof.
   eapply T_Sub; [exact Hsubst|].
   destruct HsubOr as [Heq | Hsub]; [subst elim_result; exact HetaSub|].
   eapply SA_Trans; [exact HetaSub | exact Hsub].
-Qed.
-
-(* Generic list helper. *)
-Lemma Forall2_nth_error_r :
-  forall (A B : Type) (R : A -> B -> Prop) (xs : list A) (ys : list B) i x,
-  Forall2 R xs ys ->
-  nth_error xs i = Some x ->
-  exists y, nth_error ys i = Some y /\ R x y.
-Proof.
-  intros A B R xs ys i x HF. revert i x.
-  induction HF as [|a b xs' ys' Hab HF IH]; intros i x Hnth.
-  - destruct i; discriminate.
-  - destruct i as [|i']; simpl in *.
-    + injection Hnth; intros; subst. exists b. split; [reflexivity | exact Hab].
-    + apply IH. exact Hnth.
 Qed.
 
 (* The perform's principal type is its ret_inst annotation; any type it
@@ -285,8 +272,8 @@ Proof.
   assert (Hee : n_α' = n_α /\ ops' = ops).
   { rewrite Heff' in Heff0. injection Heff0; intros; subst; split; reflexivity. }
   destruct Hee as (Hna & Hopseq). subst ops'.
-  (* select the FIRED clause's typing via the Forall2 at the step's index *)
-  destruct (Forall2_nth_error_r _ _ _ _ _ _ _ HopsF2 Hnth)
+  (* select the FIRED clause's typing via typing_ops at the step's index *)
+  destruct (typing_ops_nth_error _ _ _ _ _ _ _ _ HopsF2 Hnth)
     as [osig [Hnth_sel Hop]].
   rewrite Hnth_ops in Hnth_sel.
   injection Hnth_sel; intros Hosig; subst osig.
@@ -561,7 +548,7 @@ Proof.
      & Hnl & Hbr & Hfst & Hops & Hbody & Hsub).
   assert (Hcap : Γ ⊢ₜ term_cap E_tag m Ts T_R op_bodies
                    : type_ctor E_tag lt_local Ts).
-  { eapply T_Cap; try eassumption. apply typing_ops_Forall2; eassumption. }
+  { eapply T_Cap; eassumption. }
   eapply T_Sub; [ | exact Hsub ].
   apply T_HandlerM; try assumption.
   eapply subst_tm_preserves; [ exact Hec | exact Hbody | apply value_cap | exact Hcap ].

@@ -102,6 +102,7 @@ Inductive term : Type :=
 (* Values                                                             *)
 (*                                                                    *)
 (* v ::= λ(x:T). t  |  Λα. t  |  Λl. t  |  K[l; T̄](v̄)                 *)
+(*     |  cap[E; m; T̄; T_R](ops)         — runtime capability value   *)
 (* ================================================================== *)
 
 Inductive value : term -> Prop :=

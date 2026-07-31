@@ -237,7 +237,8 @@ Inductive typing : ctx -> term -> type -> Prop :=
       (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) ⊢ₜ body : T_B ->
       Γ ⊢ₜ term_handle E_tag Ts T_B T_R op_bodies body : T_R
 
-  (* (Perform): invoke the (single) operation on a capability value.   *)
+  (* (Perform): invoke one of the capability's operations, selected    *)
+  (* by its declaration index [op] via [nth_error].                    *)
   (* Caller supplies the β-type-arguments Ss at the perform site.      *)
   (* The β-arguments and the instantiated signature must be no-local   *)
   (* in [Γ] ([lt_of_ty_G Γ S <: lt_free] for each S among Ss and for   *)
@@ -335,6 +336,78 @@ Lemma typing_ops_Forall2 : forall Γ n_α Ts T_R op_bodies ops,
 Proof.
   intros Γ n_α Ts T_R op_bodies ops; split; intros H; induction H;
     constructor; assumption.
+Qed.
+
+(* ------------------------------------------------------------------- *)
+(* Native theory of the mutual list relations: length, indexing,       *)
+(* append splitting and focused replacement, stated directly on        *)
+(* typings/typing_ops so downstream proofs need not detour through     *)
+(* the Forall2 bridges.                                                *)
+(* ------------------------------------------------------------------- *)
+
+Lemma typings_length : forall Γ vs rhos,
+  typings Γ vs rhos -> List.length vs = List.length rhos.
+Proof.
+  intros Γ vs rhos H; induction H; simpl; auto.
+Qed.
+
+(* Indexing: the i-th value is typed at the i-th field type. *)
+Lemma typings_nth_error : forall Γ vs rhos i v,
+  typings Γ vs rhos ->
+  nth_error vs i = Some v ->
+  exists rho, nth_error rhos i = Some rho /\ Γ ⊢ₜ v : rho.
+Proof.
+  intros Γ vs rhos i v H; revert i v.
+  induction H; intros i v0 Hnth; [destruct i; discriminate|].
+  destruct i as [|i']; simpl in *.
+  - injection Hnth; intros; subst. eauto.
+  - eauto.
+Qed.
+
+(* Indexing: the i-th op body is typed against the i-th op signature. *)
+Lemma typing_ops_nth_error : forall Γ n_α Ts T_R op_bodies ops i ob,
+  typing_ops Γ n_α Ts T_R op_bodies ops ->
+  nth_error op_bodies i = Some ob ->
+  exists osig, nth_error ops i = Some osig /\
+    (op_body_ctx Γ (op_nb osig)
+       (inst_op_ty_args n_α Ts (op_nb osig) (op_sig_ty osig))
+       (inst_op_ty_args n_α Ts (op_nb osig) (op_ret_ty osig)) T_R)
+      ⊢ₜ snd ob : shift_ty (op_nb osig) 0 T_R.
+Proof.
+  intros Γ n_α Ts T_R op_bodies ops i ob H; revert i ob.
+  induction H; intros i ob0 Hnth; [destruct i; discriminate|].
+  destruct i as [|i']; simpl in *.
+  - injection Hnth; intros; subst. eauto.
+  - eauto.
+Qed.
+
+(* Splitting along an append of the value list. *)
+Lemma typings_app_inv : forall Γ vs1 vs2 rhos,
+  typings Γ (vs1 ++ vs2) rhos ->
+  exists rhos1 rhos2,
+    rhos = rhos1 ++ rhos2 /\ typings Γ vs1 rhos1 /\ typings Γ vs2 rhos2.
+Proof.
+  intros Γ vs1; induction vs1 as [|v vs1 IH]; intros vs2 rhos H; simpl in *.
+  - exists [], rhos. split; [reflexivity | split; [constructor | assumption]].
+  - inversion H; subst.
+    match goal with Htl : typings _ (vs1 ++ vs2) _ |- _ =>
+      destruct (IH _ _ Htl) as (rhos1 & rhos2 & -> & H1 & H2) end.
+    eexists (_ :: rhos1), rhos2.
+    split; [reflexivity | split; [constructor; eassumption | assumption]].
+Qed.
+
+(* Replacing the focused element of a frame's value list preserves     *)
+(* typings, given the replacement is typed at every type the original  *)
+(* is (the T_Ctor frame congruence — see Frames.v).                    *)
+Lemma typings_focus_replace : forall Γ vs u u' ts rhos,
+  typings Γ (vs ++ u :: ts) rhos ->
+  (forall rho, Γ ⊢ₜ u : rho -> Γ ⊢ₜ u' : rho) ->
+  typings Γ (vs ++ u' :: ts) rhos.
+Proof.
+  intros Γ vs u u' ts rhos H Himpl.
+  revert rhos H. induction vs as [|v vs IH]; intros rhos H; simpl in *.
+  - inversion H; subst. constructor; [apply Himpl; assumption | assumption].
+  - inversion H; subst. constructor; [assumption | apply IH; assumption].
 Qed.
 
 (* ------------------------------------------------------------------- *)

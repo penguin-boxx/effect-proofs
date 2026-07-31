@@ -64,11 +64,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Rocq version
+      - name: Toolchain versions
         run: |
           opam exec -- rocq --version
           # Fail fast if the image ever drifts out of the 9.1 series.
           opam exec -- rocq --version | grep -q 'version 9\.1\.'
+          # The assumption/docs gates are Python; fail fast if the
+          # image ever ships without python3.
+          python3 --version
 
       - name: Cache compiled proofs
         if: github.event_name != 'schedule'

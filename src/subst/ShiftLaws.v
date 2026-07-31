@@ -257,6 +257,7 @@ Proof.
   - destruct (Nat.leb c n); auto.
   - rewrite IHl1, IHl2; auto.
 Qed.
+#[export] Hint Rewrite shift_lt_zero : subst_norm.
 
 Lemma shift_lt_in_ty_zero : forall c T,
   shift_lt_in_ty 0 c T = T.
@@ -265,15 +266,8 @@ Proof.
   { intros c T; apply H. }
   apply (type_list_ind
     (fun T => forall c, shift_lt_in_ty 0 c T = T)
-    (fun Ts => forall c, List.map (shift_lt_in_ty 0 c) Ts = Ts)).
-  - intro c; reflexivity.
-  - intros A l B HA HB c; simpl; rewrite shift_lt_zero, HA, HB; reflexivity.
-  - intros K l Ts HTs c; simpl; rewrite shift_lt_zero;
-    f_equal; apply HTs.
-  - intros A HA c; simpl; rewrite HA; reflexivity.
-  - intros B A HB HA c; simpl; rewrite HB, HA; reflexivity.
-  - intro c; reflexivity.
-  - intros A Ts HA HTs c; simpl; rewrite HA; f_equal; apply HTs.
+    (fun Ts => forall c, List.map (shift_lt_in_ty 0 c) Ts = Ts));
+    go_traverse_norm.
 Qed.
 
 Lemma shift_ty_zero : forall c T,
@@ -438,6 +432,7 @@ Proof.
   - reflexivity.
   - rewrite IHl1, IHl2; reflexivity.
 Qed.
+#[export] Hint Rewrite shift_lt_fuse : subst_norm.
 
 Lemma shift_lt_in_ty_fuse : forall a b c T,
   shift_lt_in_ty a c (shift_lt_in_ty b c T) = shift_lt_in_ty (a + b) c T.
@@ -446,17 +441,8 @@ Proof.
   { intros a b c T; apply H. }
   apply (type_list_ind
     (fun T => forall a b c, shift_lt_in_ty a c (shift_lt_in_ty b c T) = shift_lt_in_ty (a + b) c T)
-    (fun Ts => forall a b c, List.map (shift_lt_in_ty a c) (List.map (shift_lt_in_ty b c) Ts) = List.map (shift_lt_in_ty (a + b) c) Ts)).
-  - intros n a b c; reflexivity.
-  - intros A l B HA HB a b c; simpl; rewrite shift_lt_fuse, HA, HB; reflexivity.
-  - intros K l Ts HTs a b c; simpl.
-    f_equal.
-    + apply shift_lt_fuse.
-    + apply HTs.
-  - intros A HA a b c; simpl; rewrite HA; reflexivity.
-  - intros B A HB HA a b c; simpl; rewrite HB, HA; reflexivity.
-  - intros a b c; reflexivity.
-  - intros A Ts HA HTs a b c; simpl; rewrite HA; f_equal; apply HTs.
+    (fun Ts => forall a b c, List.map (shift_lt_in_ty a c) (List.map (shift_lt_in_ty b c) Ts) = List.map (shift_lt_in_ty (a + b) c) Ts));
+    go_traverse_norm.
 Qed.
 
 Lemma shift_ty_fuse : forall a b c T,

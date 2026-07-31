@@ -210,12 +210,7 @@ Lemma cap_typing_inv : forall Γ E_tag m Ts T_R op_bodies T,
     types_wf Γ Ts /\
     ty_wf Γ T_R /\
     List.map fst op_bodies = List.map op_nb ops /\
-    Forall2 (fun ob osig =>
-      (op_body_ctx Γ (op_nb osig)
-         (inst_op_ty_args n_α Ts (op_nb osig) (op_sig_ty osig))
-         (inst_op_ty_args n_α Ts (op_nb osig) (op_ret_ty osig)) T_R)
-        ⊢ₜ snd ob : shift_ty (op_nb osig) 0 T_R)
-      op_bodies ops /\
+    typing_ops Γ n_α Ts T_R op_bodies ops /\
     Γ ⊢ type_ctor E_tag lt_local Ts <:: T.
 Proof.
   intros Γ E_tag m Ts T_R op_bodies T H.
@@ -230,8 +225,7 @@ Proof.
     eapply SA_Trans; [exact Hsub | eassumption].
   - (* T_Cap *) injection Hs; intros; subst.
     do 2 eexists. repeat split; try eassumption; try reflexivity.
-    + apply typing_ops_Forall2. assumption.
-    + apply SA_Refl. apply TWF_Ctor; [apply LWF_Local | assumption].
+    apply SA_Refl. apply TWF_Ctor; [apply LWF_Local | assumption].
 Qed.
 
 Lemma perform_typing_inv : forall Γ recv op Ss ret_inst arg T,
@@ -278,12 +272,7 @@ Lemma handle_typing_inv : forall Γ E_tag Ts T_B T_R op_bodies body T,
     List.length Ts = n_α /\ types_wf Γ Ts /\
     ty_wf Γ T_B /\ ty_wf Γ T_R /\ Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free /\ Γ ⊢ T_B <:: T_R /\
     List.map fst op_bodies = List.map op_nb ops /\
-    Forall2 (fun ob osig =>
-      (op_body_ctx Γ (op_nb osig)
-         (inst_op_ty_args n_α Ts (op_nb osig) (op_sig_ty osig))
-         (inst_op_ty_args n_α Ts (op_nb osig) (op_ret_ty osig)) T_R)
-        ⊢ₜ snd ob : shift_ty (op_nb osig) 0 T_R)
-      op_bodies ops /\
+    typing_ops Γ n_α Ts T_R op_bodies ops /\
     (bind_tm (type_ctor E_tag lt_local Ts) :: Γ) ⊢ₜ body : T_B /\
     Γ ⊢ T_R <:: T.
 Proof.
@@ -298,8 +287,7 @@ Proof.
   - injection Hs; intros; subst.
     do 2 eexists.
     repeat split; try eassumption; try reflexivity.
-    + apply typing_ops_Forall2. assumption.
-    + apply SA_Refl. assumption.
+    apply SA_Refl. assumption.
 Qed.
 
 (* ------------------------------------------------------------------ *)
@@ -429,8 +417,7 @@ Lemma ctor_typing_inv : forall Γ K l lts Ts vs T,
     inst_ctor_type n_lt n_ty lts Ts result_ty_schema = type_ctor result_tag l Ts /\
     Forall (fun l0 => Γ ⊢ₗ l0 <: l) lts /\
     List.length vs = List.length sigma_fields /\
-    Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs
-            (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields) /\
+    typings Γ vs (List.map (inst_ctor_type n_lt n_ty lts Ts) sigma_fields) /\
     Γ ⊢ type_ctor result_tag l Ts <:: T.
 Proof.
   intros Γ K l lts Ts vs T Hty.
@@ -450,7 +437,6 @@ Proof.
       | Hlen : List.length vs = List.length (List.map _ sigma_fields) |- _ =>
           rewrite Hlen, List.length_map; reflexivity
       end.
-    + apply typings_Forall2. assumption.
     + match goal with
       | Hshape : inst_ctor_type (List.length lts) (List.length Ts) lts Ts result_ty_schema =
                  type_ctor result_tag l Ts |- _ =>
@@ -495,15 +481,6 @@ Qed.
 (* evaluation contexts add no binders.                                *)
 (* ------------------------------------------------------------------ *)
 
-(* From a `Forall2` typing premise, recover per-element typability. *)
-Lemma Forall2_Forall_exists :
-  forall (A B : Type) (R : A -> B -> Prop) xs ys,
-    Forall2 R xs ys ->
-    Forall (fun x => exists y, R x y) xs.
-Proof.
-  induction 1; constructor; eauto.
-Qed.
-
 Lemma plug_typing_inv : forall P Γ u T,
   Γ ⊢ₜ plug P u : T -> exists T', Γ ⊢ₜ u : T'.
 Proof.
@@ -523,11 +500,10 @@ Proof.
     eapply IHP; exact Ht.
   - (* EC_ctor *)
     apply ctor_typing_inv in H.
-    destruct H as (n_lt & n_ty & sig & res & rtag & _ & _ & _ & _ & _ & _ & Hf2 & _).
-    apply Forall2_Forall_exists in Hf2.
-    rewrite Forall_app in Hf2. destruct Hf2 as [_ Hf2].
-    apply Forall_inv in Hf2. destruct Hf2 as [rho Hrho].
-    eapply IHP; exact Hrho.
+    destruct H as (n_lt & n_ty & sig & res & rtag & _ & _ & _ & _ & _ & _ & Hts & _).
+    apply typings_app_inv in Hts.
+    destruct Hts as (rhos1 & rhos2 & _ & _ & Hts).
+    inversion Hts; subst. eapply IHP; eassumption.
   - (* EC_match *)
     apply match_typing_inv in H.
     destruct H as (n_lt & n_ty & sig & res & Ts0 & Delta0 & sr & rtag & rl & eta & er

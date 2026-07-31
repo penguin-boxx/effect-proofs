@@ -13,8 +13,12 @@ calculus *is* and what the theorems *say*, see [README.md](README.md).
   opam pin add rocq-prover 9.1.0
   ```
 
-- GNU Make. No other dependencies — the development uses only the
-  Rocq standard library.
+- GNU Make.
+
+- Python 3 (any recent version) for the maintenance tooling —
+  `make check-assumptions`, `make check-docs`, and the generators in
+  `scripts/` are Python and use only its standard library. The
+  proofs themselves need nothing beyond the Rocq standard library.
 
 CI builds in the official Docker image `rocq/rocq-prover:9.1.1`
 (Docker Hub publishes no 9.1.0 tag; 9.1.1 is the bugfix-only patch of

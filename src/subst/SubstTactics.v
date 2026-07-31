@@ -39,6 +39,11 @@ Require Import Typing.
 
 Create HintDb subst_go.
 Create HintDb ctxmap.
+(* subst_norm: sort-level normalization laws (zero shifts, shift     *)
+(* fusion, shift cancellation) that the structural closers below may *)
+(* need in addition to the go-bridges.  Entries register at their    *)
+(* definition sites.                                                 *)
+Create HintDb subst_norm.
 
 Ltac wf_transport := solve [eauto with ctxmap].
 
@@ -110,3 +115,12 @@ Ltac sig_congr law :=
     | (rewrite !List.map_map; apply List.map_ext; intros ?p;
        repeat match goal with p : _ * _ |- _ => destruct p end; simpl)
     | progress f_equal ] ].
+
+(* go_traverse with the sort-level normalization laws switched on;   *)
+(* for traversal equations whose leaf cases need zero/fuse/cancel    *)
+(* facts about the lower sorts, not just the inductive hypotheses.   *)
+Ltac go_traverse_norm :=
+  intros; simpl; autorewrite with subst_go subst_norm;
+  repeat match goal with IH : forall _, _ |- _ => rewrite IH; clear IH end;
+  autorewrite with subst_norm;
+  first [ reflexivity | congruence ].

@@ -15,6 +15,7 @@ core/Instantiate.v
 core/Typing.v
 subst/SubstTactics.v
 subst/ShiftLaws.v
+subst/CtxMap.v
 subst/Weakening.v
 subst/SubstLt.v
 subst/SubstTy.v

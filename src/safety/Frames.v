@@ -110,18 +110,6 @@ Proof.
       try (apply Himpl; eassumption); try eassumption; try reflexivity.
 Qed.
 
-Lemma Forall2_focus_replace :
-  forall (R : term -> type -> Prop) vs u u' ts rhos,
-  Forall2 R (vs ++ u :: ts) rhos ->
-  (forall ru, R u ru -> R u' ru) ->
-  Forall2 R (vs ++ u' :: ts) rhos.
-Proof.
-  intros R vs u u' ts rhos H Himpl.
-  revert rhos H. induction vs as [|v vs IH]; intros rhos H; simpl in *.
-  - inversion H; subst. constructor; [apply Himpl; assumption | assumption].
-  - inversion H; subst. constructor; [assumption | apply IH; assumption].
-Qed.
-
 Lemma ctor_focus_replace : forall Γ K l lts Ts vs u u' ts T,
   Γ ⊢ₜ term_ctor K l lts Ts (vs ++ u :: ts) : T ->
   (forall Tu, Γ ⊢ₜ u : Tu -> Γ ⊢ₜ u' : Tu) ->
@@ -132,9 +120,8 @@ Proof.
       by (rewrite !length_app; reflexivity).
     eapply T_Ctor;
       try (rewrite Hlen; eassumption);
-      try (apply typings_Forall2; eapply Forall2_focus_replace;
-           [ apply typings_Forall2; eassumption
-           | intros ru Hu; apply Himpl; exact Hu ]);
+      try (eapply typings_focus_replace;
+           [ eassumption | intros ru Hu; apply Himpl; exact Hu ]);
       try eassumption; try reflexivity.
 Qed.
 

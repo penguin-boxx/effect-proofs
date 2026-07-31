@@ -188,14 +188,12 @@ Proof.
   inversion Hin.
 Qed.
 
-Theorem capability_never_exposed : forall Γ t E E_tag m Ts T_R op_bodies T,
-  eval_ctx Γ ->
+Theorem capability_never_exposed : forall t E E_tag m Ts T_R op_bodies,
   (forall u, multi_step t u -> well_scoped [] u) ->
-  Γ ⊢ₜ t : T ->
   multi_step t (plug E (term_cap E_tag m Ts T_R op_bodies)) ->
   ~ pure_ectx_m m E.
 Proof.
-  intros Γ t E E_tag m Ts T_R op_bodies T Hec Hmok_reachable Hty Hms Hpure.
+  intros t E E_tag m Ts T_R op_bodies Hmok_reachable Hms Hpure.
   pose proof (Hmok_reachable _ Hms) as Hmok'.
   eapply capability_confined; eauto.
 Qed.
@@ -213,7 +211,7 @@ Corollary source_capability_never_exposed :
   ~ pure_ectx_m m E.
 Proof.
   intros Γ t E E_tag m Ts T_R op_bodies T Hec Hsrc Hty Hms.
-  eapply capability_never_exposed; [exact Hec | | exact Hty | exact Hms].
+  eapply capability_never_exposed; [ | exact Hms].
   intros u Hms'.
   destruct (multi_step_preserves_safety_invariants _ _ _ _ Hec
               (source_safety_invariants _ _ _ Hsrc Hty) Hms')

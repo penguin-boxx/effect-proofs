@@ -6,6 +6,7 @@ Require Import Syntax.
 Require Import Substitution.
 Require Import Typing.
 Require Import ShiftLaws.
+Require Import CtxMap.
 Require Import Weakening.
 Require Import SubstLt.
 Require Import SubstTy.
@@ -881,11 +882,10 @@ Qed.
 Lemma lifetimes_wf_SubstTy : forall G lts,
   lifetimes_wf G lts -> forall Sb n G', SubstTy Sb n G G' -> lifetimes_wf G' lts.
 Proof.
-  intros G lts Hwf. induction Hwf; intros Sb n G' HS.
-  - constructor.
-  - constructor.
-    + wf_transport.
-    + apply (IHHwf Sb n G' HS).
+  intros G lts Hwf Sb n G' HS.
+  pose proof (lifetimes_wf_ctx_map _ _ _ _ _ _ CtxMapSpec_SubstTy
+                G lts Hwf (Sb, n) G' HS) as H.
+  rewrite List.map_id in H. exact H.
 Qed.
 #[export] Hint Resolve lifetimes_wf_SubstTy : ctxmap.
 
@@ -1310,7 +1310,7 @@ Proof.
     + rewrite lt_of_ty_list_subst_lt. rewrite lt_of_ty_subst_lt. wf_transport.
     + exact (Forall_lt_sub_SubstLt Γ lts l Hbounded R n G' HSub).
     + rewrite List.length_map. rewrite Hlen_vs. symmetry. apply List.length_map.
-    + apply typings_Forall2. eapply Forall2_typing_SubstLt; eauto.
+    + eapply typings_SubstLt; eauto.
   - intros Γ scrut K n_lt n_ty sigma_fields result_ty_schema Ts Delta arity lts
            rho_fields scrut_result_ty result_tag result_l Γyes yes_body eta elim_result no_body
            HKne Hctor Heff Hlts Hrho Hlen_Ts HwfTs Hscrut_result Hscrut_shape
@@ -1373,7 +1373,7 @@ Proof.
     + wf_transport.
     + wf_transport.
     + rewrite !List.map_map. exact Hfst.
-    + apply typing_ops_Forall2. clear Hops Heff. revert Hfst.
+    + clear Hops Heff. revert Hfst.
       induction IHops as [|ob osig obs' ops' Hone Hrest IHrest]; intros Hfst; simpl.
       * constructor.
       * simpl in Hfst. injection Hfst as Hnb Hfstrest.
@@ -1419,7 +1419,7 @@ Proof.
     + wf_transport.
     + wf_transport.
     + rewrite !List.map_map. exact Hfst.
-    + apply typing_ops_Forall2. clear Hops Heff. revert Hfst.
+    + clear Hops Heff. revert Hfst.
       induction IHops as [|ob osig obs' ops' Hone Hrest IHrest]; intros Hfst; simpl.
       * constructor.
       * simpl in Hfst. injection Hfst as Hnb Hfstrest.
@@ -1846,7 +1846,7 @@ Proof.
     + wf_transport.
     + wf_transport.
     + rewrite !List.map_map. exact Hfst.
-    + apply typing_ops_Forall2. clear Hops Heff. revert Hfst.
+    + clear Hops Heff. revert Hfst.
       induction IHops as [|ob osig obs' ops' Hone Hrest IHrest]; intros Hfst; simpl.
       * constructor.
       * simpl in Hfst. injection Hfst as Hnb Hfstrest.
@@ -1897,7 +1897,7 @@ Proof.
     + wf_transport.
     + wf_transport.
     + rewrite !List.map_map. exact Hfst.
-    + apply typing_ops_Forall2. clear Hops Heff. revert Hfst.
+    + clear Hops Heff. revert Hfst.
       induction IHops as [|ob osig obs' ops' Hone Hrest IHrest]; intros Hfst; simpl.
       * constructor.
       * simpl in Hfst. injection Hfst as Hnb Hfstrest.

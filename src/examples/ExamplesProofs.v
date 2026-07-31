@@ -496,7 +496,7 @@ Proof.
         cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt_var ].
       * (* Forall (<: J) lts *)
         repeat (apply Forall_cons; [ solve_lt_var |]). apply Forall_nil.
-      * (* Forall2 field typings *)
+      * (* typings: the field values *)
         constructor; [ | constructor; [ | constructor ] ].
         -- (* thunk1 = λ(). f (h ()) *)
            open_lam.
@@ -1285,7 +1285,7 @@ Qed.
 (* MULTI-OPERATION SHOWCASE PROOFS.                                   *)
 (* [statem_example] uses the honest two-operation declaration          *)
 (*   effect StateM<s> { op get(): s ; op put(s): Unit }               *)
-(* The typing exercises T_Handle's per-operation Forall2 (two         *)
+(* The typing exercises T_Handle's per-operation typing_ops (two      *)
 (* clauses); the reduction fires H_Perform three times — get (index   *)
 (* 0), put (index 1), get (index 0) — each clause selected by         *)
 (* nth_error.                                                         *)
