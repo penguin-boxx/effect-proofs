@@ -149,8 +149,8 @@ Proof.
   - intros p K l Ts. rewrite List.map_id. reflexivity.
   - intros; reflexivity.
   - intros; reflexivity.
-  - intros p G G' D HS. apply SubstTm_lt. exact HS.
-  - intros p G G' B HS. apply SubstTm_ty. exact HS.
+  - intros p G G' D HS _ _. apply SubstTm_lt. exact HS.
+  - intros p G G' B HS _ _. apply SubstTm_ty. exact HS.
   - intros [v n] G G' x Δ HS Hlk. econstructor.
     rewrite (SubstTm_lookup_lt v n G G' HS x). exact Hlk.
   - intros [v n] G G' x Δ HS Hlk Hwf. apply LS_Var.
@@ -749,8 +749,7 @@ Qed.
 (* the SubstTm_replacement_typed / target-closedness invariants,      *)
 (* [typing_SubstTm], the typed-value                                  *)
 (* capture/escape facts it rests on, and the eval_ctx corollaries.    *)
-(* (Moved here from ProgramCtx.v, which owns the eval_ctx and         *)
-(* closed-from theory this payload builds on.)                        *)
+(* (Builds on ProgramCtx.v's eval_ctx and closed-from theory.)        *)
 (* ================================================================== *)
 
 Definition SubstTm_replacement_typed (v : term) (n : nat) (G G' : ctx) : Prop :=

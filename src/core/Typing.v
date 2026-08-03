@@ -52,7 +52,7 @@ Require Export Instantiate.
 (* The op-body typing context shared by T_Cap and T_Handle: the        *)
 (* operation argument $0 (innermost), the resumption $1 of type        *)
 (* ret_β -local-> T_R, and the n_β β-type-binders above them.          *)
-(* Projections of a per-operation declaration triple (n_β, sig, ret). *)
+(* Projections of a per-operation declaration triple (n_β, sig, ret).  *)
 Definition op_nb     (osig : nat * type * type) : nat  := fst (fst osig).
 Definition op_sig_ty (osig : nat * type * type) : type := snd (fst osig).
 Definition op_ret_ty (osig : nat * type * type) : type := snd osig.
@@ -349,19 +349,6 @@ Lemma typings_length : forall Γ vs rhos,
   typings Γ vs rhos -> List.length vs = List.length rhos.
 Proof.
   intros Γ vs rhos H; induction H; simpl; auto.
-Qed.
-
-(* Indexing: the i-th value is typed at the i-th field type. *)
-Lemma typings_nth_error : forall Γ vs rhos i v,
-  typings Γ vs rhos ->
-  nth_error vs i = Some v ->
-  exists rho, nth_error rhos i = Some rho /\ Γ ⊢ₜ v : rho.
-Proof.
-  intros Γ vs rhos i v H; revert i v.
-  induction H; intros i v0 Hnth; [destruct i; discriminate|].
-  destruct i as [|i']; simpl in *.
-  - injection Hnth; intros; subst. eauto.
-  - eauto.
 Qed.
 
 (* Indexing: the i-th op body is typed against the i-th op signature. *)

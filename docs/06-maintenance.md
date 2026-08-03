@@ -25,8 +25,14 @@ pipe stage's status unless `pipefail` is set.
   theorems.
 - **Docs gate** (`make check-docs`): the committed THEOREMS.md /
   STATS.md must match regeneration. After changing any theorem, run
-  `make theorem-index && make stats` and commit the diff.
-- All three scripts share `scripts/coqparse.py` — one declaration
+  `make theorem-index && make stats` and commit the diff. The same
+  target then runs `scripts/check_docs_refs.py`: every file and
+  every declaration-shaped identifier referenced by docs/*.md and
+  README.md must still exist in the sources, so a rename cannot
+  silently rot the guides — failures name the doc line and the stale
+  reference (fix the doc; the script's small allowlist is only for
+  genuinely informal names).
+- The generator/gate scripts share `scripts/coqparse.py` — one declaration
   regex (indentation-tolerant, so a `Theorem` inside a `Section`
   cannot evade the gate) and one `_CoqProject` parser. Keep it that
   way: divergent parsing between the gate and the index was a real

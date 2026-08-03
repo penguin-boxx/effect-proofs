@@ -257,8 +257,8 @@ Proof.
   - intros; apply shift_ty_ctor_eq.
   - intros; reflexivity.
   - intros; reflexivity.
-  - intros c G G' D HIns. apply InsTy_lt. exact HIns.
-  - intros c G G' B HIns. apply InsTy_ty. exact HIns.
+  - intros c G G' D HIns _ _. apply InsTy_lt. exact HIns.
+  - intros c G G' B HIns _ _. apply InsTy_ty. exact HIns.
   - intros c G G' x Δ HIns Hlk. econstructor.
     rewrite (InsTy_lookup_lt c G G' HIns x). exact Hlk.
   - intros c G G' x Δ HIns Hlk Hwf. apply LS_Var.
@@ -399,6 +399,12 @@ Qed.
 Lemma shift_lt_var_eq : forall a c n,
   shift_lt a c (lt_var n) = lt_var (if Nat.leb c n then n + a else n).
 Proof. reflexivity. Qed.
+
+Lemma shv_shift_lt : forall c n, shift_lt 1 c (lt_var n) = lt_var (shv c n).
+Proof.
+  intros c n. rewrite shift_lt_var_eq. unfold shv.
+  destruct (Nat.leb c n); [rewrite Nat.add_1_r|]; reflexivity.
+Qed.
 
 (* swap law for shift_lt (lifetimes) *)
 Lemma shift_lt_swap : forall l c1 c2, c1 <= c2 ->
@@ -616,16 +622,12 @@ Proof.
   - intros; apply shift_lt_in_ty_ctor_eq.
   - intros; reflexivity.
   - intros; reflexivity.
-  - intros c G G' D HIns. apply InsLt_lt. exact HIns.
-  - intros c G G' B HIns. apply InsLt_ty. exact HIns.
-  - intros c G G' x Δ HIns Hlk. rewrite shift_lt_var_eq.
-    replace (if Nat.leb c x then x + 1 else x) with (shv c x)
-      by (unfold shv; destruct (Nat.leb c x); [rewrite Nat.add_1_r|]; reflexivity).
+  - intros c G G' D HIns _ _. apply InsLt_lt. exact HIns.
+  - intros c G G' B HIns _ _. apply InsLt_ty. exact HIns.
+  - intros c G G' x Δ HIns Hlk. rewrite shv_shift_lt.
     econstructor. rewrite (InsLt_lookup_lt c G G' HIns x).
     rewrite Hlk. reflexivity.
-  - intros c G G' x Δ HIns Hlk Hwf. rewrite shift_lt_var_eq.
-    replace (if Nat.leb c x then x + 1 else x) with (shv c x)
-      by (unfold shv; destruct (Nat.leb c x); [rewrite Nat.add_1_r|]; reflexivity).
+  - intros c G G' x Δ HIns Hlk Hwf. rewrite shv_shift_lt.
     apply LS_Var.
     + rewrite (InsLt_lookup_lt c G G' HIns x). rewrite Hlk. reflexivity.
     + exact Hwf.
@@ -848,8 +850,8 @@ Proof.
   - intros p K l Ts. rewrite List.map_id. reflexivity.
   - intros; reflexivity.
   - intros; reflexivity.
-  - intros p G G' D HIns. apply InsTm_lt. exact HIns.
-  - intros p G G' B HIns. apply InsTm_ty. exact HIns.
+  - intros p G G' D HIns _ _. apply InsTm_lt. exact HIns.
+  - intros p G G' B HIns _ _. apply InsTm_ty. exact HIns.
   - intros p G G' x Δ HIns Hlk. econstructor.
     rewrite (InsTm_lookup_lt G G' HIns x). exact Hlk.
   - intros p G G' x Δ HIns Hlk Hwf. apply LS_Var.
@@ -1018,57 +1020,9 @@ Proof.
 Qed.
 #[export] Hint Resolve sub_InsTm : ctxmap.
 
-Lemma lt_sub_wf : forall Γ l1 l2,
-  Γ ⊢ₗ l1 <: l2 -> lt_wf Γ l1 /\ lt_wf Γ l2.
-Proof.
-  intros Γ l1 l2 H. induction H.
-  - split; [constructor|exact H].
-  - split; [exact H|constructor].
-  - split; [econstructor; exact H|exact H0].
-  - split; exact H.
-  - destruct IHlt_sub1 as [Hwf1 _]. destruct IHlt_sub2 as [_ Hwf3].
-    split; assumption.
-  - destruct IHlt_sub1 as [Hwf1 Hwfl]. destruct IHlt_sub2 as [Hwf2 _].
-    split; [constructor; assumption|exact Hwfl].
-  - destruct IHlt_sub as [Hwfl Hwfl1]. split.
-    + exact Hwfl.
-    + constructor; assumption.
-  - destruct IHlt_sub as [Hwfl Hwfl2]. split.
-    + exact Hwfl.
-    + constructor; assumption.
-Qed.
-
-Lemma sub_wf : forall Γ T1 T2,
-  Γ ⊢ T1 <:: T2 -> ty_wf Γ T1 /\ ty_wf Γ T2.
-Proof.
-  intros Γ T1 T2 H.
-  induction H as [Γ T Hwf
-                 |Γ S U T HSU IHSU HUT IHUT
-                 |Γ α B Hlk HwfB
-                 |Γ K l l' Ts Hlt HwfTs
-                 |Γ T Δ HwfT HwfD Hlt
-                 |Γ A A' l l' B B' HA IHA Hl HB IHB
-                 |Γ A A' HAA IHAA
-                 |Γ B B' A A' HwfA HwfA' HB IHB HA IHA].
-  - split; exact Hwf.
-  - destruct IHSU as [HwfS _]. destruct IHUT as [_ HwfT]. split; assumption.
-  - split.
-    + econstructor; eauto.
-    + exact HwfB.
-  - destruct (lt_sub_wf _ _ _ Hlt) as [Hwfl Hwfl'].
-    split; constructor; assumption.
-  - split.
-    + exact HwfT.
-    + constructor; [exact HwfD|constructor].
-  - destruct IHA as [HwfA HwfA'].
-    destruct IHB as [HwfB HwfB'].
-    destruct (lt_sub_wf _ _ _ Hl) as [Hwfl Hwfl'].
-    split; constructor; assumption.
-  - destruct IHAA as [HwfA HwfA'].
-    split; constructor; assumption.
-  - destruct IHB as [HwfB' HwfB].
-    split; constructor; assumption.
-Qed.
+(* [lt_sub_wf] / [sub_wf] (regularity of the subtyping judgments)     *)
+(* live in core/LtSub.v and core/Subtyping.v: the CtxMap generic      *)
+(* transports need [sub_wf] upstream of this file.                    *)
 
 Inductive InsTmAt : nat -> ctx -> ctx -> Prop :=
 | InsTmAt_here : forall A G, InsTmAt 0 G (bind_tm A :: G)

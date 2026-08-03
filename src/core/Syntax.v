@@ -172,6 +172,6 @@ Fixpoint has_rt_cap (t : term) : bool :=
 (* [lang]: an opt-in hint database collecting the constructors of the
    judgments of the calculus (registered here, in Semantics.v, and in
    Typing.v).  New downstream proofs can use [eauto with lang] instead
-   of relying on the historical [core] registrations. *)
+   of relying on the blanket [core] registrations. *)
 Create HintDb lang.
 #[export] Hint Constructors value : lang.

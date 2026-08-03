@@ -41,7 +41,11 @@ Require Import Boundary.
 (*                                                                    *)
 (*  1. operation argument, IN (H_Perform: v enters the clause)        *)
 (*       GUARDED: noloc — source_boundary_operation_in_noloc.         *)
-(*       T_Perform's premise `lt_of_ty_G Γ sig_inst <: lt_free`.      *)
+(*       The value is typed at the operation's INSTANTIATED           *)
+(*       SIGNATURE `inst_op_all_args n_α Ts n_β Ss sig` (exactly as   *)
+(*       T_Perform computes it from the effect declaration), and      *)
+(*       T_Perform's premise `lt_of_ty_G Γ sig_inst <: lt_free`       *)
+(*       makes that type escapable.                                   *)
 (*  2. reified resumption, IN (H_Perform: the continuation lambda     *)
 (*       enters the clause)                                           *)
 (*       EXEMPT BY DESIGN: it is typed `A -local-> T_R`               *)
@@ -59,7 +63,9 @@ Require Import Boundary.
 (*       boundary; it re-enters the delimited body.                   *)
 (*  4. handler body result, OUT (H_Return: v leaves the delimiter)    *)
 (*       GUARDED: noloc — source_boundary_result_out_noloc.           *)
-(*       T_HandlerM's premise `lt_of_ty_G Γ T_B <: lt_free`.          *)
+(*       The value is typed at the delimiter's OWN declared answer    *)
+(*       type T_B, and T_HandlerM's premise                           *)
+(*       `lt_of_ty_G Γ T_B <: lt_free` makes that type escapable.     *)
 (*  5. abortive answer (the clause discards the resumption and        *)
 (*       returns at T_R directly)                                     *)
 (*       EXEMPT BY DESIGN — the UNGUARDED operation-clause answer     *)
@@ -138,56 +144,112 @@ Proof.
   eapply boundary_crossing_value. eapply boundary_step_to_crossing. exact Hbs.
 Qed.
 
+(* The pinned crossing type of each guarded channel: the value moved   *)
+(* through channel ch of a boundary event in state u is typed at THE   *)
+(* type the channel declares — the delimiter's own declared answer     *)
+(* type T_B on the return-out channel, the operation's instantiated    *)
+(* signature (bound exactly as T_Perform computes it from the effect   *)
+(* declaration) on the operation-in channel — and that type is         *)
+(* escapable (noloc).                                                  *)
+Definition boundary_channel_typed
+    (Γ : ctx) (u : term) (ch : boundary_channel) (v : term) : Prop :=
+  match ch with
+  | handler_body_result_out =>
+      exists E m T_B T_R,
+        u = plug E (term_handler_m m T_B T_R v) /\
+        Γ ⊢ₜ v : T_B /\
+        Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free
+  | operation_argument_in =>
+      exists E E_tag m Ts T_B T_R op_bodies op Ss A P n_α ops n_β sig ret sig_inst,
+        u = plug E (term_handler_m m T_B T_R
+              (plug P (term_perform (term_cap E_tag m Ts T_R op_bodies) op Ss A v))) /\
+        ctx_lookup_eff Γ E_tag = Some (n_α, ops) /\
+        nth_error ops op = Some (n_β, sig, ret) /\
+        sig_inst = inst_op_all_args n_α Ts n_β Ss sig /\
+        Γ ⊢ₜ v : sig_inst /\
+        Γ ⊢ₗ lt_of_ty_G Γ sig_inst <: lt_free
+  end.
+
 (* Source-facing event form of the guarded-channel theorem: along any  *)
 (* execution of a well-typed source program, every value moved across  *)
-(* a handler boundary BY AN ACTUAL REDUCTION is typed at an escapable  *)
-(* (noloc) type.  Via boundary_step_to_crossing this is exactly        *)
-(* source_handler_boundary_noloc (Boundary.v) restricted to fireable   *)
-(* states.                                                             *)
+(* a handler boundary BY AN ACTUAL REDUCTION is typed at its           *)
+(* channel's declared type, which is escapable (noloc).  The typing    *)
+(* content is the kernel decomposition of Boundary.v                   *)
+(* (boundary_return_typing / boundary_operation_typing) applied to     *)
+(* the reached state.                                                  *)
 Theorem source_boundary_step_noloc : forall Γ t T u u' ch v,
   eval_ctx Γ ->
   has_rt_cap t = false ->
   Γ ⊢ₜ t : T ->
   multi_step t u ->
   boundary_step u u' ch v ->
-  exists S, Γ ⊢ₜ v : S /\ Γ ⊢ₗ lt_of_ty_G Γ S <: lt_free.
+  boundary_channel_typed Γ u ch v.
 Proof.
   intros Γ t T u u' ch v Hec Hsrc Hty Hms Hbs.
-  eapply source_handler_boundary_noloc; eauto.
-  eapply boundary_step_to_crossing. exact Hbs.
+  destruct (multi_step_preserves_safety_invariants _ _ _ _ Hec
+              (source_safety_invariants _ _ _ Hsrc Hty) Hms)
+    as [_ [_ Htyu]].
+  destruct Hbs as
+    [E m T_B T_R v Hval HwfE
+    |E E_tag m Ts T_B T_R op_bodies op n_beta op_body Ss A v P
+       Hval Hpure HwfP HwfE Hnth];
+    simpl.
+  - (* BS_Return *)
+    destruct (boundary_return_typing _ _ _ _ _ _ _ Htyu) as [Hv Hnl].
+    exists E, m, T_B, T_R.
+    repeat split; try reflexivity; assumption.
+  - (* BS_Perform *)
+    destruct (boundary_operation_typing _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hec Htyu)
+      as (n_α & ops & n_β & sig & ret & Heff & Hnth' & Harg & Hnl).
+    exists E, E_tag, m, Ts, T_B, T_R, op_bodies, op, Ss, A, P,
+      n_α, ops, n_β, sig, ret, (inst_op_all_args n_α Ts n_β Ss sig).
+    repeat split; try reflexivity; assumption.
 Qed.
 
 (* ------------------------------------------------------------------ *)
 (* Per-channel corollaries: one citable theorem per guarded channel   *)
-(* of the matrix above.                                               *)
+(* of the matrix above, each naming its channel's crossing type.      *)
 (* ------------------------------------------------------------------ *)
 
 (* Channel 4: the handler body's result leaving the delimiter          *)
-(* (H_Return) is noloc.                                                *)
+(* (H_Return) is typed at the delimiter's own declared answer type     *)
+(* T_B, which is noloc.                                                *)
 Corollary source_boundary_result_out_noloc : forall Γ t T u u' v,
   eval_ctx Γ ->
   has_rt_cap t = false ->
   Γ ⊢ₜ t : T ->
   multi_step t u ->
   boundary_step u u' handler_body_result_out v ->
-  exists S, Γ ⊢ₜ v : S /\ Γ ⊢ₗ lt_of_ty_G Γ S <: lt_free.
+  exists E m T_B T_R,
+    u = plug E (term_handler_m m T_B T_R v) /\
+    Γ ⊢ₜ v : T_B /\
+    Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free.
 Proof.
   intros Γ t T u u' v Hec Hsrc Hty Hms Hbs.
-  eapply source_boundary_step_noloc; eauto.
+  exact (source_boundary_step_noloc _ _ _ _ _ _ _ Hec Hsrc Hty Hms Hbs).
 Qed.
 
 (* Channel 1: the operation argument entering the handler clause       *)
-(* (H_Perform) is noloc.                                               *)
+(* (H_Perform) is typed at the operation's instantiated signature      *)
+(* (computed from the effect declaration exactly as T_Perform does),   *)
+(* which is noloc.                                                     *)
 Corollary source_boundary_operation_in_noloc : forall Γ t T u u' v,
   eval_ctx Γ ->
   has_rt_cap t = false ->
   Γ ⊢ₜ t : T ->
   multi_step t u ->
   boundary_step u u' operation_argument_in v ->
-  exists S, Γ ⊢ₜ v : S /\ Γ ⊢ₗ lt_of_ty_G Γ S <: lt_free.
+  exists E E_tag m Ts T_B T_R op_bodies op Ss A P n_α ops n_β sig ret sig_inst,
+    u = plug E (term_handler_m m T_B T_R
+          (plug P (term_perform (term_cap E_tag m Ts T_R op_bodies) op Ss A v))) /\
+    ctx_lookup_eff Γ E_tag = Some (n_α, ops) /\
+    nth_error ops op = Some (n_β, sig, ret) /\
+    sig_inst = inst_op_all_args n_α Ts n_β Ss sig /\
+    Γ ⊢ₜ v : sig_inst /\
+    Γ ⊢ₗ lt_of_ty_G Γ sig_inst <: lt_free.
 Proof.
   intros Γ t T u u' v Hec Hsrc Hty Hms Hbs.
-  eapply source_boundary_step_noloc; eauto.
+  exact (source_boundary_step_noloc _ _ _ _ _ _ _ Hec Hsrc Hty Hms Hbs).
 Qed.
 
 (* ------------------------------------------------------------------ *)

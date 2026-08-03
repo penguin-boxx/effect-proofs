@@ -19,8 +19,10 @@ conjuncts:
      marker is in the ambient scope `ms`, and its operation body is
      well-scoped at `scope_below m ms` — the scope *outside* its own
      delimiter, which is exactly where the `H_Perform` reduct lands.
-     Monotone along `scope_ext` (scope insertions), which is what
-     replaces any freshness bookkeeping.
+     Progress's requirement (every live capability delimited) is the
+     `In m ms` half of the same clause. Monotone along `scope_ext`
+     (scope insertions), which is what replaces any freshness
+     bookkeeping.
    - `rt_closed t` — capability operation bodies are term-closed:
      minted at spine positions of a closed program, they stay closed,
      making substitution into them a no-op (the closed-subterm
@@ -132,8 +134,8 @@ without touching call sites.
   `Forall2` of IHs. Derived from the mutual scheme; its three internal
   bridge uses are inherent (the motive is an arbitrary `P`).
 - Mutual schemes `typing_mut_ind`/`typings_mut_ind`/`typing_ops_mut_ind`
-  (+ combined), `ty_wf_mutind`/`types_wf_mutind` (SubstTy.v),
-  `ty_wf_mut` (TypingInv.v) for wf context conversion.
+  (+ combined), `ty_wf_mutind`/`types_wf_mutind` (SubstTy.v) — the
+  latter pair also drives TypingInv.v's wf context conversion.
 - `type_list_ind`/`term_list_ind` (ShiftLaws.v) — structural induction
   with list/ops motives for the traversal lemmas; the `go_traverse`
   tactics close their mechanical cases.

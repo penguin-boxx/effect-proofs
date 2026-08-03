@@ -221,6 +221,87 @@ Qed.
 
 (* ================================================================== *)
 (*                                                                    *)
+(*            EFFECT SAFETY: NO UNHANDLED OPERATION                   *)
+(*                                                                    *)
+(* The guarantee every algebraic-effects reader greps for: an ACTIVE  *)
+(* perform — a `perform (cap E m ...) op Ss A v` redex in evaluation  *)
+(* position, with a value argument and a declared clause for `op` —   *)
+(* always finds a delimiter carrying its marker in the surrounding    *)
+(* context.  The activeness side conditions mirror Progress.v's       *)
+(* `perform_escape` disjunct exactly; that disjunct itself cannot be  *)
+(* reused here because at the closed top level (ms = []) it is        *)
+(* vacuously unsatisfiable (its `In m ms` clause), which is precisely *)
+(* how `progress` discharges it — the residual content is the claim   *)
+(* on the CONTEXT below.  The proof is capability confinement one     *)
+(* frame up: the capability of an active perform is itself in         *)
+(* evaluation position (compose the context with a perform-receiver   *)
+(* frame), so a marker-pure context would contradict `well_scoped`.   *)
+(* ================================================================== *)
+
+(* Marker-pure contexts compose. *)
+Lemma pure_ectx_m_comp : forall m E1 E2,
+  pure_ectx_m m E1 ->
+  pure_ectx_m m E2 ->
+  pure_ectx_m m (comp_ectx E1 E2).
+Proof.
+  intros m E1 E2 H1 H2; induction H1; simpl; auto.
+Qed.
+
+(* Runtime form: in any execution whose reachable states are          *)
+(* well-scoped, no reachable state exhibits an undelimited active     *)
+(* perform.                                                           *)
+Theorem effect_safety : forall t E E_tag m Ts T_R op_bodies op Ss A v,
+  (forall u, multi_step t u -> well_scoped [] u) ->
+  multi_step t
+    (plug E (term_perform (term_cap E_tag m Ts T_R op_bodies) op Ss A v)) ->
+  ectx_wf E ->
+  value v ->
+  (exists n_beta op_body, nth_error op_bodies op = Some (n_beta, op_body)) ->
+  ~ pure_ectx_m m E.
+Proof.
+  intros t E E_tag m Ts T_R op_bodies op Ss A v
+         Hws_reachable Hms Hwf Hval Hclause Hpure.
+  pose proof (Hws_reachable _ Hms) as Hws.
+  (* view the capability itself as sitting in evaluation position:     *)
+  (* extend E with the perform-receiver frame                          *)
+  assert (Hws' : well_scoped []
+            (plug (comp_ectx E (EC_perform_r EC_hole op Ss A v))
+                  (term_cap E_tag m Ts T_R op_bodies))).
+  { rewrite plug_comp_ectx. exact Hws. }
+  apply (capability_confined _ _ _ _ _ _ Hws').
+  apply pure_ectx_m_comp; [exact Hpure | repeat constructor].
+Qed.
+
+(* Source-facing form — the effect-safety corollary: along any        *)
+(* execution of a well-typed source program, an active perform is     *)
+(* never undelimited: its surrounding context always contains a       *)
+(* delimiter carrying the capability's marker, so the operation is    *)
+(* handled.  The well-scopedness trace premise is discharged by the   *)
+(* step-preserved runtime invariants.                                 *)
+Corollary source_effect_safety : forall Γ t T E E_tag m Ts T_R op_bodies op Ss A v,
+  eval_ctx Γ ->
+  has_rt_cap t = false ->
+  Γ ⊢ₜ t : T ->
+  multi_step t
+    (plug E (term_perform (term_cap E_tag m Ts T_R op_bodies) op Ss A v)) ->
+  ectx_wf E ->
+  value v ->
+  (exists n_beta op_body, nth_error op_bodies op = Some (n_beta, op_body)) ->
+  ~ pure_ectx_m m E.
+Proof.
+  intros Γ t T E E_tag m Ts T_R op_bodies op Ss A v
+         Hec Hsrc Hty Hms Hwf Hval Hclause.
+  eapply effect_safety;
+    [ | exact Hms | exact Hwf | exact Hval | exact Hclause].
+  intros u Hms'.
+  destruct (multi_step_preserves_safety_invariants _ _ _ _ Hec
+              (source_safety_invariants _ _ _ Hsrc Hty) Hms')
+    as [_ [[Hws _] _]].
+  exact Hws.
+Qed.
+
+(* ================================================================== *)
+(*                                                                    *)
 (*          NO RUNTIME FORMS INSIDE ESCAPABLE RESULTS                 *)
 (*                                                                    *)
 (* The strongest source-facing non-escape statement: a value          *)

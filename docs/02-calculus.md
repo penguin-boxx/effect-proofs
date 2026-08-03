@@ -27,11 +27,13 @@ prenex-Λ value restriction consulted by `T_TyLam`/`T_LtLam`) and
 source term" test, decided by `sourceb` in `Decide.v`).
 
 Effect declarations carry a **list of operations** (`bind_eff E n_α
-[(n_β, σ, ρ); …]`, a context binding in `core/Context.v`); a handler
-supplies one clause per operation, `perform` selects by declaration
-index, and each `perform` carries its instantiated result type as an
-annotation — that annotation is what lets the semantics reify the
-captured continuation as an ordinary lambda.
+[(n_β, σ, ρ); …]`, a context binding in `core/Context.v`) — one
+`(β-arity, signature, result)` triple per operation, identified by
+its list index; a handler supplies one clause per operation,
+`perform` selects by declaration index, and each `perform` carries
+its instantiated result type as an annotation — that annotation is
+what lets the semantics reify the captured continuation as an
+ordinary lambda.
 
 ## Substitution (`core/Substitution.v`)
 
@@ -78,12 +80,19 @@ call-by-value discipline: everything left of the hole is a value), and
 deliberately *no* freshness side condition anywhere else — see the
 marker-renaming theory in `safety/MarkerRename.v`).
 
+`S_HandleCtx` is also where `term_cap` originates: it freezes the
+handler's operation body into a first-class capability value tagged
+with the fresh marker, and runs the handle's body with that
+capability substituted for its binder — a `term_cap` is a
+`term_handle` minus its body plus its marker.
+
 The handler-elimination rule reifies the continuation as a lambda:
 
 ```
 handler_m m T_B T_R (P[ perform (cap E m T̄ T_R ops) i S̄ A v ])
   -->h  opᵢ[ β̄ := S̄ ][ arg := v,
               k := λ(x:A). handler_m m T_B T_R ((↑P)[x]) ]
+      where  nth_error ops i = Some (n_β, opᵢ)
 ```
 
 `H_Perform` requires the captured context `P` to be both marker-pure
@@ -91,7 +100,8 @@ handler_m m T_B T_R (P[ perform (cap E m T̄ T_R ops) i S̄ A v ])
 skip a pending redex; this is what makes one-step reduction
 deterministic modulo the fresh-marker choice. Applying the resumption
 is plain β-reduction, which re-installs the delimiter around a fresh
-copy of the captured frames — multi-shot resumption for free.
+copy of the captured frames — multi-shot resumption for free (see
+`multishot_example` in the examples tier).
 
 The familiar structural rules (`S_Beta`, `S_App1`, …) are *derived*
 lemmas via the single congruence lemma `step_in_ctx`; `multi_step`
@@ -121,8 +131,8 @@ handler/capability operation clauses against the effect signature,
 shared by `T_Cap` and `T_Handle`). Round-trip bridges
 `typings_Forall2`/`typing_ops_Forall2` connect to `Forall2` where the
 generic induction principle needs it; native helpers
-(`typings_length`, `typings_nth_error`, `typing_ops_nth_error`,
-`typings_app_inv`, `typings_focus_replace`) cover the recurring list
+(`typings_length`, `typing_ops_nth_error`, `typings_app_inv`,
+`typings_focus_replace`) cover the recurring list
 manipulations. The Forall2-aware induction principle
 `typing_ind_forall2` (derived from the generated mutual scheme) is
 what every typing payload in `subst/` applies.
@@ -141,9 +151,11 @@ what every typing payload in `subst/` applies.
   lifetime-free — values crossing the handler boundary must not carry
   a `local` capability.
 - `T_Match` opens `n_lt` fresh existential lifetimes (context pushed
-  by `push_match_bound`, whose per-level *shifted* bound copies make
-  it stable under substitution) and eliminates them from the branch
-  result via the variance-aware `elim_ty_n`.
+  by `push_match_bound`, which stores per-level *shifted* copies of
+  the scrutinee lifetime so all `n_lt` opened lifetimes share one
+  outer bound — the form stable under substitution, unlike the
+  uniform bounds `push_lt_vars`/`push_ty_vars` push) and eliminates
+  them from the branch result via the variance-aware `elim_ty_n`.
 
 **Two escape-lifetime families** coexist by design: the context-free
 `lt_of_ty` (variables contribute `free`) used by `T_Ctor` on

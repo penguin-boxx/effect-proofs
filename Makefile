@@ -30,10 +30,13 @@ theorem-index:
 stats:
 	./scripts/stats.py
 
-# Fail if the committed generated docs are stale vs. the sources.
+# Fail if the committed generated docs are stale vs. the sources, or
+# if the hand-written guides reference files/identifiers that no
+# longer exist (rename rot) — see scripts/check_docs_refs.py.
 check-docs:
 	./scripts/theorem_index.py --check
 	./scripts/stats.py --check
+	./scripts/check_docs_refs.py
 
 # The one command a reviewer runs: build, axiom gate, docs freshness.
 verify: all check-assumptions check-docs
@@ -48,5 +51,5 @@ help:
 	@echo "make check-assumptions  axiom gate only (builds first)"
 	@echo "make theorem-index    regenerate THEOREMS.md"
 	@echo "make stats            regenerate STATS.md"
-	@echo "make check-docs       fail if THEOREMS.md/STATS.md are stale"
+	@echo "make check-docs       fail if THEOREMS.md/STATS.md or docs references are stale"
 	@echo "make clean            remove all build artifacts"

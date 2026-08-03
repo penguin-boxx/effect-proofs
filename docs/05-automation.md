@@ -16,7 +16,7 @@ Sits FIRST in the tier so every subst module can use it.
 
 - **`wf_transport`** = `solve [eauto with ctxmap]`. The standard
   discharge of any one-step judgment transport (`lt_wf` through
-  `sub_free_list` across `InsTy`…`SubstTm`). If it fails, the goal is
+  `sub_free_list_*` across `InsTy`…`SubstTm`). If it fails, the goal is
   not a one-step transport — spell it out.
 - **`go_traverse`** — closes one constructor case of a purely
   structural traversal *equation*: `intros; simpl; autorewrite with
@@ -84,8 +84,8 @@ goals build native `typings` directly.
 relations and `Forall2`. After the native-vocabulary pass the only
 remaining uses are the three inside `typing_ind_forall2` (inherent:
 its motive is an arbitrary `P`). New proofs should use the native
-helpers (`typings_length`, `typings_nth_error`, `typing_ops_nth_error`,
-`typings_app_inv`, `typings_focus_replace`) and the `TS_*`/`TO_*`
+helpers (`typings_length`, `typing_ops_nth_error`, `typings_app_inv`,
+`typings_focus_replace`) and the `TS_*`/`TO_*`
 constructors; reach for the bridges only at a genuine `Forall2`
 boundary.
 

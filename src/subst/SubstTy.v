@@ -722,8 +722,8 @@ Proof.
   - intros; apply subst_ty_ctor_eq.
   - intros; reflexivity.
   - intros; reflexivity.
-  - intros p G G' D HS. apply SubstTy_lt. exact HS.
-  - intros p G G' B HS. apply SubstTy_ty. exact HS.
+  - intros p G G' D HS _ _. apply SubstTy_lt. exact HS.
+  - intros p G G' B HS _ _. apply SubstTy_ty. exact HS.
   - intros [Sb n] G G' x Δ HS Hlk. econstructor.
     rewrite (SubstTy_lookup_lt Sb n G G' HS x). exact Hlk.
   - intros [Sb n] G G' x Δ HS Hlk Hwf. apply LS_Var.
@@ -777,6 +777,16 @@ Proof.
 Qed.
 #[export] Hint Resolve types_wf_SubstTy : ctxmap.
 #[export] Hint Resolve ty_wf_SubstTy : ctxmap.
+
+Lemma lifetimes_wf_SubstTy : forall G lts,
+  lifetimes_wf G lts -> forall Sb n G', SubstTy Sb n G G' -> lifetimes_wf G' lts.
+Proof.
+  intros G lts Hwf Sb n G' HS.
+  pose proof (lifetimes_wf_ctx_map _ _ _ _ _ _ CtxMapSpec_SubstTy
+                G lts Hwf (Sb, n) G' HS) as H.
+  rewrite List.map_id in H. exact H.
+Qed.
+#[export] Hint Resolve lifetimes_wf_SubstTy : ctxmap.
 
 Lemma lt_of_ty_ctx_SubstTy_le : forall Sb n G G', SubstTy Sb n G G' ->
   forall f T k, ty_wf G T -> VB k T -> length G <= k + f ->
@@ -963,22 +973,6 @@ Proof.
   rewrite subst_lt_in_ty_shift_cancel in HwfSub. exact HwfSub.
 Qed.
 
-Lemma lt_wf_NT : forall Bsub Bsup G G',
-  NarrowTy Bsub Bsup G G' ->
-  forall l, lt_wf G l -> lt_wf G' l.
-Proof.
-  intros Bsub Bsup G G' HN l Hwf.
-  revert G' HN.
-  induction Hwf.
-  all: intros G' HN.
-  - apply LWF_Var with (Δ := Δ).
-    rewrite <- (NT_lookup_lt Bsub Bsup Γ G' HN x). exact H.
-  - apply LWF_Free.
-  - apply LWF_Local.
-  - apply LWF_Join; [apply (IHHwf1 G' HN) | apply (IHHwf2 G' HN)].
-Qed.
-
-
 Lemma NT_lookup_sub : forall Bsub Bsup G G',
   NarrowTy Bsub Bsup G G' ->
   forall α U, ctx_lookup_ty G α = Some U -> ty_wf G U ->
@@ -1031,6 +1025,51 @@ Proof.
     + apply (sub_weaken_lt_shift G' D W' W HsubG').
 Qed.
 
+(* NarrowTy as a context map: both transformations are the identity   *)
+(* (parameter [unit]); the [NT_ty]/[NT_lt] wf side conditions on the  *)
+(* pushed binder are exactly the spec's push-field wf hypotheses.     *)
+Lemma CtxMapSpec_NT : forall Bsub Bsup,
+  CtxMapSpec unit (fun _ T => T) (fun _ l => l)
+    (fun p => p) (fun p => p)
+    (fun _ G G' => NarrowTy Bsub Bsup G G').
+Proof.
+  intros Bsub Bsup. constructor.
+  - intros; reflexivity.
+  - intros; reflexivity.
+  - intros; reflexivity.
+  - intros; reflexivity.
+  - intros p K l Ts. rewrite List.map_id. reflexivity.
+  - intros; reflexivity.
+  - intros; reflexivity.
+  - intros p G G' D HN HwfD HwfD'. apply NT_lt; assumption.
+  - intros p G G' B HN HwfB HwfB'. apply NT_ty; assumption.
+  - intros p G G' x Δ HN Hlk. apply LWF_Var with (Δ := Δ).
+    rewrite <- (NT_lookup_lt Bsub Bsup G G' HN x). exact Hlk.
+  - intros p G G' x Δ HN Hlk HwfΔ. apply LS_Var.
+    + rewrite <- (NT_lookup_lt Bsub Bsup G G' HN x). exact Hlk.
+    + exact HwfΔ.
+  - intros p G G' α B HN Hlk HwfB _.
+    destruct (NT_lookup_sub Bsub Bsup G G' HN α B Hlk HwfB)
+      as [B' [HB' [_ HsubG']]].
+    destruct (sub_wf _ _ _ HsubG') as [HwfB' _].
+    exact (TWF_Var G' α B' HB' HwfB').
+  - intros p G G' α B HN Hlk HwfB _.
+    destruct (NT_lookup_sub Bsub Bsup G G' HN α B Hlk HwfB)
+      as [B' [HB' [_ HsubG']]].
+    destruct (sub_wf _ _ _ HsubG') as [HwfB' _].
+    eapply SA_Trans; [apply SA_VarCtx; [exact HB'|exact HwfB']|exact HsubG'].
+Qed.
+
+Lemma lt_wf_NT : forall Bsub Bsup G G',
+  NarrowTy Bsub Bsup G G' ->
+  forall l, lt_wf G l -> lt_wf G' l.
+Proof.
+  intros Bsub Bsup G G' HN l Hwf.
+  exact (lt_wf_ctx_map _ _ _ _ _ _ (CtxMapSpec_NT Bsub Bsup) G l Hwf tt G' HN).
+Qed.
+
+(* Consumed by TypingInv.v ([ty_wf_mutind]) and Narrowing.v (the      *)
+(* combined scheme) — not only by the NT transports below.            *)
 Scheme ty_wf_mutind := Induction for ty_wf Sort Prop
 with types_wf_mutind := Induction for types_wf Sort Prop.
 Combined Scheme ty_wf_types_wf_mutind from ty_wf_mutind, types_wf_mutind.
@@ -1041,39 +1080,13 @@ Lemma ty_wf_NT_all :
   (forall G Ts, types_wf G Ts -> forall Bsub Bsup G',
       NarrowTy Bsub Bsup G G' -> types_wf G' Ts).
 Proof.
-  apply (ty_wf_types_wf_mutind
-    (fun G T _ => forall Bsub Bsup G', NarrowTy Bsub Bsup G G' -> ty_wf G' T)
-    (fun G Ts _ => forall Bsub Bsup G', NarrowTy Bsub Bsup G G' -> types_wf G' Ts)).
-  - intros Γ α B Hlk HwfB IHBound Bsub Bsup G' HN.
-    destruct (NT_lookup_sub Bsub Bsup Γ G' HN α B Hlk HwfB)
-      as [B' [HB' [_ HsubG']]].
-    destruct (sub_wf _ _ _ HsubG') as [HwfB' _].
-    econstructor; eauto.
-  - intros Γ A l B HwfA IHA Hwfl HwfB IHB Bsub Bsup G' HN.
-    constructor.
-    + apply (IHA Bsub Bsup G' HN).
-    + eapply lt_wf_NT; eauto.
-    + apply (IHB Bsub Bsup G' HN).
-  - intros Γ K l Ts Hwfl HwfTs IHTs Bsub Bsup G' HN.
-    constructor.
-    + eapply lt_wf_NT; eauto.
-    + apply (IHTs Bsub Bsup G' HN).
-  - intros Γ A HwfA IHA Bsub Bsup G' HN.
-    constructor. apply (IHA Bsub Bsup (bind_lt lt_local :: G')).
-    apply NT_lt; [exact HN|constructor|constructor].
-  - intros Γ B A HwfB IHB HwfA IHA Bsub Bsup G' HN.
-    constructor.
-    + apply (IHB Bsub Bsup G' HN).
-    + apply (IHA Bsub Bsup (bind_ty B :: G')).
-      apply NT_ty.
-      * exact HN.
-      * exact HwfB.
-      * apply (IHB Bsub Bsup G' HN).
-  - intros Γ Bsub Bsup G' HN. constructor.
-  - intros Γ T Ts HwfT IHT HwfTs IHTs Bsub Bsup G' HN.
-    constructor.
-    + apply (IHT Bsub Bsup G' HN).
-    + apply (IHTs Bsub Bsup G' HN).
+  split.
+  - intros G T Hwf Bsub Bsup G' HN.
+    exact (ty_wf_ctx_map _ _ _ _ _ _ (CtxMapSpec_NT Bsub Bsup) G T Hwf tt G' HN).
+  - intros G Ts Hwf Bsub Bsup G' HN.
+    pose proof (types_wf_ctx_map _ _ _ _ _ _ (CtxMapSpec_NT Bsub Bsup)
+                  G Ts Hwf tt G' HN) as H.
+    rewrite List.map_id in H. exact H.
 Qed.
 
 Lemma ty_wf_NT : forall Bsub Bsup G G',

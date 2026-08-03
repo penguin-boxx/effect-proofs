@@ -6,12 +6,13 @@ Require Import Substitution.
 Require Import Typing.
 
 (* =================================================================== *)
-(* CtxMap: one specification for the six context-map relations.        *)
+(* CtxMap: one specification for the seven context-map relations.      *)
 (*                                                                     *)
 (* The subst tier transports every static judgment (lt_wf /           *)
-(* lifetimes_wf / ty_wf / types_wf / lt_sub / sub) across six context  *)
-(* maps — InsTy / InsLt / InsTm (Weakening.v), SubstLt, SubstTy and    *)
-(* SubstTm — and the six transport families are structurally the same  *)
+(* lifetimes_wf / ty_wf / types_wf / lt_sub / sub) across seven        *)
+(* context maps — InsTy / InsLt / InsTm (Weakening.v), SubstLt,        *)
+(* SubstTy, SubstTm and NarrowTy (SubstTy.v) — and the transport       *)
+(* families are structurally the same                                  *)
 (* induction: only the variable cases (lookup commutation) and the     *)
 (* binder bookkeeping differ per relation.  [CtxMapSpec] captures      *)
 (* exactly that interface.  A map is abstracted over a parameter type  *)
@@ -32,15 +33,15 @@ Require Import Typing.
 (* The generic transports are proved ONCE against the spec below.      *)
 (* Each relation's own file proves a single [CtxMapSpec] instance      *)
 (* (from its ctx_lookup commutation lemmas) and re-derives its         *)
-(* transport family as one-line corollaries, keeping the historical    *)
+(* transport family as one-line corollaries, keeping the per-relation  *)
 (* names and statements that the [ctxmap] hint db registers.           *)
 (*                                                                     *)
 (* [sub]'s SA_Any case additionally transports the escape analysis     *)
 (* [lt_of_ty_G], which commutes as an EQUALITY for five of the maps    *)
-(* but only MONOTONELY ([<:], via lt_of_ty_G_SubstTy_le) for SubstTy.  *)
-(* That fact also depends on the derived wf transports in the SubstTy  *)
-(* case, so it is an extra hypothesis of [sub_ctx_map] rather than a   *)
-(* [CtxMapSpec] field.                                                 *)
+(* but only MONOTONELY ([<:], via lt_of_ty_G_SubstTy_le resp.          *)
+(* lt_of_ty_G_NT) for SubstTy and NarrowTy.  That fact also depends    *)
+(* on the derived wf transports, so it is an extra hypothesis of       *)
+(* [sub_ctx_map] rather than a [CtxMapSpec] field.                     *)
 (* =================================================================== *)
 
 Section CtxMapping.
@@ -70,10 +71,16 @@ Section CtxMapping.
     cm_fty_tyall : forall p B A,
         Fty p (type_ty_all B A)
         = type_ty_all (Fty p B) (Fty (ext_ty p) A);
-    (* [Rel] is closed under pushing a mapped binder on both sides *)
+    (* [Rel] is closed under pushing a mapped binder on both sides.   *)
+    (* The wf side conditions come for free at every use site (the    *)
+    (* generic inductions always have them in hand at binder descent) *)
+    (* and are what admit maps like NarrowTy whose push constructors  *)
+    (* demand a well-formed binder in both contexts.                  *)
     cm_rel_lt : forall p G G' D, Rel p G G' ->
+        lt_wf G D -> lt_wf G' (Flt p D) ->
         Rel (ext_lt p) (bind_lt D :: G) (bind_lt (Flt p D) :: G');
     cm_rel_ty : forall p G G' B, Rel p G G' ->
+        ty_wf G B -> ty_wf G' (Fty p B) ->
         Rel (ext_ty p) (bind_ty B :: G) (bind_ty (Fty p B) :: G');
     (* variable cases: lookup commutation, one per judgment *)
     cm_lt_wf_var : forall p G G' x Δ, Rel p G G' ->
@@ -145,13 +152,16 @@ Section CtxMapping.
         * apply (lt_wf_ctx_map Γ l Hwfl p G' HRel).
         * apply (types_wf_ctx_map Γ Ts HwfTs p G' HRel).
       + rewrite (cm_fty_ltall spec p A). constructor.
+        assert (Hwfl : lt_wf G' (Flt p lt_local))
+          by (rewrite (cm_flt_local spec p); constructor).
         pose proof (IHA (ext_lt p) (bind_lt (Flt p lt_local) :: G')
-                      (cm_rel_lt spec p Γ G' lt_local HRel)) as HA.
+                      (cm_rel_lt spec p Γ G' lt_local HRel (LWF_Local Γ) Hwfl))
+          as HA.
         rewrite (cm_flt_local spec p) in HA. exact HA.
       + rewrite (cm_fty_tyall spec p B A). constructor.
         * apply (IHB p G' HRel).
         * apply (IHA (ext_ty p) (bind_ty (Fty p B) :: G')
-                   (cm_rel_ty spec p Γ G' B HRel)).
+                   (cm_rel_ty spec p Γ G' B HRel HwfB (IHB p G' HRel))).
     - intros G Ts Hwf.
       induction Hwf as [Γ|Γ T Ts HwfT HwfTs IHTs]; intros p G' HRel;
         cbn [List.map].
@@ -221,17 +231,26 @@ Section CtxMapping.
       + apply (lt_sub_ctx_map Γ l l' Hl p G' HRel).
       + apply (IH2 p G' HRel).
     - rewrite !(cm_fty_ltall spec p). apply SA_LtAll.
+      assert (Hwfl : lt_wf G' (Flt p lt_local))
+        by (rewrite (cm_flt_local spec p); constructor).
       pose proof (IH1 (ext_lt p) (bind_lt (Flt p lt_local) :: G')
-                    (cm_rel_lt spec p Γ G' lt_local HRel)) as H'.
+                    (cm_rel_lt spec p Γ G' lt_local HRel (LWF_Local Γ) Hwfl))
+        as H'.
       rewrite (cm_flt_local spec p) in H'. exact H'.
-    - rewrite !(cm_fty_tyall spec p). apply SA_TyAll.
+    - rewrite !(cm_fty_tyall spec p).
+      destruct (sub_wf Γ B' B H1) as [HwfB' HwfB].
+      pose proof (ty_wf_ctx_map Γ B HwfB p G' HRel) as HwfFB.
+      pose proof (ty_wf_ctx_map Γ B' HwfB' p G' HRel) as HwfFB'.
+      apply SA_TyAll.
       + apply (ty_wf_ctx_map (bind_ty B :: Γ) A HwfA (ext_ty p)
-                 (bind_ty (Fty p B) :: G') (cm_rel_ty spec p Γ G' B HRel)).
+                 (bind_ty (Fty p B) :: G')
+                 (cm_rel_ty spec p Γ G' B HRel HwfB HwfFB)).
       + apply (ty_wf_ctx_map (bind_ty B' :: Γ) A' HwfA' (ext_ty p)
-                 (bind_ty (Fty p B') :: G') (cm_rel_ty spec p Γ G' B' HRel)).
+                 (bind_ty (Fty p B') :: G')
+                 (cm_rel_ty spec p Γ G' B' HRel HwfB' HwfFB')).
       + apply (IH1 p G' HRel).
       + apply (IH2 (ext_ty p) (bind_ty (Fty p B') :: G')
-                 (cm_rel_ty spec p Γ G' B' HRel)).
+                 (cm_rel_ty spec p Γ G' B' HRel HwfB' HwfFB')).
   Qed.
 
 End CtxMapping.

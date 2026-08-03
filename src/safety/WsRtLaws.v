@@ -872,8 +872,8 @@ Proof.
     apply Forall_of_concat_map_nil in Hts.
     rewrite rt_closed_ctor_eq in Hrt.
     (* Extract the focus and get a rebuild continuation, in one pass    *)
-    (* over the value prefix (the rt-only half of the old list/Forall   *)
-    (* bridges, derived locally).                                       *)
+    (* over the value prefix (the rt-only list/Forall bridge, derived   *)
+    (* locally).                                                        *)
     assert (Hfocus : rt_closed (plug E1 r) /\
       (rt_closed (plug (shift_ectx_tm 1 0 E1) (term_var 0)) ->
        rt_closed_list (vs ++ plug (shift_ectx_tm 1 0 E1) (term_var 0) :: ts))).
@@ -942,8 +942,8 @@ Proof.
   - apply IHE; exact Hws.
   - apply IHE; exact Hws.
   - rewrite well_scoped_ctor_eq in Hws |- *.
-    (* Direct list induction (the ws-only half of the old list/Forall   *)
-    (* bridges, derived locally).                                       *)
+    (* Direct list induction (the ws-only list/Forall bridge, derived   *)
+    (* locally).                                                        *)
     assert (Hmap : forall us, well_scoped_list ms us ->
               well_scoped_list ms (List.map (shift_tm a cutoff) us)).
     { intros us; induction us as [|u us' IHus]; intros Hus; [exact I|].

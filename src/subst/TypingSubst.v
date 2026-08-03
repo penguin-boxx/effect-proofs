@@ -879,16 +879,6 @@ Proof.
           end.
 Qed.
 
-Lemma lifetimes_wf_SubstTy : forall G lts,
-  lifetimes_wf G lts -> forall Sb n G', SubstTy Sb n G G' -> lifetimes_wf G' lts.
-Proof.
-  intros G lts Hwf Sb n G' HS.
-  pose proof (lifetimes_wf_ctx_map _ _ _ _ _ _ CtxMapSpec_SubstTy
-                G lts Hwf (Sb, n) G' HS) as H.
-  rewrite List.map_id in H. exact H.
-Qed.
-#[export] Hint Resolve lifetimes_wf_SubstTy : ctxmap.
-
 Lemma subst_ty_any_at_free : forall n Sb, subst_ty n Sb any_at_free = any_at_free.
 Proof. intros n Sb. reflexivity. Qed.
 
@@ -1214,8 +1204,8 @@ Qed.
 #[export] Hint Resolve sub_free_list_SubstLt : ctxmap.
 
 (* GENERAL binder-removing/instantiating lt-substitution: NO closedness *)
-(* premise.  Provable now that T_Match pushes [push_match_bound] (stable under  *)
-(* SubstLt via [SubstLt_push_match_bound]) instead of [push_lt_vars].  The      *)
+(* premise.  Provable because T_Match pushes [push_match_bound], which   *)
+(* is stable under SubstLt via [SubstLt_push_match_bound].  The          *)
 (* T_Match case substitutes the field types and the scrutinee lifetime   *)
 (* Delta (via [inst_ctor_type_open_subst_lt] and [SubstLt_push_match_bound]).   *)
 (* This discharges [ltbeta_preserves] and [matchyes_preserves].          *)

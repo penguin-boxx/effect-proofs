@@ -92,3 +92,36 @@ Inductive sub : ctx -> type -> type -> Prop :=
 where "G '⊢' S '<::' T" := (sub G S T).
 
 Hint Constructors sub : core.
+
+(* Regularity: both sides of a subtyping judgment are well-formed.    *)
+Lemma sub_wf : forall Γ T1 T2,
+  Γ ⊢ T1 <:: T2 -> ty_wf Γ T1 /\ ty_wf Γ T2.
+Proof.
+  intros Γ T1 T2 H.
+  induction H as [Γ T Hwf
+                 |Γ S U T HSU IHSU HUT IHUT
+                 |Γ α B Hlk HwfB
+                 |Γ K l l' Ts Hlt HwfTs
+                 |Γ T Δ HwfT HwfD Hlt
+                 |Γ A A' l l' B B' HA IHA Hl HB IHB
+                 |Γ A A' HAA IHAA
+                 |Γ B B' A A' HwfA HwfA' HB IHB HA IHA].
+  - split; exact Hwf.
+  - destruct IHSU as [HwfS _]. destruct IHUT as [_ HwfT]. split; assumption.
+  - split.
+    + econstructor; eauto.
+    + exact HwfB.
+  - destruct (lt_sub_wf _ _ _ Hlt) as [Hwfl Hwfl'].
+    split; constructor; assumption.
+  - split.
+    + exact HwfT.
+    + constructor; [exact HwfD|constructor].
+  - destruct IHA as [HwfA HwfA'].
+    destruct IHB as [HwfB HwfB'].
+    destruct (lt_sub_wf _ _ _ Hl) as [Hwfl Hwfl'].
+    split; constructor; assumption.
+  - destruct IHAA as [HwfA HwfA'].
+    split; constructor; assumption.
+  - destruct IHB as [HwfB' HwfB].
+    split; constructor; assumption.
+Qed.

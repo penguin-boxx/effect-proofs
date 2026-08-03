@@ -71,12 +71,15 @@ Record source_guarantees (Γ : ctx) (t : term) (T : type) : Prop := {
 
   (* Every EXECUTED boundary event on the two guarded data channels   *)
   (* (operation argument in, body result out) carries a value typed   *)
-  (* at an escapable type.                                            *)
+  (* at THE type its channel declares — the delimiter's declared      *)
+  (* answer type T_B on the return-out channel, the operation's       *)
+  (* instantiated signature on the operation-in channel — and that    *)
+  (* type is escapable (boundary_channel_typed, BoundaryStep.v).      *)
   sg_boundary_channels_noloc :
       forall u u' ch v,
       multi_step t u ->
       boundary_step u u' ch v ->
-      exists S, Γ ⊢ₜ v : S /\ Γ ⊢ₗ lt_of_ty_G Γ S <: lt_free;
+      boundary_channel_typed Γ u ch v;
 
   (* The reified resumption entering the clause is a lambda typed at *)
   (* closure lifetime lt_local, so it cannot pass either guarded      *)

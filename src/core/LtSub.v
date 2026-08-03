@@ -72,3 +72,24 @@ Inductive lt_sub : ctx -> lifetime -> lifetime -> Prop :=
 where "G '⊢ₗ' l1 '<:' l2" := (lt_sub G l1 l2).
 
 Hint Constructors lt_sub : core.
+
+(* Regularity: both sides of a lifetime-subtyping judgment are wf.    *)
+Lemma lt_sub_wf : forall Γ l1 l2,
+  Γ ⊢ₗ l1 <: l2 -> lt_wf Γ l1 /\ lt_wf Γ l2.
+Proof.
+  intros Γ l1 l2 H. induction H.
+  - split; [constructor|exact H].
+  - split; [exact H|constructor].
+  - split; [econstructor; exact H|exact H0].
+  - split; exact H.
+  - destruct IHlt_sub1 as [Hwf1 _]. destruct IHlt_sub2 as [_ Hwf3].
+    split; assumption.
+  - destruct IHlt_sub1 as [Hwf1 Hwfl]. destruct IHlt_sub2 as [Hwf2 _].
+    split; [constructor; assumption|exact Hwfl].
+  - destruct IHlt_sub as [Hwfl Hwfl1]. split.
+    + exact Hwfl.
+    + constructor; assumption.
+  - destruct IHlt_sub as [Hwfl Hwfl2]. split.
+    + exact Hwfl.
+    + constructor; assumption.
+Qed.

@@ -77,7 +77,7 @@ Inductive pure_ectx_m (m : marker) : ectx -> Prop :=
       pure_ectx_m m E -> pure_ectx_m m (EC_ctor K l lts Ts vs E ts)
   | pem_match     : forall E K nlt ar y n,
       pure_ectx_m m E -> pure_ectx_m m (EC_match E K nlt ar y n)
-    | pem_handler_m : forall m' T_B T_R E,
+  | pem_handler_m : forall m' T_B T_R E,
       m <> m' ->
       pure_ectx_m m E -> pure_ectx_m m (EC_handler_m m' T_B T_R E)
   | pem_perform_r : forall E op Ss A arg,
@@ -197,7 +197,7 @@ Inductive ectx_wf : ectx -> Prop :=
       ectx_wf (EC_ctor K l lts Ts vs E ts)
   | EWF_Match      : forall E K nlt ar y n,
       ectx_wf E -> ectx_wf (EC_match E K nlt ar y n)
-    | EWF_HandlerM  : forall m T_B T_R E,
+  | EWF_HandlerM  : forall m T_B T_R E,
       ectx_wf E -> ectx_wf (EC_handler_m m T_B T_R E)
   | EWF_PerformR  : forall E op Ss A arg,
       ectx_wf E -> ectx_wf (EC_perform_r E op Ss A arg)

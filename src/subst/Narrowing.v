@@ -6,15 +6,16 @@ Require Import Syntax.
 Require Import Substitution.
 Require Import Semantics.
 Require Import Typing.
+Require Import CtxMap.
 Require Import Subst.
 
 (* ================================================================== *)
 (* Narrowing: typing/subtyping inversions and F<: narrowing theory.   *)
 (*                                                                    *)
-(* Split out of Progress: these lemmas (lambda/forall typing          *)
-(* inversions, the ∀-subtyping inversions, lt_of_ty monotonicity, and *)
-(* the narrowing/replacement theory [NT_*]/[RT_*]/[sub_NT]) are       *)
-(* subtyping infrastructure, unrelated to the progress theorem.       *)
+(* Lambda/forall typing inversions, the ∀-subtyping inversions,       *)
+(* lt_of_ty monotonicity, and the narrowing/replacement theory        *)
+(* ([NT_*]/[RT_*]/[sub_NT]) — subtyping infrastructure independent    *)
+(* of any particular safety theorem.                                  *)
 (* ================================================================== *)
 
 (* ------------------------------------------------------------------ *)
@@ -75,9 +76,9 @@ Proof.
 Qed.
 
 
-(* Narrowing/body-subtyping witnesses extracted from sub_*_inv.       *)
-(* Under eval_ctx these follow structurally from the full             *)
-(* inversion, including the body-subtype witness.                     *)
+(* Full ∀-subtyping inversions: beyond the shape of the subtype,      *)
+(* these also return the body-subtype witness (hence the eval_ctx     *)
+(* premise).                                                          *)
 Lemma sub_lt_all_inv_full : forall Γ S T,
   eval_ctx Γ ->
   Γ ⊢ S <:: type_lt_all T ->
@@ -510,47 +511,25 @@ Proof.
 Qed.
 
 
+(* SA_Any side-condition transport for the generic sub payload:       *)
+(* narrowing can only SHRINK the computed lifetime, so compose        *)
+(* [lt_of_ty_G_NT] with the transported bound by transitivity (the    *)
+(* same shape as [sub_any_SubstTy]).                                  *)
+Lemma sub_any_NT : forall Bsub Bsup (p : unit) G G' T Δ,
+  NarrowTy Bsub Bsup G G' -> ty_wf G T ->
+  G' ⊢ₗ lt_of_ty_G G T <: Δ ->
+  G' ⊢ₗ lt_of_ty_G G' T <: Δ.
+Proof.
+  intros Bsub Bsup p G G' T Δ HN HwfT Hle.
+  eapply LS_Trans; [apply (lt_of_ty_G_NT Bsub Bsup G G' HN T HwfT)|exact Hle].
+Qed.
+
 Lemma sub_NT : forall G S T, G ⊢ S <:: T ->
   forall Bsub Bsup G', NarrowTy Bsub Bsup G G' -> G' ⊢ S <:: T.
 Proof.
-  intros G S T H.
-  induction H as [Γ T Hwf|Γ S U T H1 IH1 H2 IH2|Γ α B Hlk HwfB
-                 |Γ K l l' Ts Hls HwfTs|Γ T Δ HwfT HwfD Hls
-                 |Γ A A' l l' B B' H1 IH1 Hl H2 IH2
-                 |Γ A A' H1 IH1|Γ B B' A A' HwfA HwfA' H1 IH1 H2 IH2];
-    intros Bsub Bsup G' HN.
-  - apply SA_Refl. eapply ty_wf_NT; eauto.
-  - eapply SA_Trans; [apply (IH1 _ _ _ HN) | apply (IH2 _ _ _ HN)].
-  - destruct (NT_lookup_sub Bsub Bsup Γ G' HN α B Hlk HwfB) as [B' [HB' [_ HsubG']]].
-    destruct (sub_wf _ _ _ HsubG') as [HwfB' _].
-    eapply SA_Trans; [apply SA_VarCtx; [exact HB'|exact HwfB'] | exact HsubG'].
-  - apply SA_Data.
-    + apply (lt_sub_NT Bsub Bsup Γ G' HN _ _ Hls).
-    + eapply types_wf_NT; eauto.
-  - apply SA_Any.
-    + eapply ty_wf_NT; eauto.
-    + eapply lt_wf_NT; eauto.
-    + eapply LS_Trans.
-      * apply (lt_of_ty_G_NT Bsub Bsup Γ G' HN T HwfT).
-      * apply (lt_sub_NT Bsub Bsup Γ G' HN _ _ Hls).
-  - apply SA_Fun.
-    + apply (IH1 _ _ _ HN).
-    + apply (lt_sub_NT Bsub Bsup Γ G' HN _ _ Hl).
-    + apply (IH2 _ _ _ HN).
-  - apply SA_LtAll.
-    apply (IH1 Bsub Bsup (bind_lt lt_local :: G')).
-    apply NT_lt; [exact HN|constructor|constructor].
-  - destruct (sub_wf _ _ _ H1) as [HwfB' HwfB].
-    pose proof (IH1 Bsub Bsup G' HN) as H1'.
-    destruct (sub_wf _ _ _ H1') as [HwfB'_NT HwfB_NT].
-    eapply SA_TyAll.
-    + eapply ty_wf_NT; [|exact HwfA].
-      apply NT_ty; [exact HN|exact HwfB|exact HwfB_NT].
-    + eapply ty_wf_NT; [|exact HwfA'].
-      apply NT_ty; [exact HN|exact HwfB'|exact HwfB'_NT].
-    + exact H1'.
-    + apply (IH2 Bsub Bsup (bind_ty B' :: G')).
-      apply NT_ty; [exact HN|exact HwfB'|exact HwfB'_NT].
+  intros G S T H Bsub Bsup G' HN.
+  exact (sub_ctx_map _ _ _ _ _ _ (CtxMapSpec_NT Bsub Bsup)
+           (sub_any_NT Bsub Bsup) G S T H tt G' HN).
 Qed.
 
 Lemma sub_narrow_ty : forall Γ Bsub Bsup T1 T2,

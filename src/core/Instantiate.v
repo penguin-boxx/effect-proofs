@@ -111,8 +111,8 @@ Fixpoint push_ty_vars (n : nat) (bound : type) (Γ : ctx) : ctx :=
   | S n' => push_ty_vars n' bound (bind_ty bound :: Γ)
   end.
 
-(* Push n fresh bind_lt entries for a match/destructuring, each        *)
-(* bounded by the scrutinee lifetime `Delta` (which lives in the       *)
+(* Push n fresh bind_lt entries for a match/destructuring, each         *)
+(* bounded by the scrutinee lifetime `Delta` (which lives in the        *)
 (* OUTER Γ).  Unlike [push_lt_vars], the bound stored at level j is     *)
 (* [shift_lt j 0 Delta], i.e. Delta lifted into that level's scope, so  *)
 (* that EVERY pushed variable has the same effective upper bound        *)

@@ -295,8 +295,8 @@ Proof.
   - intros; apply subst_lt_in_ty_ctor_eq.
   - intros; reflexivity.
   - intros; reflexivity.
-  - intros p G G' D HS. apply SubstLt_lt. exact HS.
-  - intros p G G' B HS. apply SubstLt_ty. exact HS.
+  - intros p G G' D HS _ _. apply SubstLt_lt. exact HS.
+  - intros p G G' B HS _ _. apply SubstLt_ty. exact HS.
   - intros [R n] G G' x Δ HS Hlk. simpl fst in *. simpl snd in *.
     destruct (Nat.eq_dec x n) as [Hx|Hx].
     + subst x. rewrite subst_lt_var_eq, Nat.eqb_refl.

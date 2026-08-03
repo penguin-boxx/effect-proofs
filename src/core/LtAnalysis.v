@@ -13,7 +13,7 @@ Require Import Context.
 (* contribute nothing).                                               *)
 (*                                                                    *)
 (*   lt_∅(α)           = free          (no bound in empty ctx)        *)
-(*   lt_∅(T Δ τ̄)       = lt_join Δ      (lt_join of lt_∅(τ̄))            *)
+(*   lt_∅(T Δ τ̄)       = lt_join Δ     (lt_join of lt_∅(τ̄))           *)
 (*   lt_∅(τ̄ Δ → σ)     = Δ             (only the closure lt matters)  *)
 (*   lt_∅(∀l.τ)        = local         (conservative top)             *)
 (*   lt_∅(∀(α<:B).τ)   = local         (conservative top)             *)

@@ -13,6 +13,7 @@ works* — its architecture, conventions, automation, and sharp edges.
 | [04 — Proof architecture](04-proof-architecture.md) | The runtime invariant architecture, the preservation/progress pipeline, the capstone families, and the context-map abstraction. |
 | [05 — Automation](05-automation.md) | Hint databases and the tactic libraries: what each tactic does and when to reach for it. |
 | [06 — Maintenance](06-maintenance.md) | Build targets and gates, recipes for common changes, naming and comment conventions, and known pitfalls. |
+| [07 — Limitations and positioning](07-limitations.md) | What is not claimed: lattice coarseness, the ∀-conservatism, no effect typing, no termination claim, undecidable subtyping — and how the design relates to adjacent systems. |
 
 Generated documents ([THEOREMS.md](../THEOREMS.md), [STATS.md](../STATS.md))
 are produced by `make theorem-index` / `make stats` and kept fresh by the

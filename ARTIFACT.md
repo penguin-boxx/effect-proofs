@@ -73,7 +73,10 @@ development, then runs two gates:
 
 2. **The docs-freshness gate** (`make check-docs`): the committed
    generated documents (THEOREMS.md, STATS.md) must match what the
-   sources regenerate — a stale committed index fails CI.
+   sources regenerate — a stale committed index fails CI. It also
+   lints the hand-written guides (`scripts/check_docs_refs.py`):
+   files and identifiers referenced by docs/*.md and README.md must
+   exist in the sources.
 
 ## Generated documentation
 

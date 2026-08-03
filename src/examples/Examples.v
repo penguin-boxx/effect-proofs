@@ -197,10 +197,10 @@ Definition T_Cmd (l : lifetime) (S : type) : type := type_ctor cmd_tag l [S].
 Definition reader_sig : binding := bind_eff Reader_tag 1 [(0, T_Unit, `T 0)].
 
 (* effect State<s> { op get(): s; op put(s): Unit }                    *)
-(* Historical command-datatype encoding: a SINGLE operation of type    *)
-(* Cmd<s> -> s whose clause dispatches on the command. Kept alongside  *)
-(* the honest two-operation declaration [statem_sig] below for         *)
-(* comparison. Put returns the new state.                              *)
+(* Command-datatype encoding: a SINGLE operation of type Cmd<s> -> s   *)
+(* whose clause dispatches on the command. Kept alongside the direct   *)
+(* two-operation declaration [statem_sig] below for comparison. Put    *)
+(* returns the new state.                                              *)
 Definition get_sig : binding := bind_ctor get_tag 0 1 [] (T_Cmd `Lf (`T 0)).
 Definition put_sig : binding := bind_ctor put_tag 0 1 [`T 0] (T_Cmd `Lf (`T 0)).
 Definition state_sig : binding := bind_eff State_tag 1 [(0, T_Cmd `Lf (`T 0), `T 0)].
