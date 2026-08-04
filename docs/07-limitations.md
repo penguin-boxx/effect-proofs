@@ -93,9 +93,10 @@ the type-and-effect sense is out of scope.
 ## Termination is a non-claim
 
 The term grammar has no fixpoint form and the type grammar no
-recursive types (`core/Syntax.v`); the examples state the workaround
+recursive types (`core/Syntax.v`); the examples state the workarounds
 explicitly — "the calculus has no fixpoint, so `+k` is the k-fold
-composition of `succ`" (`examples/Examples.v`). But normalization is
+composition of `succ`", and addition of runtime results is the
+bounded-depth family `sum_fn` (`examples/Examples.v`). But normalization is
 neither claimed nor refuted: multi-shot resumptions duplicate captured
 frames, and whether the calculus is strongly normalizing is simply not
 investigated. All soundness theorems are partial-correctness

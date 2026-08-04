@@ -6,7 +6,7 @@ is computed from `src/` at generation time.
 | Directory | Files | LOC | Definition | Fixpoint | Inductive | Lemma | Theorem | Corollary |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | core | 11 | 2558 | 30 | 41 | 18 | 31 | 0 | 0 |
-| subst | 12 | 13965 | 23 | 15 | 10 | 624 | 1 | 0 |
-| safety | 19 | 9389 | 33 | 23 | 8 | 261 | 39 | 15 |
-| examples | 5 | 3637 | 223 | 0 | 0 | 43 | 84 | 3 |
-| **total** | 47 | 29549 | 309 | 79 | 36 | 959 | 124 | 18 |
+| meta | 13 | 13869 | 23 | 15 | 10 | 619 | 1 | 0 |
+| safety | 19 | 9480 | 33 | 23 | 8 | 266 | 39 | 15 |
+| examples | 5 | 3557 | 209 | 1 | 0 | 44 | 82 | 3 |
+| **total** | 48 | 29464 | 295 | 80 | 36 | 960 | 122 | 18 |

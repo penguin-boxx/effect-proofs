@@ -83,7 +83,7 @@ escape checks: [docs/02-calculus.md](docs/02-calculus.md).
 ```
 src/
   core/      syntax, substitution, semantics, typing   (the calculus)
-  subst/     de Bruijn metatheory                      (the proof engine)
+  meta/      de Bruijn metatheory                      (the proof engine)
   safety/    the safety theorems                       (the deliverables)
   examples/  fully verified example programs
 experiments/ scratch space, not built by make
@@ -112,19 +112,23 @@ preservation engine, and the capstone families:
 ## Examples (`src/examples/`)
 
 `Examples.v` declares data types (Option, Result, List, lazy lists with
-existential lifetimes, …) and effects (Reader, State-as-command,
-Exception with a β-polymorphic `throw`, Id, Optionality, and the
-two-operation `StateM` — `get` at index 0, `put` at index 1 — whose
-handler exercises one clause per operation).
+existential lifetimes, …) and effects (Reader, Exception with a
+β-polymorphic `throw`, Id, Optionality, and the two-operation `State` —
+`get` at index 0, `put` at index 1 — whose handler exercises one clause
+per operation).
 `ExamplesProofs.v` type-checks them and runs the reduction sequences
-end-to-end (including a **multi-shot** handler that resumes twice and a
-**forwarding** example where a `throw` crosses a live unrelated Reader
-delimiter). `ExamplesProofs.v` also contains *negative* witnesses: the
-escape checks computationally reject programs that would leak a `local`
-capability. The shared tactic library lives in `ExamplesTactics.v`.
+end-to-end (including a **multi-shot** handler that resumes twice and
+sums both results, a **forwarding** example where a `throw` crosses a
+live unrelated Reader delimiter, and **many-performs** Reader/State
+runs whose results are validated by the bounded-addition family
+`sum_fn` — the no-fixpoint workaround — via the certified evaluator
+`stepf_run`). `ExamplesProofs.v` also contains *negative* witnesses:
+the escape checks computationally reject programs that would leak a
+`local` capability. The shared tactic library lives in
+`ExamplesTactics.v`.
 `ExamplesSafety.v` witnesses five of the capstones — eight theorems
 over three concrete programs (including a concrete `boundary_step`
-event on the StateM trace) plus one type-level confinement fact — and `ExamplesRejection.v` proves the rejection suite: complete
+event on the State trace) plus one type-level confinement fact — and `ExamplesRejection.v` proves the rejection suite: complete
 offending terms have **no typing derivation** at their escapable
 interfaces, each paired with a positive companion at its confined
 interface.

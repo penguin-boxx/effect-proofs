@@ -6,11 +6,11 @@
 |---|---|---|---|
 | `core` | historical | per-file | `Hint Constructors` for the main judgments (`value`, `lt_sub`, `sub`, `typing`+`typings`+`typing_ops`, `ectx_wf`, `head_step`, `step`, …). Pre-dates the named dbs; plain `auto`/`eauto` relies on it. Internal-only hints must be `#[local]` (see `lt_le` in `Decide.v`). |
 | `lang` | opt-in | `core/Syntax.v` | The same judgment constructors, collected explicitly (registered in Syntax/Semantics/Typing). New proofs can `eauto with lang` instead of leaning on the historical `core` registrations. |
-| `subst_go` | rewrite | `subst/SubstTactics.v` | Normalizes op-body traversals to the `fst`/`snd` map form (the `*_ops_eq_map` lemmas) plus the bridges of the still-inline traversals (`rename_marker_go_*`, `marker_annots_go_ops_eq_concat`, `markers_in_*`). Entries register at the defining lemma's `Qed`. |
-| `subst_norm` | rewrite | `subst/SubstTactics.v` | Sort-level normalization laws (`shift_lt_zero`, `shift_lt_fuse`, `subst_lt_shift_cancel`) for closers that need more than IHs. |
-| `ctxmap` | resolve | `subst/SubstTactics.v` | Every judgment-transport corollary of the six context-map relations (incl. the mutual-`with` `types_wf_*`); powers `wf_transport`. |
+| `subst_go` | rewrite | `meta/SubstTactics.v` | Normalizes op-body traversals to the `fst`/`snd` map form (the `*_ops_eq_map` lemmas) plus the bridges of the still-inline traversals (`rename_marker_go_*`, `marker_annots_go_ops_eq_concat`, `markers_in_*`). Entries register at the defining lemma's `Qed`. |
+| `subst_norm` | rewrite | `meta/SubstTactics.v` | Sort-level normalization laws (`shift_lt_zero`, `shift_lt_fuse`, `subst_lt_shift_cancel`) for closers that need more than IHs. |
+| `ctxmap` | resolve | `meta/SubstTactics.v` | Every judgment-transport corollary of the six context-map relations (incl. the mutual-`with` `types_wf_*`); powers `wf_transport`. |
 
-## The subst-tier library (`subst/SubstTactics.v`)
+## The meta-tier library (`meta/SubstTactics.v`)
 
 Sits FIRST in the tier so every subst module can use it.
 
@@ -67,14 +67,17 @@ on `app` frames), and the reduction steppers:
   context expressions carry.
 
 Typing shapes: `solve_wf`, `solve_var`, `solve_lt`(+`_sub`,`_var`),
-`solve_ctor`/`solve_nullary_ctor`/`solve_nat`/`solve_cmd`,
-`solve_perform arg` (the 12-premise monomorphic `T_Perform`;
-`solve_state_perform` is its `solve_cmd` instance), `open_handle`
+`solve_ctor`/`solve_nullary_ctor`/`solve_nat`,
+`solve_perform arg` (the 12-premise monomorphic `T_Perform`), `open_handle`
 (T_Handle minus the interesting premises), `open_lam` (0/1-argument:
 T_Lam minus/with the body), `solve_capture` (the closure-lifetime side
 condition, trying every closer), `solve_any_sub` (`S <:: Any'Δ`),
 `solve_value` (reflection through `valueb_value` + `vm_compute` — use
-for any concrete closed value instead of `repeat constructor`).
+for any concrete closed value instead of `repeat constructor`),
+`solve_nat_match` (the `T_Match` instance for a Nat-typed scrutinee),
+and `solve_sum_fn` (types any member/application of the bounded-sum
+family `sum_fn` in any concrete context — re-derivation by tactic,
+which beats weakening for closed subterms under binders).
 The ctor tactics carry `TS_Nil`/`TS_Cons` branches so field-typing
 goals build native `typings` directly.
 

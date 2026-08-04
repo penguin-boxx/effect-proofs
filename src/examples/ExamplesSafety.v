@@ -32,8 +32,8 @@ Import CoreNotation.
 (* end-to-end guarantees are witnessed on runnable code.              *)
 (* ================================================================== *)
 
-(* The example contexts hold only data-constructor and effect          *)
-(* declarations, with closed schemas — i.e. they are eval_ctxs.        *)
+(* The example contexts hold only data-constructor and effect         *)
+(* declarations, with closed schemas — i.e. they are eval_ctxs.       *)
 Lemma eval_ctx_data_ctx : eval_ctx data_ctx.
 Proof.
   unfold data_ctx.
@@ -66,20 +66,8 @@ Proof.
       | ] ].
 Qed.
 
-(* Type soundness, witnessed: no state reachable from the State        *)
-(* example is stuck.                                                   *)
-Theorem withState_example_safe : forall u,
-  multi_step withState_example u -> ~ stuck u.
-Proof.
-  intros u Hms.
-  apply (source_type_soundness full_ctx withState_example u (T_Nat `Lf)
-           eval_ctx_full_ctx).
-  - vm_compute; reflexivity.
-  - exact typed_withState_example_proof.
-  - exact Hms.
-Qed.
-
-(* A second witness, on the Reader example. *)
+(* Type soundness, witnessed: no state reachable from the Reader      *)
+(* example is stuck.                                                  *)
 Theorem reader_example_safe : forall u,
   multi_step reader_example u -> ~ stuck u.
 Proof.
@@ -91,23 +79,8 @@ Proof.
   - exact Hms.
 Qed.
 
-(* Capability confinement, witnessed: no state reachable from the      *)
-(* State example exposes a capability outside its delimiter.           *)
-Theorem withState_example_cap_confined :
-  forall E E_tag m Ts T_R op_bodies,
-    multi_step withState_example (plug E (term_cap E_tag m Ts T_R op_bodies)) ->
-    ~ pure_ectx_m m E.
-Proof.
-  intros E E_tag m Ts T_R op_bodies Hms.
-  apply (source_capability_never_exposed full_ctx withState_example
-           E E_tag m Ts T_R op_bodies (T_Nat `Lf) eval_ctx_full_ctx).
-  - vm_compute; reflexivity.
-  - exact typed_withState_example_proof.
-  - exact Hms.
-Qed.
-
-(* Escape safety, witnessed: a local File can never be subsumed to a   *)
-(* free (escapable) File.                                              *)
+(* Escape safety, witnessed: a local File can never be subsumed to a  *)
+(* free (escapable) File.                                             *)
 Theorem file_local_confined : ~ (data_ctx ⊢ T_File `Ll <:: T_File `Lf).
 Proof.
   unfold T_File.
@@ -117,10 +90,10 @@ Proof.
   - unfold file_tag, any_tag. congruence.
 Qed.
 
-(* Boundary impermeability, witnessed: along any execution of the      *)
-(* Reader example, every value crossing a handler boundary — the       *)
-(* operation argument entering, or the delimiter's result leaving —    *)
-(* is typed at an escapable (noloc) type.                              *)
+(* Boundary impermeability, witnessed: along any execution of the     *)
+(* Reader example, every value crossing a handler boundary — the      *)
+(* operation argument entering, or the delimiter's result leaving —   *)
+(* is typed at an escapable (noloc) type.                             *)
 Theorem reader_example_boundary_noloc : forall u v,
   multi_step reader_example u ->
   boundary_crossing u v ->
@@ -129,9 +102,9 @@ Theorem reader_example_boundary_noloc : forall u v,
 Proof.
   intros u v Hms Hbc.
   assert (Hsrc : has_rt_cap reader_example = false) by (vm_compute; reflexivity).
-  (* the strengthened theorem pins each channel's crossing type; the   *)
-  (* example-facing statement keeps the channel-agnostic reading, so   *)
-  (* project the pinned type out of whichever channel fired.           *)
+  (* the strengthened theorem pins each channel's crossing type; the  *)
+  (* example-facing statement keeps the channel-agnostic reading, so  *)
+  (* project the pinned type out of whichever channel fired.          *)
   destruct (source_handler_boundary_noloc full_ctx reader_example (T_Nat `Lf) u v
               eval_ctx_full_ctx Hsrc typed_reader_example_proof Hms Hbc)
     as [ (E & m & T_B & T_R & _ & HtyS & Hnl)
@@ -142,15 +115,15 @@ Proof.
 Qed.
 
 (* ================================================================== *)
-(* The two-operation StateM showcase, witnessed.  [statem_ctx]        *)
-(* extends [full_ctx] with the two-operation StateM declaration        *)
+(* The two-operation State example, witnessed.  [state_ctx]           *)
+(* extends [full_ctx] with the two-operation State declaration        *)
 (* (get : Unit -> s at index 0, put : s -> Unit at index 1); it is    *)
 (* still an eval_ctx, so every source-facing capstone applies.        *)
 (* ================================================================== *)
 
-Lemma eval_ctx_statem_ctx : eval_ctx statem_ctx.
+Lemma eval_ctx_state_ctx : eval_ctx state_ctx.
 Proof.
-  unfold statem_ctx, statem_sig, full_ctx, data_ctx, effect_ctx.
+  unfold state_ctx, state_sig, full_ctx, data_ctx, effect_ctx.
   cbn [List.app].
   repeat first
     [ apply ec_nil
@@ -165,45 +138,45 @@ Proof.
       | ] ].
 Qed.
 
-(* Type soundness, witnessed on the two-operation showcase: no state   *)
-(* reachable from the StateM example is stuck.                         *)
-Theorem statem_example_safe : forall u,
-  multi_step statem_example u -> ~ stuck u.
+(* Type soundness, witnessed on the two-operation example: no state   *)
+(* reachable from the State example is stuck.                         *)
+Theorem state_example_safe : forall u,
+  multi_step state_example u -> ~ stuck u.
 Proof.
   intros u Hms.
-  apply (source_type_soundness statem_ctx statem_example u (T_Nat `Lf)
-           eval_ctx_statem_ctx).
+  apply (source_type_soundness state_ctx state_example u (T_Nat `Lf)
+           eval_ctx_state_ctx).
   - vm_compute; reflexivity.
-  - exact typed_statem_example_proof.
+  - exact typed_state_example_proof.
   - exact Hms.
 Qed.
 
-(* Capability confinement, witnessed: no state reachable from the      *)
-(* StateM example exposes a capability outside its delimiter.          *)
-Theorem statem_example_cap_confined :
+(* Capability confinement, witnessed: no state reachable from the     *)
+(* State example exposes a capability outside its delimiter.          *)
+Theorem state_example_cap_confined :
   forall E E_tag m Ts T_R op_bodies,
-    multi_step statem_example (plug E (term_cap E_tag m Ts T_R op_bodies)) ->
+    multi_step state_example (plug E (term_cap E_tag m Ts T_R op_bodies)) ->
     ~ pure_ectx_m m E.
 Proof.
   intros E E_tag m Ts T_R op_bodies Hms.
-  apply (source_capability_never_exposed statem_ctx statem_example
-           E E_tag m Ts T_R op_bodies (T_Nat `Lf) eval_ctx_statem_ctx).
+  apply (source_capability_never_exposed state_ctx state_example
+           E E_tag m Ts T_R op_bodies (T_Nat `Lf) eval_ctx_state_ctx).
   - vm_compute; reflexivity.
-  - exact typed_statem_example_proof.
+  - exact typed_state_example_proof.
   - exact Hms.
 Qed.
 
-(* Boundary impermeability, witnessed on a CONCRETE EVENT.  The other  *)
-(* boundary witnesses are conditional on an abstract crossing; here    *)
-(* the event is exhibited.  After 13 steps of the StateM run (the      *)
-(* state is stepf_run 13 of the program, so reachability is            *)
-(* stepf_run_sound plus vm_compute) the delimiter's body is the        *)
-(* state-passing lambda λs.3, and the next step is the H_Return        *)
-(* collapse: a real [boundary_step] on the handler_body_result_out     *)
-(* channel whose crossing value is that lambda.  The channel typing    *)
-(* pins the value at the delimiter's own declared answer type          *)
-(* T_B = Nat -{free}-> Nat, which is noloc.                            *)
-Theorem statem_example_boundary_return_event :
+(* Boundary impermeability, witnessed on a CONCRETE EVENT.  The other *)
+(* boundary witnesses are conditional on an abstract crossing; here   *)
+(* the event is exhibited.  After 13 steps of the State run (the      *)
+(* state is stepf_run 13 of the program, so reachability is           *)
+(* stepf_run_sound plus vm_compute) the delimiter's body is the       *)
+(* state-passing lambda λs.3, and the next step is the H_Return       *)
+(* collapse: a real [boundary_step] on the handler_body_result_out    *)
+(* channel whose crossing value is that lambda.  The channel typing   *)
+(* pins the value at the delimiter's own declared answer type         *)
+(* T_B = Nat -{free}-> Nat, which is noloc.                           *)
+Theorem state_example_boundary_return_event :
   boundary_step
     (plug (EC_app1 EC_hole three_v)
        (term_handler_m 1
@@ -213,7 +186,7 @@ Theorem statem_example_boundary_return_event :
     (plug (EC_app1 EC_hole three_v) (λ: T_Nat `Lf \\ three_v))
     handler_body_result_out
     (λ: T_Nat `Lf \\ three_v) /\
-  boundary_channel_typed statem_ctx
+  boundary_channel_typed state_ctx
     (plug (EC_app1 EC_hole three_v)
        (term_handler_m 1
           (T_Nat `Lf -{ `Lf }-> T_Nat `Lf)
@@ -224,17 +197,17 @@ Theorem statem_example_boundary_return_event :
 Proof.
   split.
   - apply BS_Return; [ solve_value | repeat constructor ].
-  - eapply (source_boundary_step_noloc statem_ctx statem_example (T_Nat `Lf)).
-    + exact eval_ctx_statem_ctx.
+  - eapply (source_boundary_step_noloc state_ctx state_example (T_Nat `Lf)).
+    + exact eval_ctx_state_ctx.
     + vm_compute; reflexivity.
-    + exact typed_statem_example_proof.
+    + exact typed_state_example_proof.
     + (* reachability, computed: the state is stepf_run 13 of the run *)
       replace (plug (EC_app1 EC_hole three_v)
                  (term_handler_m 1
                     (T_Nat `Lf -{ `Lf }-> T_Nat `Lf)
                     (T_Nat `Lf -{ `Ll }-> T_Nat `Lf)
                     (λ: T_Nat `Lf \\ three_v)))
-        with (stepf_run 13 statem_example)
+        with (stepf_run 13 state_example)
         by (vm_compute; reflexivity).
       apply stepf_run_sound.
     + apply BS_Return; [ solve_value | repeat constructor ].

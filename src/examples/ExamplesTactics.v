@@ -16,7 +16,7 @@ Import CoreNotation.
 (* Multi-step plumbing, evaluation-context congruence for ==>>,       *)
 (* closed-value lemmas, and the solve_* tactics that discharge the    *)
 (* recurring typing-derivation shapes (well-formedness, variables,    *)
-(* lifetime subtyping, constructors, numerals, State-effect goals).   *)
+(* lifetime subtyping, constructors, numerals, performs).             *)
 (* Shared by ExamplesProofs.v, ExamplesRejection.v and                *)
 (* ExamplesSafety.v — none of the example proofs live here.           *)
 (* ================================================================== *)
@@ -228,16 +228,6 @@ Proof. solve_value. Qed.
 
 #[export] Hint Resolve four_v_value endoi_v_value : core.
 
-(* [solve_cmd] types a State command [get]/[put n] : Cmd<Nat> (the [put] field
-   is a Nat numeral, typed by [solve_nat]). *)
-Ltac solve_cmd :=
-  eapply T_Ctor; cbn; try reflexivity;
-  repeat first
-    [ progress solve_wf | solve_lt
-    | apply Forall_nil | apply Forall2_nil | apply TS_Nil
-    | apply Forall2_cons; [ solve_nat | ]
-    | apply TS_Cons; [ solve_nat | ] ].
-
 (* [solve_perform arg] discharges the 12 premises of a monomorphic
    (Ss = []) T_Perform goal; [arg] types the operation argument — the
    only premise that varies between performs. *)
@@ -247,22 +237,11 @@ Ltac solve_perform arg :=
   | solve_wf | constructor | cbn; reflexivity | cbn; solve_lt_sub | cbn; reflexivity
   | solve_wf | arg ].
 
-(* [solve_state_perform] discharges a [perform st.<cmd>() : Nat] goal
-   (the State operation [Cmd<Nat> -> Nat]). *)
-Ltac solve_state_perform := solve_perform solve_cmd.
-
 (* [open_handle] applies T_Handle and discharges every computable /
    well-formedness premise, leaving only the interesting ones (clause
    typing, answer subtyping). *)
 Ltac open_handle :=
   eapply T_Handle; try (cbn; reflexivity); try solve_wf; try (cbn; solve_lt_sub).
-
-Ltac solve_state_k_app :=
-  eapply T_App with (A := `T 1) (l := `Ll) (B := `T 0);
-  [ eapply T_App with (A := `T 1) (l := `Ll) (B := `T 1 -{ `Ll }-> `T 0);
-    [ solve_var | solve_var ]
-  | solve_var ].
-
 
 (* [solve_lt_var] extends [solve_lt] with one more move: descend through
    a lifetime variable's declared bound (LS_Trans + LS_Var).  Needed for
@@ -292,3 +271,29 @@ Tactic Notation "open_lam" tactic3(body) :=
 
 (* [solve_any_sub] closes an [S <:: Any'Δ] upcast. *)
 Ltac solve_any_sub := apply SA_Any; [ solve_wf | solve_wf | solve_capture ].
+
+(* [solve_nat_match] instantiates T_Match for a Nat-typed scrutinee
+   (the zero/suc probes of the bounded-sum family) and discharges
+   every computable premise; branch bodies that need more than a
+   variable are left open, in premise order (yes first). *)
+Ltac solve_nat_match :=
+  eapply T_Match with (Ts := []) (lts := []) (Delta := `Lf)
+    (scrut_result_ty := T_Nat `Lf) (result_tag := nat_tag) (result_l := `Lf)
+    (eta := T_Nat `Lf) (elim_result := T_Nat `Lf);
+  cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt | solve_var ].
+
+(* [solve_sum_fn] types any member of the bounded-sum family
+   ([sum_fn k] / [sum3_fn]) — or a full application of one to
+   variables/numerals — in any concrete context.  The two T_App
+   instantiations distinguish the partial ([sum p : Nat -> Nat]) and
+   the saturated ([sum p (Suc n) : Nat]) application. *)
+Ltac solve_sum_fn :=
+  try unfold sum3_fn; cbn [sum_fn];
+  repeat first
+    [ solve_var
+    | open_lam
+    | solve_nat_match
+    | eapply T_App with (A := T_Nat `Lf) (l := `Lf)
+        (B := T_Nat `Lf -{ `Lf }-> T_Nat `Lf)
+    | eapply T_App with (A := T_Nat `Lf) (l := `Lf) (B := T_Nat `Lf)
+    | solve [ solve_nat ] ].

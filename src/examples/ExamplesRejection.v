@@ -50,7 +50,11 @@ Proof. intros T α; reflexivity. Qed.
 Lemma full_ctx_lt_ctx_wf : lt_ctx_wf full_ctx.
 Proof. intros x Δ H; vm_compute in H; discriminate. Qed.
 
-Lemma full_ctx_tm_lt_ctx_wf : forall T, lt_ctx_wf (bind_tm T :: full_ctx).
+Lemma state_ctx_tm_no_ty : forall T α,
+  ctx_lookup_ty (bind_tm T :: state_ctx) α = None.
+Proof. intros T α; reflexivity. Qed.
+
+Lemma state_ctx_tm_lt_ctx_wf : forall T, lt_ctx_wf (bind_tm T :: state_ctx).
 Proof. intros T x Δ H; vm_compute in H; discriminate. Qed.
 
 (* Typing inversion for variables, closed under subsumption.          *)
@@ -120,24 +124,26 @@ Proof.
 Qed.
 
 (* ================================================================== *)
-(* 2. get on a state of local readers                                 *)
+(* 2. put on a state of local readers                                 *)
 (*                                                                    *)
 (* The testWithState scenario: a State handler instantiated at        *)
 (*   S = Option'free (Reader'local Unit)                              *)
-(* is itself typable (T_Handle constrains only T_B), but EVERY get /  *)
-(* put operation on its capability is rejected: T_Perform's noloc     *)
-(* premise on the instantiated signature Cmd'free S fails because S   *)
-(* buries a local Reader.  The handler is accepted; the operations    *)
-(* that would move local state across the boundary are not.           *)
+(* is itself typable (T_Handle constrains only T_B), but the put      *)
+(* operation on its capability — the one that would move the local    *)
+(* state OUT across the boundary — is rejected: T_Perform's noloc     *)
+(* premise on the instantiated signature (= S itself) fails because   *)
+(* S buries a local Reader.  (get's argument is Unit and its result   *)
+(* flows INWARD, into the delimited program, so there is nothing for  *)
+(* T_Perform to reject on get.)                                       *)
 (* ================================================================== *)
 
 Definition leak_state_cap_ty : type := T_State `Ll leak_ty.
 
-Definition get_local_reader : term :=
-  term_perform ($$ 0) 0 [] leak_ty (term_ctor get_tag `Lf [] [leak_ty] []).
+Definition put_local_reader : term :=
+  term_perform ($$ 0) 1 [] T_Unit (none_v (T_Reader `Ll T_Unit)).
 
-Theorem get_local_reader_rejected : forall T,
-  ~ ((bind_tm leak_state_cap_ty :: full_ctx) ⊢ₜ get_local_reader : T).
+Theorem put_local_reader_rejected : forall T,
+  ~ ((bind_tm leak_state_cap_ty :: state_ctx) ⊢ₜ put_local_reader : T).
 Proof.
   intros T H.
   apply perform_typing_inv in H.
@@ -151,7 +157,7 @@ Proof.
   cbn in Hlk. injection Hlk as HeqS. subst S.
   assert (HE : E <> any_tag).
   { intros ->. vm_compute in Heff. discriminate. }
-  destruct (sub_ctor_inv_noty _ _ _ _ _ (full_ctx_tm_no_ty _) Hsub HE)
+  destruct (sub_ctor_inv_noty _ _ _ _ _ (state_ctx_tm_no_ty _) Hsub HE)
     as [l' [Heq _]].
   unfold leak_state_cap_ty, T_State in Heq.
   injection Heq as HeqE Heql HeqTs. subst E l' Ts.
@@ -161,13 +167,13 @@ Proof.
   subst n_β sig ret. subst sig_inst.
   revert Hnlsi.
   apply nolocb_false_rejects.
-  - apply full_ctx_tm_lt_ctx_wf.
+  - apply state_ctx_tm_lt_ctx_wf.
   - cbn. solve_wf.
   - vm_compute; reflexivity.
 Qed.
 
 (* Positive companion: the identical perform shape at an escapable    *)
-(* state type is accepted — [typed_withState_example]                 *)
+(* state type is accepted — [typed_state_example]                     *)
 (* (ExamplesProofs.v) types a program performing get and put on a     *)
 (* State<Nat'free> capability.                                        *)
 
@@ -206,7 +212,7 @@ Qed.
 (* ================================================================== *)
 
 (* Typing inversion for lambdas RETAINING the capture premise         *)
-(* (Narrowing.v's [lam_typing_inv] drops it).                         *)
+(* (TypingInv.v's [lam_typing_inv] drops it).                         *)
 Lemma lam_typing_inv_capture : forall Γ body A T,
   Γ ⊢ₜ term_lam body A : T ->
   exists l B,
