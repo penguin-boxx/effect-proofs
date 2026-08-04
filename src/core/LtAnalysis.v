@@ -106,10 +106,10 @@ Fixpoint no_local_lt (l : lifetime) : bool :=
 (*                                                                    *)
 (* capture_lt Γ body : +lt_Γ(τ̄) over captured variables' types —      *)
 (* the closure-lifetime bound in the Lam rule.                        *)
-(*   Cap-aware: a literal runtime capability form (term_cap /         *)
+(*   Marker-aware: a literal runtime marker form (term_cap /          *)
 (*   term_handler_m) anywhere in the body forces the                  *)
 (*   closure lifetime to lt_local, since free_tm_vars cannot see      *)
-(*   literal capabilities.                                            *)
+(*   literal marker forms.                                            *)
 (* ================================================================== *)
 
 Fixpoint free_tm_vars (cutoff : nat) (t : term) : list nat :=
@@ -138,7 +138,7 @@ Fixpoint free_tm_vars (cutoff : nat) (t : term) : list nat :=
   end.
 
 Definition capture_lt (Γ : ctx) (body : term) : lifetime :=
-  if has_rt_cap body then lt_local
+  if has_rt_marker body then lt_local
   else
     fold_right (fun x acc =>
       lt_join

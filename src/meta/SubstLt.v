@@ -415,8 +415,8 @@ Lemma capture_lt_SubstLt : forall R n G G', SubstLt R n G G' ->
   forall body, capture_lt G' (subst_lt_in_tm n R body) = subst_lt n R (capture_lt G body).
 Proof.
   intros R n G G' HS body. unfold capture_lt.
-  rewrite has_rt_cap_subst_lt_in_tm.
-  destruct (has_rt_cap body) eqn:Hcap; [reflexivity|].
+  rewrite has_rt_marker_subst_lt_in_tm.
+  destruct (has_rt_marker body) eqn:Hcap; [reflexivity|].
   rewrite free_tm_vars_subst_lt_in_tm.
   induction (free_tm_vars 1 body) as [|x xs IH]; simpl.
   - reflexivity.

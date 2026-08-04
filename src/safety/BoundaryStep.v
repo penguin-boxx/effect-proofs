@@ -179,7 +179,7 @@ Definition boundary_channel_typed
 (* the reached state.                                                  *)
 Theorem source_boundary_step_noloc : forall Γ t T u u' ch v,
   eval_ctx Γ ->
-  has_rt_cap t = false ->
+  has_rt_marker t = false ->
   Γ ⊢ₜ t : T ->
   multi_step t u ->
   boundary_step u u' ch v ->
@@ -216,7 +216,7 @@ Qed.
 (* T_B, which is noloc.                                                *)
 Corollary source_boundary_result_out_noloc : forall Γ t T u u' v,
   eval_ctx Γ ->
-  has_rt_cap t = false ->
+  has_rt_marker t = false ->
   Γ ⊢ₜ t : T ->
   multi_step t u ->
   boundary_step u u' handler_body_result_out v ->
@@ -235,7 +235,7 @@ Qed.
 (* which is noloc.                                                     *)
 Corollary source_boundary_operation_in_noloc : forall Γ t T u u' v,
   eval_ctx Γ ->
-  has_rt_cap t = false ->
+  has_rt_marker t = false ->
   Γ ⊢ₜ t : T ->
   multi_step t u ->
   boundary_step u u' operation_argument_in v ->
@@ -311,7 +311,7 @@ Qed.
 (* the latter is exempt from the noloc guarantee BY DESIGN.            *)
 Theorem source_boundary_resumption_local : forall Γ t T u u' v,
   eval_ctx Γ ->
-  has_rt_cap t = false ->
+  has_rt_marker t = false ->
   Γ ⊢ₜ t : T ->
   multi_step t u ->
   boundary_step u u' operation_argument_in v ->

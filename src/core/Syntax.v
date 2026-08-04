@@ -138,33 +138,33 @@ Definition is_abs (t : term) : bool :=
   end.
 
 (* ================================================================== *)
-(* Runtime-capability occurrence check                                *)
+(* Runtime-marker occurrence check                                    *)
 (*                                                                    *)
-(* has_rt_cap t = true iff a literal runtime form that mentions a     *)
-(* marker — term_cap or term_handler_m — occurs                       *)
+(* has_rt_marker t = true iff a literal runtime form that mentions a  *)
+(* marker — term_cap OR term_handler_m — occurs                       *)
 (* anywhere syntactically in t (under all binders).  These are        *)
 (* exactly the constructors counted by markers_in (Semantics.v).      *)
 (* Source programs never contain them; they arise only at runtime.    *)
 (* Used by capture_lt (Typing.v) to make closure lifetimes account    *)
-(* for literal capabilities, which free_tm_vars cannot see.           *)
+(* for literal marker forms, which free_tm_vars cannot see.           *)
 (* ================================================================== *)
 
-Fixpoint has_rt_cap (t : term) : bool :=
+Fixpoint has_rt_marker (t : term) : bool :=
   match t with
   | term_var _                  => false
-  | term_app t1 t2              => orb (has_rt_cap t1) (has_rt_cap t2)
-  | term_lam body _             => has_rt_cap body
-  | term_ty_app t' _            => has_rt_cap t'
-  | term_ty_lam _ body          => has_rt_cap body
-  | term_lt_app t' _            => has_rt_cap t'
-  | term_lt_lam body            => has_rt_cap body
-  | term_ctor _ _ _ _ ts        => existsb has_rt_cap ts
+  | term_app t1 t2              => orb (has_rt_marker t1) (has_rt_marker t2)
+  | term_lam body _             => has_rt_marker body
+  | term_ty_app t' _            => has_rt_marker t'
+  | term_ty_lam _ body          => has_rt_marker body
+  | term_lt_app t' _            => has_rt_marker t'
+  | term_lt_lam body            => has_rt_marker body
+  | term_ctor _ _ _ _ ts        => existsb has_rt_marker ts
   | term_match scrut _ _ _ y n  =>
-      orb (has_rt_cap scrut) (orb (has_rt_cap y) (has_rt_cap n))
+      orb (has_rt_marker scrut) (orb (has_rt_marker y) (has_rt_marker n))
   | term_handle _ _ _ _ op_bodies body =>
-      orb (existsb (fun '(_, ob) => has_rt_cap ob) op_bodies)
-          (has_rt_cap body)
-  | term_perform t' _ _ _ arg   => orb (has_rt_cap t') (has_rt_cap arg)
+      orb (existsb (fun '(_, ob) => has_rt_marker ob) op_bodies)
+          (has_rt_marker body)
+  | term_perform t' _ _ _ arg   => orb (has_rt_marker t') (has_rt_marker arg)
   | term_cap _ _ _ _ _          => true
   | term_handler_m _ _ _ _      => true
   end.

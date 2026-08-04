@@ -73,7 +73,7 @@ Proof.
 Qed.
 
 
-(* `lt_join_mono` (lt_join is monotone in both arguments) lives in      *)
+(* `lt_join_mono` (lt_join is monotone in both arguments) lives in    *)
 (* SubstTy.v and is in scope via Subst.                               *)
 
 (* ------------------------------------------------------------------ *)

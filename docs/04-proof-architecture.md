@@ -29,7 +29,7 @@ conjuncts:
      identity laws).
 3. **Typing** (`preservation` is unconditional subject reduction).
 
-All three hold vacuously on source terms (`has_rt_cap t = false`),
+All three hold vacuously on source terms (`has_rt_marker t = false`),
 which is how every `source_*` corollary needs only an initial typing.
 
 **The fused engine.** The `ws_rt` preservation laws in `WsRtLaws.v`

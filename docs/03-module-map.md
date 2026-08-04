@@ -8,7 +8,7 @@ re-export shims — the one-import façades of their tiers.
 
 | File | Role |
 |---|---|
-| `Syntax.v` | Sorts, terms, `value`, `is_abs`, `has_rt_cap`; creates the opt-in `lang` hint db. |
+| `Syntax.v` | Sorts, terms, `value`, `is_abs`, `has_rt_marker`; creates the opt-in `lang` hint db. |
 | `Substitution.v` | The six shift/subst traversals (map-nested; see ch. 02) and the telescoping `subst_list_*` family. |
 | `Semantics.v` | `ectx`/`plug`/`shift_ectx_tm`, markers (`markers_in`, `marker_bound`), `ectx_wf` (`EWF_*`), `pure_ectx_m`, `head_step`, `step`, the derived `S_*` rule API (consumers: `Progress.v` and `ExamplesProofs.v` — kept because it documents the calculus), `multi_step`. |
 | `Context.v` … `Instantiate.v` | The static-semantics split; see the table in ch. 02. |
@@ -26,7 +26,7 @@ re-export shims — the one-import façades of their tiers.
 | `SubstTy.v` | `SubstTy` + instance/transports; the F<: narrowing relation `NarrowTy` (`NT_*`) with `ty_wf_NT`-style transports and `type_ty_all_narrow_bound` (needed below, which is why narrowing lives here and not only in `Narrowing.v`). |
 | `ProgramCtx.v` | `eval_ctx` — the *typing*-context predicate (only ctor/effect bindings; NOT `ectx`!) with its free-variable payoff (`typing_closed`, `typing_fv_bound`), plus `typing_implies_wf` and the `typing_weaken_ty_shift` weakening instances. |
 | `CtxClosed.v` | The context-closedness bookkeeping over `eval_ctx`: `ctor_fields_closed`, `ctx_schemas_lt_closed_from`, `ctx_ty/lt_closed_from` with their binder-preservation families, the wf→closed transports, and `typing_tm_ty/lt_closed_from` — the hypothesis packages threaded through `typing_SubstTm`/`typing_SubstTy`. |
-| `SubstTm.v` | `SubstTm` + instance/transports, `has_rt_cap_list`, the typed-value capture/escape facts (`typing_value_capture_lt_le_type`, `lt_local_not_escapes`), and the term-substitution payload `typing_SubstTm` with its eval-ctx corollaries. |
+| `SubstTm.v` | `SubstTm` + instance/transports, `has_rt_marker_list`, the typed-value capture/escape facts (`typing_value_capture_lt_le_type`, `lt_local_not_escapes`), and the term-substitution payload `typing_SubstTm` with its eval-ctx corollaries. |
 | `TypingSubst.v` | `typing_SubstLt` and `typing_SubstTy` — both live here because both T_TyApp cases lean on `type_ty_all_narrow_bound` (SubstTy.v), forcing the payloads below SubstTy (header explains). |
 | `Subst.v` | Re-export shim for the tier (everything up to and including `TypingSubst`; `Narrowing`/`Variance` come after it in build order and are imported directly). |
 | `Narrowing.v` | The rest of the F<: narrowing theory: `NT_length`, `lt_sub_NT`, `lt_of_ty_ctx` monotonicity under narrowing, the bound-replacement relation `ReplaceTy` (`RT_*`), `sub_NT`/`sub_narrow_ty`. (The inversions this feeds live in `safety/TypingInv.v`.) |

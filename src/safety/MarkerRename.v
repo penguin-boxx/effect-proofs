@@ -195,7 +195,7 @@ Qed.
 
 (* ------------------------------------------------------------------ *)
 (* Renaming does not disturb the term skeleton: the classifiers used  *)
-(* by the typing rules (is_abs, has_rt_cap, free_tm_vars, capture_lt) *)
+(* by the typing rules (is_abs, has_rt_marker, free_tm_vars, capture_lt) *)
 (* are all invariant.                                                 *)
 (* ------------------------------------------------------------------ *)
 
@@ -203,18 +203,18 @@ Lemma is_abs_rename_marker : forall f t,
   is_abs (rename_marker f t) = is_abs t.
 Proof. intros f t; destruct t; reflexivity. Qed.
 
-Lemma has_rt_cap_rename_marker : forall f t,
-  has_rt_cap (rename_marker f t) = has_rt_cap t.
+Lemma has_rt_marker_rename_marker : forall f t,
+  has_rt_marker (rename_marker f t) = has_rt_marker t.
 Proof.
   intros f.
   apply (term_list_ind
-    (fun t => has_rt_cap (rename_marker f t) = has_rt_cap t)
-    (fun ts => has_rt_cap_list (List.map (rename_marker f) ts)
-               = has_rt_cap_list ts)
+    (fun t => has_rt_marker (rename_marker f t) = has_rt_marker t)
+    (fun ts => has_rt_marker_list (List.map (rename_marker f) ts)
+               = has_rt_marker_list ts)
     (fun obs =>
-       existsb (fun p => has_rt_cap (snd p))
+       existsb (fun p => has_rt_marker (snd p))
          (List.map (fun p => (fst p, rename_marker f (snd p))) obs)
-       = existsb (fun p => has_rt_cap (snd p)) obs)).
+       = existsb (fun p => has_rt_marker (snd p)) obs)).
   - intros n. reflexivity.
   - intros t1 t2 IH1 IH2. simpl. rewrite IH1, IH2. reflexivity.
   - intros body T IH. simpl. exact IH.
@@ -222,12 +222,12 @@ Proof.
   - intros bound body IH. simpl. exact IH.
   - intros t l IH. simpl. exact IH.
   - intros body IH. simpl. exact IH.
-  - intros K l lts Ts ts IH. rewrite rename_marker_ctor_eq, !has_rt_cap_ctor_eq.
+  - intros K l lts Ts ts IH. rewrite rename_marker_ctor_eq, !has_rt_marker_ctor_eq.
     exact IH.
   - intros scrut tag n_lt arity yes no IHs IHy IHn. simpl.
     rewrite IHs, IHy, IHn. reflexivity.
   - intros E Ts T_B T_R op_bodies body IHops IHb. simpl.
-    rewrite rename_marker_go_ops_eq_map, !has_rt_cap_ops_eq.
+    rewrite rename_marker_go_ops_eq_map, !has_rt_marker_ops_eq.
     rewrite IHops, IHb. reflexivity.
   - intros recv op Ss A arg IHr IHa. simpl. rewrite IHr, IHa. reflexivity.
   - intros E m Ts T_R op_bodies IHops. reflexivity.
@@ -282,7 +282,7 @@ Lemma capture_lt_rename_marker : forall f G t,
   capture_lt G (rename_marker f t) = capture_lt G t.
 Proof.
   intros f G t. unfold capture_lt.
-  rewrite has_rt_cap_rename_marker, free_tm_vars_rename_marker. reflexivity.
+  rewrite has_rt_marker_rename_marker, free_tm_vars_rename_marker. reflexivity.
 Qed.
 
 (* ------------------------------------------------------------------ *)

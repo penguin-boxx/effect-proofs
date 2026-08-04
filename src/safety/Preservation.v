@@ -382,7 +382,7 @@ Proof.
   pose proof (well_scoped_step_handler_confinement
                 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hws Hpure Hnth)
     as Hopconf.
-  assert (Hvcap : has_rt_cap v = false).
+  assert (Hvcap : has_rt_marker v = false).
   { apply handler_m_typing_inv in Hty.
     destruct Hty as [Hplug [HTBR [HnlTB HTRT]]].
     destruct (plug_typing_inv P Γ _ _ Hplug) as [Tu Hperf].
@@ -391,7 +391,7 @@ Proof.
       [E_t0 [Δ0 [Ts0 [n_α [ops0 [n_β0 [sig [ret [sig_inst
         [Hrecv [Heff0 [Hnth0 [HlenTs0 [HlenSs [HwfSs [HnlSs [Hsi [Hnlsi
           [Hri [HwfRi [Harg HsubTu]]]]]]]]]]]]]]]]]]]]].
-    eapply value_no_local_no_rt_cap;
+    eapply value_no_local_no_rt_marker;
       [ exact Hec | exact Harg | exact Hval
       | eapply typing_closed; [exact Hec | exact Harg] | exact Hnlsi ]. }
   pose proof (free_tm_vars_plug_nil_inv P _ Hfv) as Hfvred.
@@ -410,7 +410,7 @@ Proof.
     apply Forall_cons; [|apply Forall_nil].
     simpl. exact Hfvb.
   - apply Forall_cons.
-    + apply ws_rt_no_rt_cap. exact Hvcap.
+    + apply ws_rt_no_rt_marker. exact Hvcap.
     + apply Forall_cons; [|apply Forall_nil].
       split.
       * change (well_scoped (m :: ms) (plug (shift_ectx_tm 1 0 P) (term_var 0))).
@@ -450,8 +450,8 @@ Proof.
   - (* H_Return *)
     destruct (handler_m_typing_inv _ _ _ _ _ _ Hty) as [Hbody [_ [Hnl _]]].
     pose proof (typing_closed _ _ _ Hec Hty) as Hcl. simpl in Hcl.
-    apply ws_rt_no_rt_cap.
-    eapply value_no_local_no_rt_cap;
+    apply ws_rt_no_rt_marker.
+    eapply value_no_local_no_rt_marker;
       [ exact Hec | exact Hbody | assumption | exact Hcl | exact Hnl ].
   - (* H_Perform *)
     eapply ws_rt_step_handler_elim;

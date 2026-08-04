@@ -23,7 +23,7 @@ Require Import Eqb.
 (*   nolocb   Γ T     decides   Γ ⊢ₗ lt_of_ty_G Γ T <: lt_free        *)
 (*                                                   (nolocb_spec)    *)
 (*   valueb   t       decides   value t            (valueb_spec)      *)
-(*   sourceb  t       decides   has_rt_cap t = false                  *)
+(*   sourceb  t       decides   has_rt_marker t = false                  *)
 (*                                                   (sourceb_spec)   *)
 (*                                                                    *)
 (* The lattice decider works in three layers:                         *)
@@ -643,12 +643,12 @@ Proof.
 Qed.
 
 (* A term is a SOURCE term iff no runtime marker construct occurs in  *)
-(* it; [has_rt_cap] is already executable, so the decider is its      *)
+(* it; [has_rt_marker] is already executable, so the decider is its      *)
 (* negation.                                                          *)
-Definition sourceb (t : term) : bool := negb (has_rt_cap t).
+Definition sourceb (t : term) : bool := negb (has_rt_marker t).
 
 Theorem sourceb_spec : forall t,
-  sourceb t = true <-> has_rt_cap t = false.
+  sourceb t = true <-> has_rt_marker t = false.
 Proof.
   intros t. unfold sourceb. apply negb_true_iff.
 Qed.

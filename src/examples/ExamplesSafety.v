@@ -101,7 +101,7 @@ Theorem reader_example_boundary_noloc : forall u v,
     full_ctx ⊢ₜ v : S /\ full_ctx ⊢ₗ lt_of_ty_G full_ctx S <: lt_free.
 Proof.
   intros u v Hms Hbc.
-  assert (Hsrc : has_rt_cap reader_example = false) by (vm_compute; reflexivity).
+  assert (Hsrc : has_rt_marker reader_example = false) by (vm_compute; reflexivity).
   (* the strengthened theorem pins each channel's crossing type; the  *)
   (* example-facing statement keeps the channel-agnostic reading, so  *)
   (* project the pinned type out of whichever channel fired.          *)
@@ -260,7 +260,7 @@ Theorem delegate_example_boundary_noloc : forall u v,
     full_ctx ⊢ₜ v : S /\ full_ctx ⊢ₗ lt_of_ty_G full_ctx S <: lt_free.
 Proof.
   intros u v Hms Hbc.
-  assert (Hsrc : has_rt_cap delegate_example = false) by (vm_compute; reflexivity).
+  assert (Hsrc : has_rt_marker delegate_example = false) by (vm_compute; reflexivity).
   destruct (source_handler_boundary_noloc full_ctx delegate_example (T_Nat `Lf) u v
               eval_ctx_full_ctx Hsrc typed_delegate_example_proof Hms Hbc)
     as [ (E & m & T_B & T_R & _ & HtyS & Hnl)

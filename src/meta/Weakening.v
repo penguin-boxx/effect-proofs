@@ -1308,10 +1308,10 @@ Qed.
 
 Lemma capture_lt_closed : forall Γ t,
   free_tm_vars 0 t = [] ->
-  capture_lt Γ t = if has_rt_cap t then lt_local else lt_free.
+  capture_lt Γ t = if has_rt_marker t then lt_local else lt_free.
 Proof.
   intros Γ t Hfree. unfold capture_lt.
-  destruct (has_rt_cap t); [reflexivity|].
+  destruct (has_rt_marker t); [reflexivity|].
   rewrite (free_tm_vars_closed_cutoff t 1 Hfree). reflexivity.
 Qed.
 
@@ -1340,61 +1340,61 @@ Proof.
 Qed.
 
 
-(* Bridge: has_rt_cap's inline op-bodies fix as an existsb.           *)
-Lemma has_rt_cap_ops_eq : forall (obs : list (nat * term)),
-  existsb (fun '(_, ob) => has_rt_cap ob) obs
-  = existsb (fun p => has_rt_cap (snd p)) obs.
+(* Bridge: has_rt_marker's inline op-bodies fix as an existsb.           *)
+Lemma has_rt_marker_ops_eq : forall (obs : list (nat * term)),
+  existsb (fun '(_, ob) => has_rt_marker ob) obs
+  = existsb (fun p => has_rt_marker (snd p)) obs.
 Proof. intros; induction obs as [|[nb ob] rest IH]; simpl; congruence. Qed.
-#[export] Hint Rewrite has_rt_cap_ops_eq : subst_go.
+#[export] Hint Rewrite has_rt_marker_ops_eq : subst_go.
 
-Lemma has_rt_cap_shift_tm : forall t amount cutoff,
-  has_rt_cap (shift_tm amount cutoff t) = has_rt_cap t.
+Lemma has_rt_marker_shift_tm : forall t amount cutoff,
+  has_rt_marker (shift_tm amount cutoff t) = has_rt_marker t.
 Proof.
   apply (term_list_ind
     (fun t => forall amount cutoff,
-      has_rt_cap (shift_tm amount cutoff t) = has_rt_cap t)
+      has_rt_marker (shift_tm amount cutoff t) = has_rt_marker t)
     (fun ts => forall amount cutoff,
-      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_cap u) (go rest) end)
+      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_marker u) (go rest) end)
         (List.map (shift_tm amount cutoff) ts) =
-      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_cap u) (go rest) end) ts)
+      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_marker u) (go rest) end) ts)
     (fun obs => forall amount cutoff,
-      existsb (fun p => has_rt_cap (snd p))
+      existsb (fun p => has_rt_marker (snd p))
         (List.map (fun p => (fst p, shift_tm amount (cutoff + 2) (snd p))) obs) =
-      existsb (fun p => has_rt_cap (snd p)) obs));
+      existsb (fun p => has_rt_marker (snd p)) obs));
     go_traverse.
 Qed.
 
-Lemma has_rt_cap_shift_ty_in_tm : forall t amount cutoff,
-  has_rt_cap (shift_ty_in_tm amount cutoff t) = has_rt_cap t.
+Lemma has_rt_marker_shift_ty_in_tm : forall t amount cutoff,
+  has_rt_marker (shift_ty_in_tm amount cutoff t) = has_rt_marker t.
 Proof.
   apply (term_list_ind
     (fun t => forall amount cutoff,
-      has_rt_cap (shift_ty_in_tm amount cutoff t) = has_rt_cap t)
+      has_rt_marker (shift_ty_in_tm amount cutoff t) = has_rt_marker t)
     (fun ts => forall amount cutoff,
-      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_cap u) (go rest) end)
+      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_marker u) (go rest) end)
         (List.map (shift_ty_in_tm amount cutoff) ts) =
-      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_cap u) (go rest) end) ts)
+      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_marker u) (go rest) end) ts)
     (fun obs => forall amount cutoff,
-      existsb (fun p => has_rt_cap (snd p))
+      existsb (fun p => has_rt_marker (snd p))
         (List.map (fun p => (fst p, shift_ty_in_tm amount (cutoff + fst p) (snd p))) obs) =
-      existsb (fun p => has_rt_cap (snd p)) obs));
+      existsb (fun p => has_rt_marker (snd p)) obs));
     go_traverse.
 Qed.
 
-Lemma has_rt_cap_shift_lt_in_tm : forall t amount cutoff,
-  has_rt_cap (shift_lt_in_tm amount cutoff t) = has_rt_cap t.
+Lemma has_rt_marker_shift_lt_in_tm : forall t amount cutoff,
+  has_rt_marker (shift_lt_in_tm amount cutoff t) = has_rt_marker t.
 Proof.
   apply (term_list_ind
     (fun t => forall amount cutoff,
-      has_rt_cap (shift_lt_in_tm amount cutoff t) = has_rt_cap t)
+      has_rt_marker (shift_lt_in_tm amount cutoff t) = has_rt_marker t)
     (fun ts => forall amount cutoff,
-      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_cap u) (go rest) end)
+      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_marker u) (go rest) end)
         (List.map (shift_lt_in_tm amount cutoff) ts) =
-      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_cap u) (go rest) end) ts)
+      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_marker u) (go rest) end) ts)
     (fun obs => forall amount cutoff,
-      existsb (fun p => has_rt_cap (snd p))
+      existsb (fun p => has_rt_marker (snd p))
         (List.map (fun p => (fst p, shift_lt_in_tm amount cutoff (snd p))) obs) =
-      existsb (fun p => has_rt_cap (snd p)) obs));
+      existsb (fun p => has_rt_marker (snd p)) obs));
     go_traverse.
 Qed.
 
@@ -1424,20 +1424,20 @@ Proof.
   destruct t; simpl; congruence.
 Qed.
 
-Lemma has_rt_cap_subst_lt_in_tm : forall t var replacement,
-  has_rt_cap (subst_lt_in_tm var replacement t) = has_rt_cap t.
+Lemma has_rt_marker_subst_lt_in_tm : forall t var replacement,
+  has_rt_marker (subst_lt_in_tm var replacement t) = has_rt_marker t.
 Proof.
   apply (term_list_ind
     (fun t => forall var replacement,
-      has_rt_cap (subst_lt_in_tm var replacement t) = has_rt_cap t)
+      has_rt_marker (subst_lt_in_tm var replacement t) = has_rt_marker t)
     (fun ts => forall var replacement,
-      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_cap u) (go rest) end)
+      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_marker u) (go rest) end)
         (List.map (subst_lt_in_tm var replacement) ts) =
-      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_cap u) (go rest) end) ts)
+      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_marker u) (go rest) end) ts)
     (fun obs => forall var replacement,
-      existsb (fun p => has_rt_cap (snd p))
+      existsb (fun p => has_rt_marker (snd p))
         (List.map (fun p => (fst p, subst_lt_in_tm var replacement (snd p))) obs) =
-      existsb (fun p => has_rt_cap (snd p)) obs));
+      existsb (fun p => has_rt_marker (snd p)) obs));
     go_traverse.
 Qed.
 
@@ -1446,8 +1446,8 @@ Lemma capture_lt_InsTmAt : forall c G G', InsTmAt c G G' ->
 Proof.
   intros c G G' HIns body. unfold capture_lt.
   replace (S c) with (1 + c) by lia.
-  rewrite has_rt_cap_shift_tm.
-  destruct (has_rt_cap body) eqn:Hcap; [reflexivity|].
+  rewrite has_rt_marker_shift_tm.
+  destruct (has_rt_marker body) eqn:Hcap; [reflexivity|].
   rewrite free_tm_vars_shift_tm_1.
   induction (free_tm_vars 1 body) as [|x xs IH]; simpl.
   - reflexivity.
@@ -1461,8 +1461,8 @@ Lemma capture_lt_InsTy : forall c G G', InsTy c G G' ->
   forall body, capture_lt G' (shift_ty_in_tm 1 c body) = capture_lt G body.
 Proof.
   intros c G G' HIns body. unfold capture_lt.
-  rewrite has_rt_cap_shift_ty_in_tm.
-  destruct (has_rt_cap body) eqn:Hcap; [reflexivity|].
+  rewrite has_rt_marker_shift_ty_in_tm.
+  destruct (has_rt_marker body) eqn:Hcap; [reflexivity|].
   rewrite free_tm_vars_shift_ty_in_tm.
   induction (free_tm_vars 1 body) as [|x xs IH]; simpl.
   - reflexivity.
@@ -1476,8 +1476,8 @@ Lemma capture_lt_InsLt : forall c G G', InsLt c G G' ->
   forall body, capture_lt G' (shift_lt_in_tm 1 c body) = shift_lt 1 c (capture_lt G body).
 Proof.
   intros c G G' HIns body. unfold capture_lt.
-  rewrite has_rt_cap_shift_lt_in_tm.
-  destruct (has_rt_cap body) eqn:Hcap; [reflexivity|].
+  rewrite has_rt_marker_shift_lt_in_tm.
+  destruct (has_rt_marker body) eqn:Hcap; [reflexivity|].
   rewrite free_tm_vars_shift_lt_in_tm.
   induction (free_tm_vars 1 body) as [|x xs IH]; simpl.
   - reflexivity.
@@ -1822,26 +1822,26 @@ Qed.
 
 
 
-Lemma has_rt_cap_subst_tm_source_true : forall t var replacement,
-  has_rt_cap t = true -> has_rt_cap (subst_tm var replacement t) = true.
+Lemma has_rt_marker_subst_tm_source_true : forall t var replacement,
+  has_rt_marker t = true -> has_rt_marker (subst_tm var replacement t) = true.
 Proof.
   apply (term_list_ind
     (fun t => forall var replacement,
-      has_rt_cap t = true -> has_rt_cap (subst_tm var replacement t) = true)
+      has_rt_marker t = true -> has_rt_marker (subst_tm var replacement t) = true)
     (fun ts => forall var replacement,
-      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_cap u) (go rest) end) ts = true ->
-      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_cap u) (go rest) end)
+      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_marker u) (go rest) end) ts = true ->
+      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_marker u) (go rest) end)
         (List.map (subst_tm var replacement) ts) = true)
     (fun obs => forall var replacement,
-      existsb (fun p => has_rt_cap (snd p)) obs = true ->
-      existsb (fun p => has_rt_cap (snd p))
+      existsb (fun p => has_rt_marker (snd p)) obs = true ->
+      existsb (fun p => has_rt_marker (snd p))
         (List.map (fun p => (fst p, subst_tm var replacement (snd p))) obs)
       = true)).
   - intros x var replacement Hcap. discriminate.
   - intros t1 t2 IH1 IH2 var replacement Hcap. simpl in *.
     apply Bool.orb_true_iff in Hcap as [Hcap|Hcap].
     + rewrite (IH1 var replacement Hcap). reflexivity.
-    + rewrite (IH2 var replacement Hcap). destruct (has_rt_cap (subst_tm var replacement t1)); reflexivity.
+    + rewrite (IH2 var replacement Hcap). destruct (has_rt_marker (subst_tm var replacement t1)); reflexivity.
   - intros body T IH var replacement Hcap. simpl in *. apply IH. exact Hcap.
   - intros t T IH var replacement Hcap. simpl in *. apply IH. exact Hcap.
   - intros bound body IH var replacement Hcap. simpl in *. apply IH. exact Hcap.
@@ -1854,64 +1854,64 @@ Proof.
     + rewrite (IHs var replacement Hs). reflexivity.
     + apply Bool.orb_true_iff in Hrest as [Hy|Hn].
       * rewrite (IHy (var + arity) (shift_tm arity 0 (shift_lt_in_tm n_lt 0 replacement)) Hy).
-        destruct (has_rt_cap (subst_tm var replacement scrut)); reflexivity.
+        destruct (has_rt_marker (subst_tm var replacement scrut)); reflexivity.
       * rewrite (IHn var replacement Hn).
-        destruct (has_rt_cap (subst_tm var replacement scrut));
-          destruct (has_rt_cap (subst_tm (var + arity)
+        destruct (has_rt_marker (subst_tm var replacement scrut));
+          destruct (has_rt_marker (subst_tm (var + arity)
             (shift_tm arity 0 (shift_lt_in_tm n_lt 0 replacement)) yes_body)); reflexivity.
   - intros E Ts T_B T_R op_bodies body IHops IHb var replacement Hcap. simpl in *.
-    rewrite has_rt_cap_ops_eq in Hcap.
-    rewrite !has_rt_cap_ops_eq, subst_tm_ops_eq_map.
+    rewrite has_rt_marker_ops_eq in Hcap.
+    rewrite !has_rt_marker_ops_eq, subst_tm_ops_eq_map.
     apply Bool.orb_true_iff in Hcap as [Hops|Hbody].
     + rewrite (IHops (var + 2) (shift_tm 2 0 replacement) Hops). reflexivity.
     + rewrite (IHb (S var) (shift_tm 1 0 replacement) Hbody).
-      destruct (existsb (fun p => has_rt_cap (snd p))
+      destruct (existsb (fun p => has_rt_marker (snd p))
         (List.map (fun p => (fst p, subst_tm (var + 2) (shift_tm 2 0 replacement) (snd p))) op_bodies));
         reflexivity.
   - intros t op Ss A_ret arg IHt IHa var replacement Hcap. simpl in *.
     apply Bool.orb_true_iff in Hcap as [Ht|Ha].
     + rewrite (IHt var replacement Ht). reflexivity.
-    + rewrite (IHa var replacement Ha). destruct (has_rt_cap (subst_tm var replacement t)); reflexivity.
+    + rewrite (IHa var replacement Ha). destruct (has_rt_marker (subst_tm var replacement t)); reflexivity.
   - intros E m Ts T_R op_bodies IHops var replacement Hcap. reflexivity.
   - intros m T_B T_R t IH var replacement Hcap. reflexivity.
   - intros var replacement Hcap. discriminate.
   - intros t ts IHt IHts var replacement Hcap. simpl in *.
     apply Bool.orb_true_iff in Hcap as [Ht|Hts].
     + rewrite (IHt var replacement Ht). reflexivity.
-    + rewrite (IHts var replacement Hts). destruct (has_rt_cap (subst_tm var replacement t)); reflexivity.
+    + rewrite (IHts var replacement Hts). destruct (has_rt_marker (subst_tm var replacement t)); reflexivity.
   - intros var replacement Hcap. discriminate.
   - intros nb ob obs IHob IHobs var replacement Hcap. simpl in *.
     apply Bool.orb_true_iff in Hcap as [Hob|Hobs].
     + rewrite (IHob var replacement Hob). reflexivity.
     + rewrite (IHobs var replacement Hobs).
-      destruct (has_rt_cap (subst_tm var replacement ob)); reflexivity.
+      destruct (has_rt_marker (subst_tm var replacement ob)); reflexivity.
 Qed.
 
-Lemma has_rt_cap_subst_tm_intro : forall t cutoff n v,
-  has_rt_cap t = false ->
-  has_rt_cap (subst_tm (cutoff + n) (shift_tm cutoff 0 v) t) = true ->
-  has_rt_cap v = true /\ In n (free_tm_vars cutoff t).
+Lemma has_rt_marker_subst_tm_intro : forall t cutoff n v,
+  has_rt_marker t = false ->
+  has_rt_marker (subst_tm (cutoff + n) (shift_tm cutoff 0 v) t) = true ->
+  has_rt_marker v = true /\ In n (free_tm_vars cutoff t).
 Proof.
   apply (term_list_ind
     (fun t => forall cutoff n v,
-      has_rt_cap t = false ->
-      has_rt_cap (subst_tm (cutoff + n) (shift_tm cutoff 0 v) t) = true ->
-      has_rt_cap v = true /\ In n (free_tm_vars cutoff t))
+      has_rt_marker t = false ->
+      has_rt_marker (subst_tm (cutoff + n) (shift_tm cutoff 0 v) t) = true ->
+      has_rt_marker v = true /\ In n (free_tm_vars cutoff t))
     (fun ts => forall cutoff n v,
-      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_cap u) (go rest) end) ts = false ->
-      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_cap u) (go rest) end)
+      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_marker u) (go rest) end) ts = false ->
+      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_marker u) (go rest) end)
         (List.map (subst_tm (cutoff + n) (shift_tm cutoff 0 v)) ts) = true ->
-      has_rt_cap v = true /\ In n (List.concat (List.map (free_tm_vars cutoff) ts)))
+      has_rt_marker v = true /\ In n (List.concat (List.map (free_tm_vars cutoff) ts)))
     (fun obs => forall cutoff n v,
-      existsb (fun p => has_rt_cap (snd p)) obs = false ->
-      existsb (fun p => has_rt_cap (snd p))
+      existsb (fun p => has_rt_marker (snd p)) obs = false ->
+      existsb (fun p => has_rt_marker (snd p))
         (List.map (fun p => (fst p, subst_tm (cutoff + n) (shift_tm cutoff 0 v) (snd p))) obs)
         = true ->
-      has_rt_cap v = true /\
+      has_rt_marker v = true /\
       In n (List.concat (List.map (fun p => free_tm_vars cutoff (snd p)) obs)))).
   - intros x cutoff n v _ Hsubst. simpl in *.
     destruct (Nat.eqb x (cutoff + n)) eqn:Heq.
-    + apply Nat.eqb_eq in Heq. subst x. rewrite has_rt_cap_shift_tm in Hsubst.
+    + apply Nat.eqb_eq in Heq. subst x. rewrite has_rt_marker_shift_tm in Hsubst.
       split; [exact Hsubst|].
       destruct (Nat.ltb (cutoff + n) cutoff) eqn:Hlt.
       * apply Nat.ltb_lt in Hlt. lia.
@@ -1935,14 +1935,14 @@ Proof.
       with (shift_tm cutoff 0 (shift_ty_in_tm 1 0 v)) in Hsubst.
     2:{ rewrite shift_tm_shift_ty_in_tm_commute. reflexivity. }
     destruct (IH cutoff n (shift_ty_in_tm 1 0 v) Hcap Hsubst) as [Hv Hin].
-    split; [rewrite has_rt_cap_shift_ty_in_tm in Hv; exact Hv|exact Hin].
+    split; [rewrite has_rt_marker_shift_ty_in_tm in Hv; exact Hv|exact Hin].
   - intros t l IH cutoff n v Hcap Hsubst. simpl in *. apply IH; assumption.
   - intros body IH cutoff n v Hcap Hsubst. simpl in *.
     replace (shift_lt_in_tm 1 0 (shift_tm cutoff 0 v))
       with (shift_tm cutoff 0 (shift_lt_in_tm 1 0 v)) in Hsubst.
     2:{ rewrite shift_tm_shift_lt_in_tm_commute. reflexivity. }
     destruct (IH cutoff n (shift_lt_in_tm 1 0 v) Hcap Hsubst) as [Hv Hin].
-    split; [rewrite has_rt_cap_shift_lt_in_tm in Hv; exact Hv|exact Hin].
+    split; [rewrite has_rt_marker_shift_lt_in_tm in Hv; exact Hv|exact Hin].
   - intros K l lts Ts ts IH cutoff n v Hcap Hsubst. simpl in *.
     apply IH; assumption.
   - intros scrut tag n_lt arity yes_body no_body IHs IHy IHn cutoff n v Hcap Hsubst. simpl in *.
@@ -1958,13 +1958,13 @@ Proof.
         2:{ rewrite <- shift_tm_shift_lt_in_tm_commute.
             rewrite shift_tm_fuse. replace (arity + cutoff) with (cutoff + arity) by lia. reflexivity. }
         destruct (IHy (cutoff + arity) n (shift_lt_in_tm n_lt 0 v) HcapY HsubstY) as [Hv Hin].
-        split; [rewrite has_rt_cap_shift_lt_in_tm in Hv; exact Hv|].
+        split; [rewrite has_rt_marker_shift_lt_in_tm in Hv; exact Hv|].
         repeat rewrite in_app_iff. right. left. exact Hin.
       * destruct (IHn cutoff n v HcapN HsubstN) as [Hv Hin]. split; [exact Hv|].
         repeat rewrite in_app_iff. right. right. exact Hin.
   - intros E Ts T_B T_R op_bodies body IHops IHb cutoff n v Hcap Hsubst. simpl in *.
-    rewrite has_rt_cap_ops_eq in Hcap.
-    rewrite has_rt_cap_ops_eq, subst_tm_ops_eq_map in Hsubst.
+    rewrite has_rt_marker_ops_eq in Hcap.
+    rewrite has_rt_marker_ops_eq, subst_tm_ops_eq_map in Hsubst.
     rewrite free_tm_vars_ops_eq_concat.
     apply Bool.orb_false_iff in Hcap as [HcapOps HcapBody].
     apply Bool.orb_true_iff in Hsubst as [HsubstOps|HsubstBody].

@@ -23,7 +23,7 @@ terms, never the reverse.
 
 Purely syntactic helpers live beside the syntax: `is_abs` (the
 prenex-Λ value restriction consulted by `T_TyLam`/`T_LtLam`) and
-`has_rt_cap` (does a literal runtime form occur — the "is this a
+`has_rt_marker` (does a literal runtime form occur — the "is this a
 source term" test, decided by `sourceb` in `Decide.v`).
 
 Effect declarations carry a **list of operations** (`bind_eff E n_α

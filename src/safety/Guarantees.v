@@ -33,7 +33,7 @@ Require Import Determinism.
 (*                                                                    *)
 (* The source premise uses the certified decider [sourceb]            *)
 (* (Decide.v): `sourceb t = true` is the executable form of           *)
-(* `has_rt_cap t = false`.                                            *)
+(* `has_rt_marker t = false`.                                         *)
 (* ================================================================== *)
 
 Record source_guarantees (Γ : ctx) (t : term) (T : type) : Prop := {
@@ -67,7 +67,7 @@ Record source_guarantees (Γ : ctx) (t : term) (T : type) : Prop := {
   (* delimiter at any depth.                                          *)
   sg_noloc_results_cap_free :
       Γ ⊢ₗ lt_of_ty_G Γ T <: lt_free ->
-      forall v, multi_step t v -> value v -> has_rt_cap v = false;
+      forall v, multi_step t v -> value v -> has_rt_marker v = false;
 
   (* Every EXECUTED boundary event on the two guarded data channels   *)
   (* (operation argument in, body result out) carries a value typed   *)

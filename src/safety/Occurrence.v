@@ -246,7 +246,7 @@ Qed.
 Corollary source_capability_occurrence_delimited :
   forall Γ t T u p E_tag m Ts T_R op_bodies,
   eval_ctx Γ ->
-  has_rt_cap t = false ->
+  has_rt_marker t = false ->
   Γ ⊢ₜ t : T ->
   multi_step t u ->
   subterm_at u p = Some (term_cap E_tag m Ts T_R op_bodies) ->

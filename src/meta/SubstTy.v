@@ -41,24 +41,24 @@ Proof.
 Qed.
 
 Inductive SubstTy : type -> nat -> ctx -> ctx -> Prop :=
-| SubstTy_here : forall Gamma B Sb,
-    Gamma ⊢ Sb <:: B ->
-    SubstTy Sb 0 (bind_ty B :: Gamma) Gamma
-| SubstTy_ty : forall Sb n G G' B,
-    SubstTy Sb n G G' ->
-    SubstTy (shift_ty 1 0 Sb) (S n)
-            (bind_ty B :: G)
-            (bind_ty (subst_ty n Sb B) :: G')
-| SubstTy_lt : forall Sb n G G' D,
-    SubstTy Sb n G G' ->
-    SubstTy (shift_lt_in_ty 1 0 Sb) n
-            (bind_lt D :: G)
-      (bind_lt D :: G')
-| SubstTy_tm : forall Sb n G G' A,
-  SubstTy Sb n G G' ->
-  SubstTy Sb n
-      (bind_tm A :: G)
-      (bind_tm (subst_ty n Sb A) :: G').
+  | SubstTy_here : forall Gamma B Sb,
+      Gamma ⊢ Sb <:: B ->
+      SubstTy Sb 0 (bind_ty B :: Gamma) Gamma
+  | SubstTy_ty : forall Sb n G G' B,
+      SubstTy Sb n G G' ->
+      SubstTy (shift_ty 1 0 Sb) (S n)
+              (bind_ty B :: G)
+              (bind_ty (subst_ty n Sb B) :: G')
+  | SubstTy_lt : forall Sb n G G' D,
+      SubstTy Sb n G G' ->
+      SubstTy (shift_lt_in_ty 1 0 Sb) n
+              (bind_lt D :: G)
+        (bind_lt D :: G')
+  | SubstTy_tm : forall Sb n G G' A,
+      SubstTy Sb n G G' ->
+      SubstTy Sb n
+          (bind_tm A :: G)
+          (bind_tm (subst_ty n Sb A) :: G').
 
 Lemma SubstTy_length : forall Sb n G G', SubstTy Sb n G G' -> length G = S (length G').
 Proof. intros Sb n G G' H. induction H; simpl; lia. Qed.
@@ -150,7 +150,6 @@ Lemma lt_of_ty_ctor_eq : forall K l Ts,
 Proof.
   intros K l Ts. simpl. f_equal.
 Qed.
-
 
 
 (* Context-free escape lifetime is below the context-aware one          *)

@@ -183,7 +183,7 @@ Qed.
 (* the step-preserved runtime invariants (subject reduction).          *)
 Corollary source_handler_boundary_noloc : forall Γ t T u v,
   eval_ctx Γ ->
-  has_rt_cap t = false ->
+  has_rt_marker t = false ->
   Γ ⊢ₜ t : T ->
   multi_step t u ->
   boundary_crossing u v ->
@@ -216,7 +216,7 @@ Qed.
    mistake for dead code.  Gated by scripts/check_assumptions.py. *)
 Corollary source_boundary_value_non_local : forall Γ t T u v,
   eval_ctx Γ ->
-  has_rt_cap t = false ->
+  has_rt_marker t = false ->
   Γ ⊢ₜ t : T ->
   multi_step t u ->
   boundary_crossing u v ->

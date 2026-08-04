@@ -224,7 +224,7 @@ Definition capture_vars (G : ctx) (xs : list nat) : lifetime :=
   fold_right (fun x acc => lt_join (capture_var_lifetime G x) acc) lt_free xs.
 
 Lemma capture_lt_no_cap : forall G t,
-  has_rt_cap t = false -> capture_lt G t = capture_vars G (free_tm_vars 1 t).
+  has_rt_marker t = false -> capture_lt G t = capture_vars G (free_tm_vars 1 t).
 Proof.
   intros G t Hcap. unfold capture_lt, capture_vars, capture_var_lifetime.
   rewrite Hcap. reflexivity.
@@ -335,15 +335,15 @@ Lemma capture_lt_SubstTm_le_closed : forall v n G G',
   G' ⊢ₗ capture_lt G' (subst_tm (1 + n) (shift_tm 1 0 v) body) <: capture_lt G body.
 Proof.
   intros v n G G' HSub Hfree Hcapv body HwfCap.
-  destruct (has_rt_cap body) eqn:HcapBody.
+  destruct (has_rt_marker body) eqn:HcapBody.
   - unfold capture_lt.
-    rewrite (has_rt_cap_subst_tm_source_true body (1 + n) (shift_tm 1 0 v) HcapBody).
+    rewrite (has_rt_marker_subst_tm_source_true body (1 + n) (shift_tm 1 0 v) HcapBody).
     rewrite HcapBody. apply LS_Refl. constructor.
-  - destruct (has_rt_cap (subst_tm (1 + n) (shift_tm 1 0 v) body)) eqn:HcapSubst.
+  - destruct (has_rt_marker (subst_tm (1 + n) (shift_tm 1 0 v) body)) eqn:HcapSubst.
     + rewrite (capture_lt_no_cap G body HcapBody) in HwfCap.
       unfold capture_lt at 1. rewrite HcapSubst.
       rewrite (capture_lt_no_cap G body HcapBody).
-      destruct (has_rt_cap_subst_tm_intro body 1 n v HcapBody HcapSubst) as [HcapV Hin].
+      destruct (has_rt_marker_subst_tm_intro body 1 n v HcapBody HcapSubst) as [HcapV Hin].
       rewrite (capture_lt_closed G' v Hfree) in Hcapv. rewrite HcapV in Hcapv. simpl in Hcapv.
       eapply LS_Trans.
       * exact Hcapv.
@@ -365,7 +365,7 @@ Proof.
   intros Γ A v Hfree.
   rewrite (capture_lt_closed Γ v Hfree).
   rewrite (capture_lt_closed (bind_tm A :: Γ) (shift_tm 1 0 v)).
-  - rewrite has_rt_cap_shift_tm. reflexivity.
+  - rewrite has_rt_marker_shift_tm. reflexivity.
   - apply free_tm_vars_closed_shift_tm_any. exact Hfree.
 Qed.
 
@@ -376,7 +376,7 @@ Proof.
   intros Γ B v Hfree.
   rewrite (capture_lt_closed Γ v Hfree).
   rewrite (capture_lt_closed (bind_ty B :: Γ) (shift_ty_in_tm 1 0 v)).
-  - rewrite has_rt_cap_shift_ty_in_tm. reflexivity.
+  - rewrite has_rt_marker_shift_ty_in_tm. reflexivity.
   - rewrite free_tm_vars_shift_ty_in_tm. exact Hfree.
 Qed.
 
@@ -387,7 +387,7 @@ Proof.
   intros Γ D v Hfree.
   rewrite (capture_lt_closed Γ v Hfree).
   rewrite (capture_lt_closed (bind_lt D :: Γ) (shift_lt_in_tm 1 0 v)).
-  - rewrite has_rt_cap_shift_lt_in_tm. reflexivity.
+  - rewrite has_rt_marker_shift_lt_in_tm. reflexivity.
   - rewrite free_tm_vars_shift_lt_in_tm. exact Hfree.
 Qed.
 
@@ -451,7 +451,7 @@ Proof.
   rewrite capture_lt_shift_lt_closed0 by exact Hfree.
   rewrite capture_var_lifetime_bind_lt.
   assert (Hshift : shift_lt 1 0 (capture_lt G' v) = capture_lt G' v).
-  { rewrite (capture_lt_closed G' v Hfree). destruct (has_rt_cap v); reflexivity. }
+  { rewrite (capture_lt_closed G' v Hfree). destruct (has_rt_marker v); reflexivity. }
   rewrite <- Hshift.
   apply (lt_sub_InsLt G' (capture_lt G' v) (capture_var_lifetime G n)
     Hcap 0 (bind_lt D :: G') (InsLt_here D G')).
@@ -1339,10 +1339,10 @@ Proof.
     + apply (IH repl n G' HSub Hfree HtmTy HtmLt HtargetTy HtargetLt HrepAll c Hlt Hschemas Hcap).
 Qed.
 
-Fixpoint has_rt_cap_list (ts : list term) : bool :=
+Fixpoint has_rt_marker_list (ts : list term) : bool :=
   match ts with
   | [] => false
-  | t :: rest => orb (has_rt_cap t) (has_rt_cap_list rest)
+  | t :: rest => orb (has_rt_marker t) (has_rt_marker_list rest)
   end.
 
 Lemma Forall2_typing_lt_of_ty_list_wf : forall Γ vs rhos,
@@ -1360,7 +1360,7 @@ Proof.
     + exact IHHty.
 Qed.
 
-Lemma Forall2_value_capture_has_rt_cap_list : forall Γ vs rhos,
+Lemma Forall2_value_capture_has_rt_marker_list : forall Γ vs rhos,
   eval_ctx Γ ->
   Forall2 (fun v rho =>
     eval_ctx Γ -> value v -> free_tm_vars 0 v = [] ->
@@ -1368,7 +1368,7 @@ Lemma Forall2_value_capture_has_rt_cap_list : forall Γ vs rhos,
   Forall2 (fun v rho => Γ ⊢ₜ v : rho) vs rhos ->
   Forall value vs ->
   List.concat (List.map (free_tm_vars 0) vs) = [] ->
-  has_rt_cap_list vs = true ->
+  has_rt_marker_list vs = true ->
   Γ ⊢ₗ lt_local <: lt_of_ty_list rhos.
 Proof.
   intros Γ vs rhos Hec HcapF HtyF HvalF Hfree HcapList.
@@ -1412,7 +1412,7 @@ Proof.
     inversion Hval; subst. simpl in Hfree.
     rewrite (capture_lt_closed Γ (term_lam body A) Hfree). simpl.
     unfold lt_of_ty_G. rewrite lt_of_ty_ctx_fun.
-    destruct (has_rt_cap body) eqn:HcapBody.
+    destruct (has_rt_marker body) eqn:HcapBody.
     + unfold capture_lt in Hcap. rewrite HcapBody in Hcap. exact Hcap.
     + apply LS_Free. destruct (lt_sub_wf _ _ _ Hcap) as [_ Hwfl]. exact Hwfl.
   - intros Γ t1 t2 A l B Ht1 IH1 Ht2 IH2 Hec Hval Hfree. inversion Hval.
@@ -1420,7 +1420,7 @@ Proof.
     inversion Hval; subst.
     rewrite (capture_lt_closed Γ (term_ty_lam bound body) Hfree). simpl.
     unfold lt_of_ty_G. rewrite lt_of_ty_ctx_tyall.
-    destruct (has_rt_cap body) eqn:HcapBody.
+    destruct (has_rt_marker body) eqn:HcapBody.
     + apply LS_Refl. constructor.
     + apply LS_Free. constructor.
   - intros Γ t B U S Ht IH HwfS Hsub Hec Hval Hfree. inversion Hval.
@@ -1428,7 +1428,7 @@ Proof.
     inversion Hval; subst.
     rewrite (capture_lt_closed Γ (term_lt_lam body) Hfree). simpl.
     unfold lt_of_ty_G. rewrite lt_of_ty_ctx_ltall.
-    destruct (has_rt_cap body) eqn:HcapBody.
+    destruct (has_rt_marker body) eqn:HcapBody.
     + apply LS_Refl. constructor.
     + apply LS_Free. constructor.
   - intros Γ t T l Ht IH Hwfl Hec Hval Hfree. inversion Hval.
@@ -1438,13 +1438,13 @@ Proof.
            Hresult_eff Hwfl Hlt Hforall Hlen_vs Hfields IHfields Hec Hval Hfree.
     inversion Hval as [| | |K0 l0 lts0 Ts0 vs0 Hvals Heq|]; subst.
     rewrite (capture_lt_closed Γ (term_ctor K l lts Ts vs) Hfree). simpl.
-    change (existsb has_rt_cap vs) with (has_rt_cap_list vs).
-    destruct (has_rt_cap_list vs) eqn:HcapVs.
+    change (existsb has_rt_marker vs) with (has_rt_marker_list vs).
+    destruct (has_rt_marker_list vs) eqn:HcapVs.
     + rewrite Hshape. unfold lt_of_ty_G. rewrite lt_of_ty_ctx_ctor.
       match type of Hfields with
       | Forall2 _ vs ?rhos =>
           assert (HlocalFields : Γ ⊢ₗ lt_local <: lt_of_ty_list rhos)
-            by (eapply Forall2_value_capture_has_rt_cap_list;
+            by (eapply Forall2_value_capture_has_rt_marker_list;
                 [exact Hec|exact IHfields|exact Hfields|exact Hvals|
                  simpl in Hfree; exact Hfree|
                  exact HcapVs])
@@ -1521,16 +1521,16 @@ Qed.
 (* would make [lt_local <: lt_free], impossible.  This is what makes the  *)
 (* handler-elimination marker invariant (safety/WellScoped.v)             *)
 (* structural.                                                            *)
-Lemma value_no_local_no_rt_cap : forall Γ v T,
+Lemma value_no_local_no_rt_marker : forall Γ v T,
   eval_ctx Γ ->
   Γ ⊢ₜ v : T ->
   value v ->
   free_tm_vars 0 v = [] ->
   Γ ⊢ₗ lt_of_ty_G Γ T <: lt_free ->
-  has_rt_cap v = false.
+  has_rt_marker v = false.
 Proof.
   intros Γ v T Hec Hty Hval Hfree Hsub.
-  destruct (has_rt_cap v) eqn:Hcap; [exfalso | reflexivity].
+  destruct (has_rt_marker v) eqn:Hcap; [exfalso | reflexivity].
   pose proof (typing_value_capture_lt_le_type Γ v T Hty Hec Hval Hfree) as Hle.
   rewrite (capture_lt_closed Γ v Hfree) in Hle. rewrite Hcap in Hle.
   apply (lt_local_not_escapes Γ Hec). eapply LS_Trans; [exact Hle | exact Hsub].
@@ -1620,7 +1620,7 @@ Proof.
       rewrite <- (lt_of_ty_G_ty_closed_eq Γ rho HrhoTy).
       rewrite (capture_lt_closed (List.fold_right (fun rho0 Γ0 => bind_tm rho0 :: Γ0) Γ rhos)
         (shift_tm (List.length rhos) 0 v) HfreeShift).
-      rewrite has_rt_cap_shift_tm.
+      rewrite has_rt_marker_shift_tm.
       rewrite <- (capture_lt_closed Γ v HfreeV).
       apply lt_sub_fold_bind_tm. exact HcapBase. }
     assert (Ht' : Grest ⊢ₜ subst_tm 0 (shift_tm (List.length rhos) 0 v) t : T).

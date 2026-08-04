@@ -745,21 +745,21 @@ Proof.
     go_traverse.
 Qed.
 
-Lemma has_rt_cap_subst_ty_in_tm : forall t n Sb,
-  has_rt_cap (subst_ty_in_tm n Sb t) = has_rt_cap t.
+Lemma has_rt_marker_subst_ty_in_tm : forall t n Sb,
+  has_rt_marker (subst_ty_in_tm n Sb t) = has_rt_marker t.
 Proof.
   apply (term_list_ind
     (fun t => forall n Sb,
-      has_rt_cap (subst_ty_in_tm n Sb t) = has_rt_cap t)
+      has_rt_marker (subst_ty_in_tm n Sb t) = has_rt_marker t)
     (fun ts => forall n Sb,
-      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_cap u) (go rest) end)
+      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_marker u) (go rest) end)
         (List.map (subst_ty_in_tm n Sb) ts) =
-      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_cap u) (go rest) end) ts)
+      (fix go ts := match ts with [] => false | u :: rest => orb (has_rt_marker u) (go rest) end) ts)
     (fun obs => forall n Sb,
-      existsb (fun p => has_rt_cap (snd p))
+      existsb (fun p => has_rt_marker (snd p))
         (List.map (fun p =>
            (fst p, subst_ty_in_tm (n + fst p) (shift_ty (fst p) 0 Sb) (snd p))) obs) =
-      existsb (fun p => has_rt_cap (snd p)) obs));
+      existsb (fun p => has_rt_marker (snd p)) obs));
     go_traverse.
 Qed.
 
@@ -855,8 +855,8 @@ Lemma capture_lt_SubstTy_le : forall Sb n G G', SubstTy Sb n G G' ->
   G' ⊢ₗ capture_lt G' (subst_ty_in_tm n Sb body) <: capture_lt G body.
 Proof.
   intros Sb n G G' HS body HwfCap. unfold capture_lt in *.
-  rewrite has_rt_cap_subst_ty_in_tm.
-  destruct (has_rt_cap body) eqn:Hcap.
+  rewrite has_rt_marker_subst_ty_in_tm.
+  destruct (has_rt_marker body) eqn:Hcap.
   - apply LS_Refl. constructor.
   - rewrite free_tm_vars_subst_ty_in_tm.
     induction (free_tm_vars 1 body) as [|x xs IH]; simpl in *.

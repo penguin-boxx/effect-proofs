@@ -21,7 +21,7 @@ Require Import Subst.
 (*   ws_rt             — the two bundled.                             *)
 (*                                                                    *)
 (* All invariants hold vacuously on source terms                      *)
-(* ([has_rt_cap t = false]).  The traversal laws live in WsRtLaws.v   *)
+(* ([has_rt_marker t = false]).  The traversal laws live in WsRtLaws.v   *)
 (* and are stated over the fused [ws_rt] (one induction per traversal *)
 (* covers both conjuncts); the annotation invariants in               *)
 (* MarkerAnnots.v.                                                    *)
@@ -61,10 +61,10 @@ Proof.
 Qed.
 
 
-(* has_rt_cap on a constructor reduces to has_rt_cap_list on its       *)
+(* has_rt_marker on a constructor reduces to has_rt_marker_list on its       *)
 (* argument list (the in-body fixpoint equals the named list version).  *)
-Lemma has_rt_cap_ctor_eq : forall K l lts Ts ts,
-  has_rt_cap (term_ctor K l lts Ts ts) = has_rt_cap_list ts.
+Lemma has_rt_marker_ctor_eq : forall K l lts Ts ts,
+  has_rt_marker (term_ctor K l lts Ts ts) = has_rt_marker_list ts.
 Proof.
   intros K l lts Ts ts. simpl.
   induction ts as [|u rest IH]; simpl; [reflexivity | rewrite IH; reflexivity].
@@ -370,16 +370,16 @@ Definition ws_rt (ms : list marker) (t : term) : Prop :=
 
 (* ws_rt holds vacuously on terms with no runtime capability, at any   *)
 (* ambient scope.                                                      *)
-Lemma ws_rt_no_rt_cap : forall t ms, has_rt_cap t = false -> ws_rt ms t.
+Lemma ws_rt_no_rt_marker : forall t ms, has_rt_marker t = false -> ws_rt ms t.
 Proof.
   unfold ws_rt.
   apply (term_list_ind
-    (fun t => forall ms, has_rt_cap t = false ->
+    (fun t => forall ms, has_rt_marker t = false ->
        well_scoped ms t /\ rt_closed t)
-    (fun ts => forall ms, has_rt_cap_list ts = false ->
+    (fun ts => forall ms, has_rt_marker_list ts = false ->
        well_scoped_list ms ts /\ rt_closed_list ts)
     (fun obs => forall ms,
-       existsb (fun p => has_rt_cap (snd p)) obs = false ->
+       existsb (fun p => has_rt_marker (snd p)) obs = false ->
        ops_well_scoped ms obs /\ ops_rt_closed obs)).
   - intros n ms H. split; exact I.
   - intros t1 t2 IH1 IH2 ms H. simpl in H. apply Bool.orb_false_iff in H as [H1 H2].
@@ -390,7 +390,7 @@ Proof.
   - intros bound body IH ms H. simpl in H. exact (IH ms H).
   - intros t l IH ms H. simpl in H. exact (IH ms H).
   - intros body IH ms H. simpl in H. exact (IH ms H).
-  - intros K l lts Ts ts IH ms H. rewrite has_rt_cap_ctor_eq in H.
+  - intros K l lts Ts ts IH ms H. rewrite has_rt_marker_ctor_eq in H.
     rewrite well_scoped_ctor_eq, rt_closed_ctor_eq. exact (IH ms H).
   - intros scrut tag nlt ar y n IHs IHy IHn ms H. simpl in H.
     apply Bool.orb_false_iff in H as [Hs Hyn]. apply Bool.orb_false_iff in Hyn as [Hy Hn].
@@ -399,7 +399,7 @@ Proof.
     split; [split; [exact Ws | split; [exact Wy | exact Wn]]
            | split; [exact Rs | split; [exact Ry | exact Rn]]].
   - intros E Ts T_B T_R op_bodies body IHops IHb ms H. simpl in H.
-    rewrite has_rt_cap_ops_eq in H.
+    rewrite has_rt_marker_ops_eq in H.
     apply Bool.orb_false_iff in H as [Hop Hb].
     destruct (IHops ms Hop) as [Wop Rop]. destruct (IHb ms Hb) as [Wb Rb].
     split; split; assumption.

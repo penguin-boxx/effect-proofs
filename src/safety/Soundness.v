@@ -40,7 +40,7 @@ Definition stuck (t : term) : Prop :=
 (*    cap op-bodies ([rt_closed]);                                     *)
 (*  - typing.                                                          *)
 (* Every component is established vacuously on source terms            *)
-(* ([has_rt_cap t = false]); see [source_type_soundness].              *)
+(* ([has_rt_marker t = false]); see [source_type_soundness].              *)
 Definition safety_invariants (Γ : ctx) (T : type) (t : term) : Prop :=
   marker_annots_ok t /\ ws_rt [] t /\ Γ ⊢ₜ t : T.
 
@@ -89,13 +89,13 @@ Qed.
 (* All runtime invariants hold vacuously on a source term (one with    *)
 (* no runtime marker constructs).                                      *)
 Lemma source_safety_invariants : forall Γ t T,
-  has_rt_cap t = false ->
+  has_rt_marker t = false ->
   Γ ⊢ₜ t : T ->
   safety_invariants Γ T t.
 Proof.
   intros Γ t T Hsrc Hty.
-  split; [apply marker_annots_ok_no_rt_cap; exact Hsrc|].
-  split; [apply ws_rt_no_rt_cap; exact Hsrc|].
+  split; [apply marker_annots_ok_no_rt_marker; exact Hsrc|].
+  split; [apply ws_rt_no_rt_marker; exact Hsrc|].
   exact Hty.
 Qed.
 
@@ -127,7 +127,7 @@ Qed.
 (* vacuously at the initial state.                                     *)
 Corollary source_type_soundness : forall Γ t t' T,
   eval_ctx Γ ->
-  has_rt_cap t = false ->
+  has_rt_marker t = false ->
   Γ ⊢ₜ t : T ->
   multi_step t t' ->
   ~ stuck t'.

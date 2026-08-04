@@ -125,7 +125,7 @@ Corollary source_free_data_result_top_lifetime : forall Γ t K Ts v,
   eval_ctx Γ ->
   ctx_lookup_eff Γ K = None ->
   K <> any_tag ->
-  has_rt_cap t = false ->
+  has_rt_marker t = false ->
   Γ ⊢ₜ t : type_ctor K lt_free Ts ->
   multi_step t v ->
   value v ->
@@ -205,7 +205,7 @@ Qed.
 Corollary source_capability_never_exposed :
   forall Γ t E E_tag m Ts T_R op_bodies T,
   eval_ctx Γ ->
-  has_rt_cap t = false ->
+  has_rt_marker t = false ->
   Γ ⊢ₜ t : T ->
   multi_step t (plug E (term_cap E_tag m Ts T_R op_bodies)) ->
   ~ pure_ectx_m m E.
@@ -280,7 +280,7 @@ Qed.
 (* step-preserved runtime invariants.                                 *)
 Corollary source_effect_safety : forall Γ t T E E_tag m Ts T_R op_bodies op Ss A v,
   eval_ctx Γ ->
-  has_rt_cap t = false ->
+  has_rt_marker t = false ->
   Γ ⊢ₜ t : T ->
   multi_step t
     (plug E (term_perform (term_cap E_tag m Ts T_R op_bodies) op Ss A v)) ->
@@ -307,7 +307,7 @@ Qed.
 (* The strongest source-facing non-escape statement: a value          *)
 (* delivered at an escapable (noloc) type contains no runtime         *)
 (* capability and no delimiter at ANY depth — not under lambdas, not  *)
-(* nested inside data constructors ([has_rt_cap] traverses all        *)
+(* nested inside data constructors ([has_rt_marker] traverses all        *)
 (* binders).  Escape via the result channel is therefore impossible   *)
 (* not just for the value's top-level lifetime annotation but for its *)
 (* entire syntactic body.                                             *)
@@ -315,18 +315,18 @@ Qed.
 
 Corollary source_noloc_result_no_runtime_forms : forall Γ t T v,
   eval_ctx Γ ->
-  has_rt_cap t = false ->
+  has_rt_marker t = false ->
   Γ ⊢ₜ t : T ->
   Γ ⊢ₗ lt_of_ty_G Γ T <: lt_free ->
   multi_step t v ->
   value v ->
-  has_rt_cap v = false.
+  has_rt_marker v = false.
 Proof.
   intros Γ t T v Hec Hsrc Hty Hnl Hms Hval.
   destruct (multi_step_preserves_safety_invariants _ _ _ _ Hec
               (source_safety_invariants _ _ _ Hsrc Hty) Hms)
     as [_ [_ Htyv]].
-  eapply value_no_local_no_rt_cap;
+  eapply value_no_local_no_rt_marker;
     [ exact Hec | exact Htyv | exact Hval
     | eapply typing_closed; [exact Hec | exact Htyv]
     | exact Hnl ].

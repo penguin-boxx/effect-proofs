@@ -37,7 +37,7 @@ Require Import WellScoped.
 (*   well_scoped / rt_closed / ws_rt — see WellScoped.v.              *)
 (*                                                                    *)
 (* All invariants hold vacuously on source terms                      *)
-(* ([has_rt_cap t = false]), which is how the source-facing           *)
+(* ([has_rt_marker t = false]), which is how the source-facing           *)
 (* corollaries need only an initial typing.                           *)
 (* ================================================================== *)
 
@@ -100,20 +100,20 @@ Proof.
   intros t Hann m T U Hin. rewrite Hann in Hin. inversion Hin.
 Qed.
 
-Lemma marker_annots_no_rt_cap : forall t,
-  has_rt_cap t = false -> marker_annots t = [].
+Lemma marker_annots_no_rt_marker : forall t,
+  has_rt_marker t = false -> marker_annots t = [].
 Proof.
   apply (term_list_ind
-    (fun t => has_rt_cap t = false -> marker_annots t = [])
+    (fun t => has_rt_marker t = false -> marker_annots t = [])
     (fun ts =>
        (fix go (ts : list term) : bool :=
           match ts with
           | [] => false
-          | u :: rest => orb (has_rt_cap u) (go rest)
+          | u :: rest => orb (has_rt_marker u) (go rest)
           end) ts = false ->
        List.concat (List.map marker_annots ts) = [])
     (fun obs =>
-       existsb (fun p => has_rt_cap (snd p)) obs = false ->
+       existsb (fun p => has_rt_marker (snd p)) obs = false ->
        List.concat (List.map (fun p => marker_annots (snd p)) obs) = [])).
   - intros n H. reflexivity.
   - intros t1 t2 IH1 IH2 H. simpl in *.
@@ -130,7 +130,7 @@ Proof.
     apply Bool.orb_false_iff in Hyn as [Hy Hn].
     rewrite (IHs Hs), (IHy Hy), (IHn Hn). reflexivity.
   - intros E Ts T_B T_R op_bodies body IHops IHbody H. simpl in *.
-    rewrite has_rt_cap_ops_eq in H.
+    rewrite has_rt_marker_ops_eq in H.
     apply Bool.orb_false_iff in H as [Hop Hbody].
     rewrite marker_annots_go_ops_eq_concat.
     rewrite (IHops Hop), (IHbody Hbody). reflexivity.
@@ -156,25 +156,25 @@ Qed.
 Definition marker_annots_ok (t : term) : Prop :=
   marker_types_safe t /\ marker_annots_closed t.
 
-Lemma marker_annots_closed_no_rt_cap : forall t,
-  has_rt_cap t = false -> marker_annots_closed t.
+Lemma marker_annots_closed_no_rt_marker : forall t,
+  has_rt_marker t = false -> marker_annots_closed t.
 Proof.
   intros t Hcap. unfold marker_annots_closed.
-  rewrite (marker_annots_no_rt_cap t Hcap). constructor.
+  rewrite (marker_annots_no_rt_marker t Hcap). constructor.
 Qed.
 
-Lemma marker_types_safe_no_rt_cap : forall t,
-  has_rt_cap t = false -> marker_types_safe t.
+Lemma marker_types_safe_no_rt_marker : forall t,
+  has_rt_marker t = false -> marker_types_safe t.
 Proof.
   intros t Hcap. apply marker_types_safe_empty.
-  apply marker_annots_no_rt_cap. exact Hcap.
+  apply marker_annots_no_rt_marker. exact Hcap.
 Qed.
 
-Lemma marker_annots_ok_no_rt_cap : forall t,
-  has_rt_cap t = false -> marker_annots_ok t.
+Lemma marker_annots_ok_no_rt_marker : forall t,
+  has_rt_marker t = false -> marker_annots_ok t.
 Proof.
   intros t H. split;
-    [apply marker_types_safe_no_rt_cap | apply marker_annots_closed_no_rt_cap];
+    [apply marker_types_safe_no_rt_marker | apply marker_annots_closed_no_rt_marker];
     exact H.
 Qed.
 
