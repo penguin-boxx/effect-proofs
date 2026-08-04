@@ -202,8 +202,6 @@ Section TermListInd.
 End TermListInd.
 
 
-
-
 (* The op-bodies traversals of each term function, as maps over pairs. *)
 Lemma shift_tm_ops_eq_map : forall (amount cutoff : nat) (obs : list (nat * term)),
   List.map (fun '(nb, ob) => (nb, shift_tm amount (cutoff + 2) ob)) obs =

@@ -11,6 +11,7 @@ Require Import Weakening.
 Require Import SubstLt.
 Require Import SubstTy.
 Require Import ProgramCtx.
+Require Import CtxClosed.
 Require Import SubstTm.
 Require Import SubstTactics.
 

@@ -4,103 +4,19 @@ Require Import Stdlib.micromega.Lia.
 Import ListNotations.
 Require Import Syntax.
 Require Import Substitution.
-Require Import Semantics.
 Require Import Typing.
 Require Import CtxMap.
 Require Import Subst.
 
 (* ================================================================== *)
-(* Narrowing: typing/subtyping inversions and F<: narrowing theory.   *)
+(* Narrowing: the F<: narrowing and replacement theory.               *)
 (*                                                                    *)
-(* Lambda/forall typing inversions, the ∀-subtyping inversions,       *)
-(* lt_of_ty monotonicity, and the narrowing/replacement theory        *)
-(* ([NT_*]/[RT_*]/[sub_NT]) — subtyping infrastructure independent    *)
-(* of any particular safety theorem.                                  *)
+(* lt_of_ty monotonicity (in fuel, under subtyping, under narrowing)  *)
+(* and the narrowing/replacement theory ([NT_*]/[RT_*]/[sub_NT]/      *)
+(* [sub_narrow_ty]) — subtyping infrastructure independent of any     *)
+(* particular safety theorem.  The subsumption-stripping inversions   *)
+(* this feeds (e.g. [sub_ty_all_inv_full]) live in safety/TypingInv.v.*)
 (* ================================================================== *)
-
-(* ------------------------------------------------------------------ *)
-(* Typing inversion lemmas                                            *)
-(* ------------------------------------------------------------------ *)
-
-Lemma lam_typing_inv : forall Γ body A T,
-  Γ ⊢ₜ term_lam body A : T ->
-  exists l B,
-    (bind_tm A :: Γ) ⊢ₜ body : B /\
-    Γ ⊢ type_fun A l B <:: T.
-Proof.
-  intros Γ body A T Hty.
-  remember (term_lam body A) as t eqn:Ht.
-  induction Hty; try discriminate.
-  - subst. destruct (IHHty eq_refl) as [l0 [B0 [Hbody Hsub]]].
-    exists l0, B0; split; auto. eapply SA_Trans; eauto.
-  - injection Ht; intros; subst. exists l, B; split; [assumption|].
-    apply SA_Refl. constructor.
-    + match goal with HwfA : ty_wf Γ A |- _ => exact HwfA end.
-    + match goal with Hcap : Γ ⊢ₗ capture_lt Γ body <: l |- _ =>
-        destruct (lt_sub_wf _ _ _ Hcap) as [_ Hwfl]; exact Hwfl
-      end.
-    + match goal with HwfB : ty_wf Γ B |- _ => exact HwfB end.
-Qed.
-
-Lemma ty_lam_typing_inv : forall Γ bound body T,
-  Γ ⊢ₜ term_ty_lam bound body : T ->
-  exists U,
-    (bind_ty bound :: Γ) ⊢ₜ body : U /\
-    Γ ⊢ type_ty_all bound U <:: T.
-Proof.
-  intros Γ bound body T Hty.
-  remember (term_ty_lam bound body) as t eqn:Ht.
-  induction Hty; try discriminate.
-  - subst. destruct (IHHty eq_refl) as [U0 [Hbody Hsub]].
-    exists U0; split; auto. eapply SA_Trans; eauto.
-  - injection Ht; intros; subst. exists T; split; [assumption|].
-    apply SA_Refl. constructor.
-    + match goal with HwfBound : ty_wf Γ bound |- _ => exact HwfBound end.
-    + match goal with HwfT : ty_wf (bind_ty bound :: Γ) T |- _ => exact HwfT end.
-Qed.
-
-Lemma lt_lam_typing_inv : forall Γ body T,
-  Γ ⊢ₜ term_lt_lam body : T ->
-  exists U,
-    (bind_lt lt_local :: Γ) ⊢ₜ body : U /\
-    Γ ⊢ type_lt_all U <:: T.
-Proof.
-  intros Γ body T Hty.
-  remember (term_lt_lam body) as t eqn:Ht.
-  induction Hty; try discriminate.
-  - subst. destruct (IHHty eq_refl) as [U0 [Hbody Hsub]].
-    exists U0; split; auto. eapply SA_Trans; eauto.
-  - injection Ht; intros; subst. exists T; split; [assumption|].
-    apply SA_Refl. constructor.
-    match goal with HwfT : ty_wf (bind_lt lt_local :: Γ) T |- _ => exact HwfT end.
-Qed.
-
-
-(* Full ∀-subtyping inversions: beyond the shape of the subtype,      *)
-(* these also return the body-subtype witness (hence the eval_ctx     *)
-(* premise).                                                          *)
-Lemma sub_lt_all_inv_full : forall Γ S T,
-  eval_ctx Γ ->
-  Γ ⊢ S <:: type_lt_all T ->
-  exists T', S = type_lt_all T' /\ (bind_lt lt_local :: Γ) ⊢ T' <:: T.
-Proof.
-  intros Γ S T Hec Hsub.
-  remember (type_lt_all T) as U eqn:HU.
-  revert T HU.
-  induction Hsub; intros T0 HU.
-  - (* Refl *) inversion HU; subst. inversion H; subst.
-    exists T0. split; [reflexivity|apply SA_Refl; assumption].
-  - (* Trans *) subst T.
-    destruct (IHHsub2 Hec _ eq_refl) as [U0 [HeqU HsubU]]; subst.
-    destruct (IHHsub1 Hec _ eq_refl) as [S0 [HeqS HsubS]]; subst.
-    exists S0; split; auto. eapply SA_Trans; eauto.
-  - (* VarCtx *) subst. rewrite eval_ctx_no_ty in H; auto; discriminate.
-  - (* Data *) discriminate HU.
-  - (* Any *) discriminate HU.
-  - (* Fun *) discriminate HU.
-  - (* LtAll *) injection HU; intros; subst. exists A; split; auto.
-  - (* TyAll *) discriminate HU.
-Qed.
 
 (* ------------------------------------------------------------------ *)
 (* F<: narrowing for subtyping (the system is full F<:: SA_TyAll has  *)
@@ -540,43 +456,5 @@ Proof.
   intros Γ Bsub Bsup T1 T2 Hb Hsub.
   apply (sub_NT (bind_ty Bsup :: Γ) T1 T2 Hsub Bsub Bsup (bind_ty Bsub :: Γ)).
   apply NT_here. exact Hb.
-Qed.
-
-(* Full inversion for `type_ty_all` supertypes, now a theorem: it       *)
-(* recovers both the bound-subtyping witness (contravariant) and the    *)
-(* body-subtyping witness (covariant, under the tighter bound).  The    *)
-(* transitivity case composes the two body witnesses by narrowing the   *)
-(* left one down to the common bound `B`.                               *)
-Lemma sub_ty_all_inv_full : forall Γ S B T,
-  eval_ctx Γ ->
-  Γ ⊢ S <:: type_ty_all B T ->
-  exists B' T',
-    S = type_ty_all B' T' /\
-    Γ ⊢ B <:: B' /\
-    (bind_ty B :: Γ) ⊢ T' <:: T.
-Proof.
-  intros Γ S B T Hec Hsub.
-  remember (type_ty_all B T) as U eqn:HU.
-  revert B T HU.
-  induction Hsub; intros B0 T0 HU.
-  - (* Refl *) inversion HU; subst. inversion H; subst.
-    exists B0, T0. split; [reflexivity|]. split.
-    + apply SA_Refl; assumption.
-    + apply SA_Refl; assumption.
-  - (* Trans: S <:: U0 <:: type_ty_all B0 T0 *)
-    subst T.
-    destruct (IHHsub2 Hec _ _ eq_refl) as [Bm [Tm [HeqU [HBm HTm]]]]; subst.
-    destruct (IHHsub1 Hec _ _ eq_refl) as [B' [T' [HeqS [HB' HT']]]]; subst.
-    exists B', T'. repeat split; auto.
-    + eapply SA_Trans; eauto.
-    + eapply SA_Trans;
-        [ eapply sub_narrow_ty; [ exact HBm | exact HT' ] | exact HTm ].
-  - (* VarCtx *) subst. rewrite eval_ctx_no_ty in H; auto; discriminate.
-  - (* Data *) discriminate HU.
-  - (* Any *) discriminate HU.
-  - (* Fun *) discriminate HU.
-  - (* LtAll *) discriminate HU.
-  - (* TyAll *) injection HU; intros; subst.
-    eexists; eexists; repeat split; eauto.
 Qed.
 

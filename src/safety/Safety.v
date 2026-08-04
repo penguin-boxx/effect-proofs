@@ -1,7 +1,7 @@
 (* ================================================================== *)
 (* Safety: re-export shim — the one-import facade for the whole       *)
 (* safety tier, in _CoqProject (dependency) order.                    *)
-(* (Narrowing/Variance belong to the subst tier; import them          *)
+(* (Narrowing/Variance belong to the meta tier; import them           *)
 (* directly, or via files that re-export them.)                       *)
 (* ================================================================== *)
 Require Export Eqb.

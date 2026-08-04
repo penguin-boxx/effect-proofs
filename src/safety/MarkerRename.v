@@ -7,7 +7,6 @@ Require Import Semantics.
 Require Import Typing.
 Require Import ShiftLaws.
 Require Import Weakening.
-Require Import ProgramCtx.
 Require Import SubstTm.
 Require Import MarkerAnnots.
 Require Import WellScoped.

@@ -14,7 +14,7 @@ re-export shims — the one-import façades of their tiers.
 | `Context.v` … `Instantiate.v` | The static-semantics split; see the table in ch. 02. |
 | `Typing.v` | Re-exports the seven modules above it; the mutual `typing`/`typings`/`typing_ops` block, generated schemes, `typings_*` native helpers, `typing_ind_forall2`. |
 
-## subst/ — the de Bruijn proof engine
+## meta/ — the de Bruijn proof engine
 
 | File | Role |
 |---|---|
@@ -24,11 +24,12 @@ re-export shims — the one-import façades of their tiers.
 | `Weakening.v` | The insertion relations `InsTy`/`InsLt`/`InsTm`/`InsTmAt`, their `CtxMapSpec` instances and corollary transports, `typing_InsTmAt` (+ `typing_weaken_tm_shift`), `sub_weaken_{ty,lt}_shift`. |
 | `SubstLt.v` | `SubstLt` + instance/transports; the elim-shift commutation family; **also home to `typing_InsTy`/`typing_InsLt`** — their `T_Match` cases need this file's elim/multi_subst theory, so the dependency order forces them here (header explains). |
 | `SubstTy.v` | `SubstTy` + instance/transports; the F<: narrowing relation `NarrowTy` (`NT_*`) with `ty_wf_NT`-style transports and `type_ty_all_narrow_bound` (needed below, which is why narrowing lives here and not only in `Narrowing.v`). |
-| `ProgramCtx.v` | `eval_ctx` — the *typing*-context predicate (only ctor/effect bindings; NOT `ectx`!) and its closedness corollaries (`typing_closed`, `typing_fv_bound`, `ctor_fields_closed`, `ctx_*_closed_from`). |
+| `ProgramCtx.v` | `eval_ctx` — the *typing*-context predicate (only ctor/effect bindings; NOT `ectx`!) with its free-variable payoff (`typing_closed`, `typing_fv_bound`), plus `typing_implies_wf` and the `typing_weaken_ty_shift` weakening instances. |
+| `CtxClosed.v` | The context-closedness bookkeeping over `eval_ctx`: `ctor_fields_closed`, `ctx_schemas_lt_closed_from`, `ctx_ty/lt_closed_from` with their binder-preservation families, the wf→closed transports, and `typing_tm_ty/lt_closed_from` — the hypothesis packages threaded through `typing_SubstTm`/`typing_SubstTy`. |
 | `SubstTm.v` | `SubstTm` + instance/transports, `has_rt_cap_list`, the typed-value capture/escape facts (`typing_value_capture_lt_le_type`, `lt_local_not_escapes`), and the term-substitution payload `typing_SubstTm` with its eval-ctx corollaries. |
 | `TypingSubst.v` | `typing_SubstLt` and `typing_SubstTy` — both live here because both T_TyApp cases lean on `type_ty_all_narrow_bound` (SubstTy.v), forcing the payloads below SubstTy (header explains). |
 | `Subst.v` | Re-export shim for the tier (everything up to and including `TypingSubst`; `Narrowing`/`Variance` come after it in build order and are imported directly). |
-| `Narrowing.v` | The rest of the F<: narrowing theory: `NT_length`, `lt_sub_NT`, `lt_of_ty_ctx` monotonicity under narrowing, the bound-replacement relation `ReplaceTy` (`RT_*`), `sub_NT`/`sub_narrow_ty`, the full ∀-inversions (`sub_ty_all_inv_full`, `sub_lt_all_inv_full`) and λ/Λ typing inversions. |
+| `Narrowing.v` | The rest of the F<: narrowing theory: `NT_length`, `lt_sub_NT`, `lt_of_ty_ctx` monotonicity under narrowing, the bound-replacement relation `ReplaceTy` (`RT_*`), `sub_NT`/`sub_narrow_ty`. (The inversions this feeds live in `safety/TypingInv.v`.) |
 | `Variance.v` | Soundness of the `elim_ty` variance eliminator used by `T_Match` (`elim_ty_list`, `elim_ty_step_ctx`; the eval_ctx-facing `elim_ty_n_sound_pos` lives in `safety/TypingInv.v`). |
 
 ## safety/ — the deliverables
@@ -37,7 +38,7 @@ re-export shims — the one-import façades of their tiers.
 |---|---|
 | `Eqb.v` | Boolean equality on lifetimes/types (`lt_eqb`, `ty_eqb`) with the full spec set; shared by the evaluator, deciders, and determinism. |
 | `Decide.v` | Certified reflected deciders: `lt_subb` (three-layer: cut-free `lt_le`, fuel-indexed `atom_leb`, fuel = `ctx_lt_count Γ` is complete for *every* context), `nolocb` (the REAL escape premise), `valueb` (backs `solve_value`), `sourceb`. The `lt_le` hint is `#[local]` on purpose. |
-| `TypingInv.v` | **The** inversion module: subtyping shape inversions under `eval_ctx`, principal typing inversions for every term former (concluding native `typings`/`typing_ops`), `canonical_fun`, `plug_typing_inv`, wf context conversion (`ty_wf_conv`, `ty_wf_fold_bind_tm_inv`). |
+| `TypingInv.v` | **The** inversion module: subtyping shape inversions under `eval_ctx` (incl. the full ∀-inversions `sub_lt_all_inv_full`/`sub_ty_all_inv_full`), principal typing inversions for every term former (incl. the λ/Λ inversions, concluding native `typings`/`typing_ops`), `canonical_fun`, `plug_typing_inv`, wf context conversion (`ty_wf_conv`, `ty_wf_fold_bind_tm_inv`). |
 | `WellScoped.v` | Runtime marker invariants, part 1: `scope_below`, `scope_ext`, `well_scoped`, `rt_closed`, `ws_rt`, vacuity on source terms, `well_scoped_mono`; the shared closed-type identity laws. |
 | `WsRtLaws.v` | Part 2, the fused proof engine: `ws_rt_*` traversal/plug/confinement laws (single inductions with conjunction motives). The one impossible fusion — `well_scoped_shift_tm` — stays single-sided (`rt_closed`'s cap clause pins op-bodies at term-cutoff 2). |
 | `MarkerAnnots.v` | Part 3: `marker_annots` collector, `marker_types_safe`, `marker_annots_closed`, `marker_annots_ok`, and their step preservation. |

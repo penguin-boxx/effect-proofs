@@ -56,7 +56,7 @@ The headline theorems (full table in the top-level README):
 src/
   core/      the calculus: syntax, substitution, semantics, and the
              static semantics modules re-exported by Typing.v
-  subst/     de Bruijn metatheory: shift/subst laws, the context-map
+  meta/      de Bruijn metatheory: shift/subst laws, the context-map
              abstraction, weakening/substitution typing payloads
   safety/    the deliverables: invariants, preservation, progress,
              soundness, confinement, deciders, evaluator, determinism

@@ -8,7 +8,7 @@ Require Import Typing.
 (* =================================================================== *)
 (* CtxMap: one specification for the seven context-map relations.      *)
 (*                                                                     *)
-(* The subst tier transports every static judgment (lt_wf /           *)
+(* The meta tier transports every static judgment (lt_wf /             *)
 (* lifetimes_wf / ty_wf / types_wf / lt_sub / sub) across seven        *)
 (* context maps — InsTy / InsLt / InsTm (Weakening.v), SubstLt,        *)
 (* SubstTy, SubstTm and NarrowTy (SubstTy.v) — and the transport       *)

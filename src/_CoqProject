@@ -1,5 +1,5 @@
 -Q core ""
--Q subst ""
+-Q meta ""
 -Q safety ""
 -Q examples ""
 core/Syntax.v
@@ -13,18 +13,19 @@ core/Elim.v
 core/Subtyping.v
 core/Instantiate.v
 core/Typing.v
-subst/SubstTactics.v
-subst/ShiftLaws.v
-subst/CtxMap.v
-subst/Weakening.v
-subst/SubstLt.v
-subst/SubstTy.v
-subst/ProgramCtx.v
-subst/SubstTm.v
-subst/TypingSubst.v
-subst/Subst.v
-subst/Narrowing.v
-subst/Variance.v
+meta/SubstTactics.v
+meta/ShiftLaws.v
+meta/CtxMap.v
+meta/Weakening.v
+meta/SubstLt.v
+meta/SubstTy.v
+meta/ProgramCtx.v
+meta/CtxClosed.v
+meta/SubstTm.v
+meta/TypingSubst.v
+meta/Subst.v
+meta/Narrowing.v
+meta/Variance.v
 safety/Eqb.v
 safety/Decide.v
 safety/TypingInv.v

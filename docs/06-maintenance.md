@@ -68,7 +68,7 @@ payload is still per-relation (see the documented Level-2 blockers in
 
 **Change a typing rule** — expect to touch: the rule (`Typing.v`),
 `typing_ind_forall2`'s derivation if the rule has list premises, the
-principal inversion in `TypingInv.v`, the six payloads in `subst/`,
+principal inversion in `TypingInv.v`, the six payloads in `meta/`,
 and `Preservation.v`'s redex lemma for any head rule involving it.
 Build after each file; the compiler is the map.
 

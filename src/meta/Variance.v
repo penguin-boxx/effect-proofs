@@ -4,7 +4,6 @@ Require Import Stdlib.micromega.Lia.
 Import ListNotations.
 Require Import Syntax.
 Require Import Substitution.
-Require Import Semantics.
 Require Import Typing.
 Require Import Subst.
 Require Import Narrowing.

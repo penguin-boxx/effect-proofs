@@ -1,5 +1,5 @@
 (* ================================================================== *)
-(* Subst: re-export shim for the substitution tier.                   *)
+(* Subst: re-export shim for the substitution core of the meta tier.  *)
 (*                                                                    *)
 (* The substitution metatheory is split into dependency-ordered       *)
 (* modules (see _CoqProject).  This shim re-exports them so           *)
@@ -14,5 +14,6 @@ Require Export Weakening.
 Require Export SubstLt.
 Require Export SubstTy.
 Require Export ProgramCtx.
+Require Export CtxClosed.
 Require Export SubstTm.
 Require Export TypingSubst.

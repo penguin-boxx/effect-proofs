@@ -7,9 +7,9 @@ Require Import Substitution.
 Require Import Typing.
 
 (* ================================================================== *)
-(* The substitution-tier tactic library.                              *)
+(* The meta-tier tactic library.                                      *)
 (*                                                                    *)
-(* Placed FIRST in the tier so every subst module can use it.  The    *)
+(* Placed FIRST in the tier so every meta module can use it.  The     *)
 (* hint databases are created here; their entries are registered at   *)
 (* the defining sites across the tier (end of ShiftLaws.v,            *)
 (* Weakening.v, SubstLt.v, SubstTy.v, SubstTm.v, TypingSubst.v).      *)

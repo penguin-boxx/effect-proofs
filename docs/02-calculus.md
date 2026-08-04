@@ -135,7 +135,7 @@ generic induction principle needs it; native helpers
 `typings_focus_replace`) cover the recurring list
 manipulations. The Forall2-aware induction principle
 `typing_ind_forall2` (derived from the generated mutual scheme) is
-what every typing payload in `subst/` applies.
+what every typing payload in `meta/` applies.
 
 **The interesting side conditions are all escape checks:**
 
