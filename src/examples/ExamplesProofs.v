@@ -1314,3 +1314,35 @@ Proof.
     by (vm_compute; reflexivity).
   apply stepf_run_sound.
 Qed.
+
+Theorem typed_delegate_example_proof : typed_delegate_example.
+Proof.
+  unfold typed_delegate_example, delegate_example, delegate_op_body,
+         reader_example_op_body.
+  open_handle.
+  - apply SA_Refl. solve_wf.
+  - (* outer clause: resume(2) *)
+    constructor; [| constructor].
+    cbn. eapply T_App; [ solve_var | solve_nat ].
+  - (* body: the inner handler, under the outer capability's binder *)
+    cbn. open_handle.
+    + apply SA_Refl. solve_wf.
+    + (* inner clause: let a = perform r1.ask() in resume(sum3(a, 3)) *)
+      constructor; [| constructor].
+      cbn. eapply T_App with (A := T_Nat `Lf) (l := `Ll) (B := T_Nat `Lf).
+      * open_lam.
+        eapply T_App with (A := T_Nat `Lf) (l := `Ll) (B := T_Nat `Lf).
+        -- solve_var.
+        -- solve_sum_fn.
+      * (* the delegated perform on the OUTER capability ($$2) *)
+        solve_perform ltac:(unfold unit_v; solve_ctor).
+    + cbn. solve_perform ltac:(unfold unit_v; solve_ctor).
+Qed.
+
+Theorem red_delegate_example_proof : red_delegate_example.
+Proof.
+  unfold red_delegate_example.
+  replace five_v with (stepf_run 100 delegate_example)
+    by (vm_compute; reflexivity).
+  apply stepf_run_sound.
+Qed.

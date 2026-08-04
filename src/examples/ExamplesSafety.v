@@ -212,3 +212,60 @@ Proof.
       apply stepf_run_sound.
     + apply BS_Return; [ solve_value | repeat constructor ].
 Qed.
+
+(* ================================================================== *)
+(* The delegating-handler example, witnessed: an operation clause     *)
+(* that itself performs an operation of the OUTER handler             *)
+(* ([delegate_example] — two Reader delimiters, same effect tag,      *)
+(* told apart by markers).                                            *)
+(* ================================================================== *)
+
+(* Type soundness: no state reachable from the delegating run is      *)
+(* stuck — in particular the clause's own perform, fired from where   *)
+(* the inner delimiter used to stand, always finds the outer one.     *)
+Theorem delegate_example_safe : forall u,
+  multi_step delegate_example u -> ~ stuck u.
+Proof.
+  intros u Hms.
+  apply (source_type_soundness full_ctx delegate_example u (T_Nat `Lf)
+           eval_ctx_full_ctx).
+  - vm_compute; reflexivity.
+  - exact typed_delegate_example_proof.
+  - exact Hms.
+Qed.
+
+(* Capability confinement: neither capability — the inner one nor the *)
+(* outer one the clause delegates through — is ever exposed outside   *)
+(* its delimiter.                                                     *)
+Theorem delegate_example_cap_confined :
+  forall E E_tag m Ts T_R op_bodies,
+    multi_step delegate_example (plug E (term_cap E_tag m Ts T_R op_bodies)) ->
+    ~ pure_ectx_m m E.
+Proof.
+  intros E E_tag m Ts T_R op_bodies Hms.
+  apply (source_capability_never_exposed full_ctx delegate_example
+           E E_tag m Ts T_R op_bodies (T_Nat `Lf) eval_ctx_full_ctx).
+  - vm_compute; reflexivity.
+  - exact typed_delegate_example_proof.
+  - exact Hms.
+Qed.
+
+(* Boundary impermeability: every value crossing EITHER of the two    *)
+(* delimiters along any run — including the delegated ask's argument  *)
+(* and answer — is typed at an escapable (noloc) type.                *)
+Theorem delegate_example_boundary_noloc : forall u v,
+  multi_step delegate_example u ->
+  boundary_crossing u v ->
+  exists S,
+    full_ctx ⊢ₜ v : S /\ full_ctx ⊢ₗ lt_of_ty_G full_ctx S <: lt_free.
+Proof.
+  intros u v Hms Hbc.
+  assert (Hsrc : has_rt_cap delegate_example = false) by (vm_compute; reflexivity).
+  destruct (source_handler_boundary_noloc full_ctx delegate_example (T_Nat `Lf) u v
+              eval_ctx_full_ctx Hsrc typed_delegate_example_proof Hms Hbc)
+    as [ (E & m & T_B & T_R & _ & HtyS & Hnl)
+       | (E & E_tag & m & Ts & T_B & T_R & op_bodies & op & Ss & A & P
+          & n_α & ops & n_β & sig & ret & sig_inst
+          & _ & _ & _ & _ & HtyS & Hnl) ];
+    eexists; eauto.
+Qed.

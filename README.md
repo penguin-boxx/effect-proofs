@@ -126,9 +126,12 @@ runs whose results are validated by the bounded-addition family
 the escape checks computationally reject programs that would leak a
 `local` capability. The shared tactic library lives in
 `ExamplesTactics.v`.
-`ExamplesSafety.v` witnesses five of the capstones — eight theorems
-over three concrete programs (including a concrete `boundary_step`
-event on the State trace) plus one type-level confinement fact — and `ExamplesRejection.v` proves the rejection suite: complete
+`ExamplesSafety.v` witnesses five of the capstones — eleven theorems
+over four concrete programs (including a concrete `boundary_step`
+event on the State trace, and soundness/confinement/boundary
+witnesses for a **delegating** handler whose ask-clause itself
+performs the outer Reader's ask) plus one type-level confinement
+fact — and `ExamplesRejection.v` proves the rejection suite: complete
 offending terms have **no typing derivation** at their escapable
 interfaces, each paired with a positive companion at its confined
 interface.

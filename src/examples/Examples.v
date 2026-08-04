@@ -866,6 +866,41 @@ Definition typed_forward_example : Prop :=
 Definition red_forward_example : Prop :=
   forward_example ==>> error_v (T_Nat `Lf) (T_File `Lf) two_v.
 
+(* let delegate_example =
+     handle r1: Reader<Nat> { op ask() resume(2) }
+     handle r2: Reader<Nat> {
+       op ask() let a = perform r1.ask() in resume(sum3(a, 3))
+     }
+     perform r2.ask()
+   An operation clause that itself performs an operation of the OUTER
+   handler: the inner Reader's ask DELEGATES to the outer one — the
+   capability r1 is lexically in scope in the clause ($$2 above the
+   clause's arg/resume binders).  When the clause runs it has already
+   replaced the inner delimiter (captured into the resumption), so its
+   perform reaches the outer handler across a pure context; both
+   handlers are the SAME effect (Reader), told apart by their markers —
+   handler selection is lexical, through the capability.
+                                                     -- = 2+3 = 5 *)
+Definition delegate_op_body : term :=
+  let: T_Nat `Lf <- term_perform ($$ 2) 0 [] (T_Nat `Lf) unit_v in
+  ($$ 2) @· ((sum3_fn @· ($$ 0)) @· three_v).
+
+Definition delegate_example : term :=
+  term_handle Reader_tag [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf)
+    [(0, reader_example_op_body)]
+    (term_handle Reader_tag [T_Nat `Lf] (T_Nat `Lf) (T_Nat `Lf)
+      [(0, delegate_op_body)]
+      (term_perform ($$ 0) 0 [] (T_Nat `Lf) unit_v)).
+
+(*   delegate_example : Nat                                     *)
+Definition typed_delegate_example : Prop :=
+  full_ctx ⊢ₜ delegate_example : T_Nat `Lf.
+
+(*   handle { ask() resume(2) }                                 *)
+(*   handle { ask() resume(sum3(outer ask, 3)) }                *)
+(*   perform ask()                              ~~>*  5         *)
+Definition red_delegate_example : Prop := delegate_example ==>> five_v.
+
 (* fun getOrElse<t <: Any'local>(default: t, o: Option<t>): t =
      match o { case Some(x) -> x; _ -> default } *)
 Definition getOrElse : term :=
