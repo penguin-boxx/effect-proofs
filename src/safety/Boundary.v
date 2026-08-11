@@ -208,39 +208,35 @@ Proof.
   eapply handler_boundary_noloc; eauto.
 Qed.
 
-(* Data-type specialization: when the crossing type is a data          *)
-(* constructor type, the crossing value is literally a constructor     *)
-(* whose own lifetime annotation carries no top-level `local` —        *)
-(* a local datum never crosses the boundary.                           *)
+(* Data-type specialization, pinned to the return-out channel: when a  *)
+(* reached state is an H_Return crossing whose delimiter's own         *)
+(* DECLARED answer type T_B is a data constructor type                 *)
+(* `type_ctor K l Ts` (K a data tag, not the reserved Any), the        *)
+(* crossing value is literally a constructor whose own lifetime        *)
+(* annotation carries no top-level `local` — a local datum never       *)
+(* leaves through the return-out channel.  The channel type is the     *)
+(* delimiter's, written in the crossing shape itself, not an           *)
+(* existential of the proof's choosing; the kernel is                  *)
+(* data_value_top_lifetime_non_local (Escape.v) on the                 *)
+(* boundary_return_typing decomposition.                               *)
 (* PUBLIC API — terminal deliverable: no internal consumers; do not
    mistake for dead code.  Gated by scripts/check_assumptions.py. *)
-Corollary source_boundary_value_non_local : forall Γ t T u v,
+Corollary source_boundary_value_non_local : forall Γ t T E m K l Ts T_R v,
   eval_ctx Γ ->
   has_rt_marker t = false ->
   Γ ⊢ₜ t : T ->
-  multi_step t u ->
-  boundary_crossing u v ->
-  exists S,
-    Γ ⊢ₜ v : S /\
-    Γ ⊢ₗ lt_of_ty_G Γ S <: lt_free /\
-    (forall K l Ts,
-       S = type_ctor K l Ts ->
-       ctx_lookup_eff Γ K = None ->
-       K <> any_tag ->
-       exists K' l' lts' vs,
-         v = term_ctor K' l' lts' Ts vs /\ no_local_lt l' = true).
+  multi_step t (plug E (term_handler_m m (type_ctor K l Ts) T_R v)) ->
+  value v ->
+  ctx_lookup_eff Γ K = None ->
+  K <> any_tag ->
+  exists K' l' lts' vs,
+    v = term_ctor K' l' lts' Ts vs /\ no_local_lt l' = true.
 Proof.
-  intros Γ t T u v Hec Hsrc Hty Hms Hbc.
-  assert (HS : exists S, Γ ⊢ₜ v : S /\ Γ ⊢ₗ lt_of_ty_G Γ S <: lt_free).
-  { destruct (source_handler_boundary_noloc _ _ _ _ _ Hec Hsrc Hty Hms Hbc)
-      as [ (E & m & T_B & T_R & _ & HtyS & Hnl)
-         | (E & E_tag & m & Ts & T_B & T_R & op_bodies & op & Ss & A & P
-            & n_α & ops & n_β & sig & ret & sig_inst
-            & _ & _ & _ & _ & HtyS & Hnl) ];
-      eauto. }
-  destruct HS as [S [HtyS Hnl]].
-  exists S. split; [exact HtyS|]. split; [exact Hnl|].
-  intros K l Ts HS Hdata HK. subst S.
+  intros Γ t T E m K l Ts T_R v Hec Hsrc Hty Hms Hval Hdata HK.
+  destruct (multi_step_preserves_safety_invariants _ _ _ _ Hec
+              (source_safety_invariants _ _ _ Hsrc Hty) Hms)
+    as [_ [_ Htyu]].
+  destruct (boundary_return_typing _ _ _ _ _ _ _ Htyu) as [HtyS Hnl].
   (* the data type's own top-level lifetime is below the escapable     *)
   (* whole-type lifetime: l <: l + (args) <: free                      *)
   assert (Hlfree : Γ ⊢ₗ l <: lt_free).
@@ -251,5 +247,5 @@ Proof.
     apply LS_JoinR1; [apply LS_Refl|]; assumption. }
   eapply data_value_top_lifetime_non_local;
     [ exact Hec | exact Hdata | exact HK | exact HtyS
-    | eapply boundary_crossing_value; exact Hbc | exact Hlfree ].
+    | exact Hval | exact Hlfree ].
 Qed.

@@ -124,6 +124,48 @@ Proof.
 Qed.
 
 (* ================================================================== *)
+(* 1b. leak_state: returning the capability ITSELF (Listing 1)        *)
+(*                                                                    *)
+(*   handle st: State<Nat> { op get(u) resume(0)                      *)
+(*                         ; op put(s) resume(Unit()) } in st         *)
+(*                                                                    *)
+(* The handler body is the capability variable itself, so the         *)
+(* handle's declared body type T_B IS the capability type             *)
+(*   T_State `Ll (Nat'free)  —  local by construction.                *)
+(* T_Handle demands `lt_of_ty_G Γ T_B <: lt_free`, which fails on     *)
+(* the local capability type, so NO typing derivation exists — at     *)
+(* the capability type or at any other.  ([leak_state] is defined     *)
+(* next to the State example in Examples.v.)                          *)
+(* ================================================================== *)
+
+Lemma state_ctx_lt_ctx_wf : lt_ctx_wf state_ctx.
+Proof. intros x Δ H; vm_compute in H; discriminate. Qed.
+
+Theorem leak_state_rejected : forall T,
+  ~ (state_ctx ⊢ₜ leak_state : T).
+Proof.
+  intros T H.
+  apply handle_typing_inv in H.
+  destruct H as (n_α & ops & _ & _ & _ & _ & _ & Hnl & _).
+  revert Hnl.
+  apply nolocb_false_rejects.
+  - exact state_ctx_lt_ctx_wf.
+  - solve_wf.
+  - vm_compute; reflexivity.
+Qed.
+
+(* Positive companion: the very body — the capability variable at     *)
+(* its own (local) capability type — is well-typed INSIDE the         *)
+(* handler.  Only the boundary crossing is rejected, not the          *)
+(* construction.                                                      *)
+Theorem state_capability_typable_inside :
+  (bind_tm (T_State `Ll (T_Nat `Lf)) :: state_ctx)
+    ⊢ₜ $$ 0 : T_State `Ll (T_Nat `Lf).
+Proof.
+  solve_var.
+Qed.
+
+(* ================================================================== *)
 (* 2. put on a state of local readers                                 *)
 (*                                                                    *)
 (* The testWithState scenario: a State handler instantiated at        *)
@@ -719,6 +761,27 @@ Lemma leak_reader2_op_body_typed :
     ⊢ₜ ($$ 1) @· ($$ 0) : shift_ty 0 0 leak2_ty.
 Proof.
   cbn. eapply T_App; solve_var.
+Qed.
+
+(* The leak_state operation clauses `resume(0)` / `resume(Unit())`    *)
+(* are well-typed at exactly their T_Handle premise instances, so     *)
+(* leak_state's rejection rests SOLELY on the body-type noloc check.  *)
+Lemma leak_state_get_body_typed :
+  (op_body_ctx state_ctx 0
+     (inst_op_ty_args 1 [T_Nat `Lf] 0 T_Unit)
+     (inst_op_ty_args 1 [T_Nat `Lf] 0 (`T 0)) (T_State `Ll (T_Nat `Lf)))
+    ⊢ₜ ($$ 1) @· zero_v : shift_ty 0 0 (T_State `Ll (T_Nat `Lf)).
+Proof.
+  cbn. eapply T_App; [solve_var | unfold zero_v; solve_nullary_ctor].
+Qed.
+
+Lemma leak_state_put_body_typed :
+  (op_body_ctx state_ctx 0
+     (inst_op_ty_args 1 [T_Nat `Lf] 0 (`T 0))
+     (inst_op_ty_args 1 [T_Nat `Lf] 0 T_Unit) (T_State `Ll (T_Nat `Lf)))
+    ⊢ₜ ($$ 1) @· unit_v : shift_ty 0 0 (T_State `Ll (T_Nat `Lf)).
+Proof.
+  cbn. eapply T_App; [solve_var | unfold unit_v; solve_nullary_ctor].
 Qed.
 
 (* ------------------------------------------------------------------ *)

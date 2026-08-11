@@ -91,27 +91,38 @@ Proof.
 Qed.
 
 (* Boundary impermeability, witnessed: along any execution of the     *)
-(* Reader example, every value crossing a handler boundary — the      *)
-(* operation argument entering, or the delimiter's result leaving —   *)
-(* is typed at an escapable (noloc) type.                             *)
+(* Reader example, every value crossing a handler boundary is typed   *)
+(* at THE type its channel declares — the delimiter's own declared    *)
+(* answer type T_B when the result leaves (return-out channel), the   *)
+(* operation's instantiated signature when the argument enters        *)
+(* (operation-in channel) — and that pinned type is escapable         *)
+(* (noloc).  The statement exposes the per-channel conclusion of the  *)
+(* underlying theorem unchanged; no channel-agnostic weakening.       *)
 Theorem reader_example_boundary_noloc : forall u v,
   multi_step reader_example u ->
   boundary_crossing u v ->
-  exists S,
-    full_ctx ⊢ₜ v : S /\ full_ctx ⊢ₗ lt_of_ty_G full_ctx S <: lt_free.
+  (* return-out channel: v leaves the delimiter at the delimiter's    *)
+  (* own declared answer type T_B.                                    *)
+  (exists E m T_B T_R,
+     u = plug E (term_handler_m m T_B T_R v) /\
+     full_ctx ⊢ₜ v : T_B /\
+     full_ctx ⊢ₗ lt_of_ty_G full_ctx T_B <: lt_free)
+  \/
+  (* operation-in channel: v enters the handler clause at the         *)
+  (* operation's instantiated signature.                              *)
+  (exists E E_tag m Ts T_B T_R op_bodies op Ss A P n_α ops n_β sig ret sig_inst,
+     u = plug E (term_handler_m m T_B T_R
+           (plug P (term_perform (term_cap E_tag m Ts T_R op_bodies) op Ss A v))) /\
+     ctx_lookup_eff full_ctx E_tag = Some (n_α, ops) /\
+     nth_error ops op = Some (n_β, sig, ret) /\
+     sig_inst = inst_op_all_args n_α Ts n_β Ss sig /\
+     full_ctx ⊢ₜ v : sig_inst /\
+     full_ctx ⊢ₗ lt_of_ty_G full_ctx sig_inst <: lt_free).
 Proof.
   intros u v Hms Hbc.
   assert (Hsrc : has_rt_marker reader_example = false) by (vm_compute; reflexivity).
-  (* the strengthened theorem pins each channel's crossing type; the  *)
-  (* example-facing statement keeps the channel-agnostic reading, so  *)
-  (* project the pinned type out of whichever channel fired.          *)
-  destruct (source_handler_boundary_noloc full_ctx reader_example (T_Nat `Lf) u v
-              eval_ctx_full_ctx Hsrc typed_reader_example_proof Hms Hbc)
-    as [ (E & m & T_B & T_R & _ & HtyS & Hnl)
-       | (E & E_tag & m & Ts & T_B & T_R & op_bodies & op & Ss & A & P
-          & n_α & ops & n_β & sig & ret & sig_inst
-          & _ & _ & _ & _ & HtyS & Hnl) ];
-    eexists; eauto.
+  exact (source_handler_boundary_noloc full_ctx reader_example (T_Nat `Lf) u v
+           eval_ctx_full_ctx Hsrc typed_reader_example_proof Hms Hbc).
 Qed.
 
 (* ================================================================== *)
@@ -192,6 +203,7 @@ Theorem state_example_boundary_return_event :
           (T_Nat `Lf -{ `Lf }-> T_Nat `Lf)
           (T_Nat `Lf -{ `Ll }-> T_Nat `Lf)
           (λ: T_Nat `Lf \\ three_v)))
+    (plug (EC_app1 EC_hole three_v) (λ: T_Nat `Lf \\ three_v))
     handler_body_result_out
     (λ: T_Nat `Lf \\ three_v).
 Proof.
@@ -211,6 +223,132 @@ Proof.
         by (vm_compute; reflexivity).
       apply stepf_run_sound.
     + apply BS_Return; [ solve_value | repeat constructor ].
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* The operation-in channel, witnessed on a CONCRETE EVENT.  After 1  *)
+(* step of the State run (S_Handle minted marker 1), the reached      *)
+(* state IS a perform-redex under its own delimiter: the body's       *)
+(* first get (operation index 0) sits, across the pure let frame P,   *)
+(* directly under handler_m 1, inside the outer application frame E.  *)
+(* The pieces of that decomposition, named:                           *)
+(* ------------------------------------------------------------------ *)
+
+(* The capability S_Handle substituted for the handled variable.      *)
+Definition state_example_cap : term :=
+  term_cap State_tag 1 [T_Nat `Lf]
+    (T_Nat `Lf -{ `Ll }-> T_Nat `Lf)
+    [(0, state_get_body); (0, state_put_body)].
+
+(* The rest of the delimited body: the put and the second get.        *)
+Definition state_example_perform_rest : term :=
+  let: T_Unit <- term_perform state_example_cap 1 [] T_Unit three_v in
+  let: T_Nat `Lf <- term_perform state_example_cap 0 [] (T_Nat `Lf) unit_v in
+  λ: T_Nat `Lf \\ $$ 1.
+
+(* The pure prefix P between delimiter and redex: the first let's     *)
+(* argument frame.                                                    *)
+Definition state_example_perform_P : ectx :=
+  EC_app2 (λ: T_Nat `Lf \\ state_example_perform_rest) EC_hole.
+
+(* The reached state, as the BS_Perform redex decomposition — equal   *)
+(* to stepf_run 1 state_example by computation (see the proof).       *)
+Definition state_example_perform_state : term :=
+  plug (EC_app1 EC_hole two_v)
+    (term_handler_m 1
+       (T_Nat `Lf -{ `Lf }-> T_Nat `Lf)
+       (T_Nat `Lf -{ `Ll }-> T_Nat `Lf)
+       (plug state_example_perform_P
+          (term_perform state_example_cap 0 [] (T_Nat `Lf) unit_v))).
+
+(* The reduct: H_Perform's contractum verbatim — the get clause with  *)
+(* the argument and the reified resumption substituted in.            *)
+Definition state_example_perform_next : term :=
+  plug (EC_app1 EC_hole two_v)
+    (subst_list_tm
+       [unit_v;
+        term_lam
+          (term_handler_m 1
+             (T_Nat `Lf -{ `Lf }-> T_Nat `Lf)
+             (T_Nat `Lf -{ `Ll }-> T_Nat `Lf)
+             (plug (shift_ectx_tm 1 0 state_example_perform_P) (term_var 0)))
+          (T_Nat `Lf)]
+       (subst_list_ty_in_tm [] state_get_body)).
+
+(* Boundary impermeability, witnessed on a CONCRETE operation-in      *)
+(* EVENT: a real [boundary_step] on the operation_argument_in channel *)
+(* fires from the reached state (reachability is stepf_run_sound      *)
+(* plus vm_compute), and the event-tied channel typing pins its       *)
+(* crossing value unit_v at get's instantiated signature Unit, which  *)
+(* is noloc.  Companion of state_example_boundary_return_event on     *)
+(* the other guarded channel.                                         *)
+Theorem state_example_boundary_perform_event :
+  boundary_step state_example_perform_state state_example_perform_next
+    operation_argument_in unit_v /\
+  boundary_channel_typed state_ctx
+    state_example_perform_state state_example_perform_next
+    operation_argument_in unit_v.
+Proof.
+  assert (Hbs : boundary_step state_example_perform_state
+                  state_example_perform_next operation_argument_in unit_v).
+  { unfold state_example_perform_state, state_example_perform_next,
+      state_example_cap.
+    eapply BS_Perform;
+      [ solve_value | repeat constructor | repeat constructor
+      | repeat constructor | reflexivity ]. }
+  split; [exact Hbs|].
+  eapply (source_boundary_step_noloc state_ctx state_example (T_Nat `Lf)).
+  - exact eval_ctx_state_ctx.
+  - vm_compute; reflexivity.
+  - exact typed_state_example_proof.
+  - (* reachability, computed: the state is stepf_run 1 of the run    *)
+    replace state_example_perform_state with (stepf_run 1 state_example)
+      by (vm_compute; reflexivity).
+    apply stepf_run_sound.
+  - exact Hbs.
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* Non-vacuity of the confinement witnesses: the conditional          *)
+(* theorems above ([state_example_cap_confined]) quantify over any    *)
+(* reachable capability decomposition; here is a CONCRETE one.  The   *)
+(* same reached state stepf_run 1, decomposed one frame deeper —      *)
+(* down to the capability itself in evaluation position (the          *)
+(* perform's receiver) — exhibits a reachable state that really       *)
+(* contains a capability, and its surrounding context really          *)
+(* contains the handler_m 1 frame: it is NOT marker-1-pure, exactly   *)
+(* as confinement demands.                                            *)
+(* ------------------------------------------------------------------ *)
+
+(* The context around the capability: outer application frame,        *)
+(* delimiter frame, pure let frame, perform-receiver frame.           *)
+Definition state_example_cap_ectx : ectx :=
+  EC_app1
+    (EC_handler_m 1
+       (T_Nat `Lf -{ `Lf }-> T_Nat `Lf)
+       (T_Nat `Lf -{ `Ll }-> T_Nat `Lf)
+       (EC_app2 (λ: T_Nat `Lf \\ state_example_perform_rest)
+          (EC_perform_r EC_hole 0 [] (T_Nat `Lf) unit_v)))
+    two_v.
+
+Theorem state_example_cap_reachable :
+  multi_step state_example (plug state_example_cap_ectx state_example_cap) /\
+  plug state_example_cap_ectx state_example_cap = stepf_run 1 state_example /\
+  ~ pure_ectx_m 1 state_example_cap_ectx.
+Proof.
+  split; [|split].
+  - (* reachability, computed *)
+    replace (plug state_example_cap_ectx state_example_cap)
+      with (stepf_run 1 state_example) by (vm_compute; reflexivity).
+    apply stepf_run_sound.
+  - vm_compute; reflexivity.
+  - (* the context is not marker-1-pure: it contains handler_m 1      *)
+    intro Hp.
+    inversion Hp; subst.
+    match goal with
+    | H : pure_ectx_m _ (EC_handler_m _ _ _ _) |- _ => inversion H; subst
+    end.
+    congruence.
 Qed.
 
 (* ================================================================== *)

@@ -12,6 +12,10 @@ capabilities are `local`-annotated values, and the lifetime subtyping
 discipline guarantees that neither a capability nor any `local`-confined
 datum can escape the scope that delimits it.
 
+This development is the proof-side companion of the **Core∆**
+(Core-Delta) calculus — the mechanized metatheory of Core∆ extended
+with multi-operation algebraic effect handlers.
+
 ## Headline theorems
 
 | Theorem                                                                                           | File                               | Statement (informal)                                                                                                                                                                                                                                                                                                 |
@@ -21,8 +25,8 @@ datum can escape the scope that delimits it.
 | `source_capability_never_exposed`                                                                 | `src/safety/Escape.v`              | Along any reduction of a well-typed source program, a live capability is never visible outside a delimiter carrying its marker.                                                                                                                                                                                      |
 | `source_effect_safety`                                                                            | `src/safety/Escape.v`              | **No unhandled operation**: along any reduction of a well-typed source program, an active `perform` always finds a delimiter carrying its capability's marker in the surrounding context (runtime form: `effect_safety`).                                                                                            |
 | `source_free_data_result_top_lifetime`                                                            | `src/safety/Escape.v`              | A value a source program computes at an escapable (`free`) data type carries no top-level `local` lifetime annotation (the deep form is `source_noloc_result_no_runtime_forms`).                                                                                                                                     |
-| `source_handler_boundary_noloc`                                                                   | `src/safety/Boundary.v`            | Every value passing a GUARDED handler-boundary data channel — operation argument in, delimiter return out — is typed at the delimiter's declared answer type / the operation's instantiated signature, an escapable (noloc) type.                                                                                    |
-| `source_boundary_step_noloc` (+ per-channel corollaries)                                          | `src/safety/BoundaryStep.v`        | The same guarantee as labelled transition EVENTS: every executed boundary reduction on a guarded channel carries a value typed at the delimiter's declared answer type / the operation's instantiated signature (both noloc); the reified resumption is typed `A -local-> T_R` (`source_boundary_resumption_local`). |
+| `source_handler_boundary_noloc`                                                                   | `src/safety/Boundary.v`            | Every value passing a GUARDED handler-boundary data channel — operation argument in, delimiter return out — is typed at the delimiter's declared answer type / the operation's instantiated signature, an escapable (noloc) type; when the delimiter's declared answer type is a data-constructor type, the delivered value is literally a constructor with no top-level `local` (`source_boundary_value_non_local`). |
+| `source_boundary_step_noloc` (+ per-channel corollaries)                                          | `src/safety/BoundaryStep.v`        | The same guarantee as labelled transition EVENTS: every executed boundary reduction on a guarded channel carries a value typed at the delimiter's declared answer type / the operation's instantiated signature (both noloc), and the conclusion is the fired event's own decomposition — it links both endpoints of the transition under the firing rule's side conditions; the reified resumption is typed `A -local-> T_R` (`source_boundary_resumption_local`). |
 | `source_noloc_result_no_runtime_forms`                                                            | `src/safety/Escape.v`              | A value delivered at an escapable type contains **no capability and no delimiter at any depth** — under lambdas and inside constructor fields.                                                                                                                                                                       |
 | `source_capability_occurrence_delimited`                                                          | `src/safety/Occurrence.v`          | EVERY syntactic capability occurrence — at any path, including under binders and inside stored operation bodies — has its marker in scope; the active-position theorem is its empty-scope instance.                                                                                                                  |
 | `source_safety_suite`                                                                             | `src/safety/Guarantees.v`          | **The umbrella theorem**: one record bundling type safety, invariant preservation, both confinement forms, capability-free escapable results, guarded-channel safety, and resumption locality — from `eval_ctx`, `sourceb t = true`, and one typing derivation.                                                      |
@@ -127,15 +131,21 @@ runs whose results are validated by the bounded-addition family
 the escape checks computationally reject programs that would leak a
 `local` capability. The shared tactic library lives in
 `ExamplesTactics.v`.
-`ExamplesSafety.v` witnesses five of the capstones — eleven theorems
-over four concrete programs (including a concrete `boundary_step`
-event on the State trace, and soundness/confinement/boundary
-witnesses for a **delegating** handler whose ask-clause itself
-performs the outer Reader's ask) plus one type-level confinement
-fact — and `ExamplesRejection.v` proves the rejection suite: complete
-offending terms have **no typing derivation** at their escapable
+`ExamplesSafety.v` witnesses five of the capstones — eleven theorems:
+ten over three concrete programs plus one type-level confinement
+fact. Both guarded boundary channels are witnessed on concrete
+EXECUTED `boundary_step` events of the State trace (the `H_Return`
+collapse and a get's operation-in perform, each with its event-tied
+channel typing), a reachable capability decomposition shows the
+confinement theorems are not vacuous, and a **delegating** handler
+whose ask-clause itself performs the outer Reader's ask carries
+soundness/confinement/boundary witnesses. `ExamplesRejection.v`
+proves the rejection suite: complete offending terms — including the
+Listing-1-shaped `leak_state`, whose handler body returns the
+capability itself — have **no typing derivation** at their escapable
 interfaces, each paired with a positive companion at its confined
-interface.
+interface (for `leak_state`: the capability is typable INSIDE the
+handler, `state_capability_typable_inside`).
 
 ## License
 

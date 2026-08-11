@@ -51,7 +51,7 @@ re-export shims — the one-import façades of their tiers.
 | `Soundness.v` | The `safety_invariants` bundle (marker_annots_ok ∧ ws_rt ∧ typing) and `type_soundness` / `source_type_soundness`. |
 | `Escape.v` | Non-escape and capability confinement (`capability_confined`, `source_capability_never_exposed`, `source_noloc_result_no_runtime_forms`, …). |
 | `Occurrence.v` | Path-level confinement: every syntactic capability occurrence has its marker in scope. |
-| `Boundary.v` / `BoundaryStep.v` | Guarded handler-boundary channels, stated on states and on labelled transition events (+ resumption locality). |
+| `Boundary.v` / `BoundaryStep.v` | Guarded handler-boundary channels, typed at their declared (pinned) channel types: on states (`handler_boundary_noloc`, + the return-out data specialization `source_boundary_value_non_local`, pinned to a delimiter declared at a ctor type) and on labelled transition events whose `boundary_channel_typed` links both endpoints of the fired step under the rule's side conditions (+ resumption locality). |
 | `Guarantees.v` | The umbrella `source_guarantees` record and `source_safety_suite`; evaluator-facing corollaries. |
 | `Safety.v` | Re-export shim for the tier. |
 
@@ -62,8 +62,8 @@ re-export shims — the one-import façades of their tiers.
 | `Examples.v` | Data/effect declarations, the `CoreNotation` module, every example program and its typing/reduction *statements* (as `Prop` definitions). Naming: `<subject>_example`; camelCase subjects mirror the paper deliberately. |
 | `ExamplesTactics.v` | The tier's tactic library (ch. 05) — proofs never define tactics inline. |
 | `ExamplesProofs.v` | The typing and end-to-end reduction proofs (including multi-shot and forwarding runs) and the negative escape-check witnesses. |
-| `ExamplesRejection.v` | The rejection suite: complete offending terms have *no* typing derivation at their escapable interfaces, each with a positive companion at its confined interface. |
-| `ExamplesSafety.v` | The classic capstones witnessed on concrete programs. |
+| `ExamplesRejection.v` | The rejection suite: complete offending terms — incl. the Listing-1-shaped `leak_state`, whose handler body returns the capability itself, rejected by `T_Handle`'s noloc premise — have *no* typing derivation at their escapable interfaces, each with a positive companion at its confined interface (`state_capability_typable_inside`, …). |
+| `ExamplesSafety.v` | The classic capstones witnessed on concrete programs — incl. executed `boundary_step` events on BOTH guarded channels of the State trace with their event-tied channel typings, and a reachable capability decomposition (`state_example_cap_reachable`) showing confinement non-vacuous. |
 
 ## Dependency-forced placements (do not "fix")
 

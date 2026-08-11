@@ -145,24 +145,45 @@ Proof.
 Qed.
 
 (* The pinned crossing type of each guarded channel: the value moved   *)
-(* through channel ch of a boundary event in state u is typed at THE   *)
+(* through channel ch of a boundary event u ==> u' is typed at THE     *)
 (* type the channel declares — the delimiter's own declared answer     *)
 (* type T_B on the return-out channel, the operation's instantiated    *)
 (* signature (bound exactly as T_Perform computes it from the effect   *)
 (* declaration) on the operation-in channel — and that type is         *)
 (* escapable (noloc).                                                  *)
+(*                                                                     *)
+(* The decomposition is THE fired event's own, not a re-existentialized *)
+(* one: each arm links its components to BOTH endpoints of the         *)
+(* transition — the source decomposition `u = plug E (redex)` AND the  *)
+(* reduct equation `u' = plug E (contractum)` copied verbatim from     *)
+(* H_Return / H_Perform, under the same `ectx_wf` (and, on the         *)
+(* operation-in channel, `pure_ectx_m`/`ectx_wf P`) side conditions    *)
+(* the firing rule carries.  So the delimiter, marker and declared     *)
+(* types the typing conjuncts speak about are those of the event that  *)
+(* actually reduced, not of some other decomposition of the state.     *)
 Definition boundary_channel_typed
-    (Γ : ctx) (u : term) (ch : boundary_channel) (v : term) : Prop :=
+    (Γ : ctx) (u u' : term) (ch : boundary_channel) (v : term) : Prop :=
   match ch with
   | handler_body_result_out =>
       exists E m T_B T_R,
         u = plug E (term_handler_m m T_B T_R v) /\
+        u' = plug E v /\
+        ectx_wf E /\
         Γ ⊢ₜ v : T_B /\
         Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free
   | operation_argument_in =>
       exists E E_tag m Ts T_B T_R op_bodies op Ss A P n_α ops n_β sig ret sig_inst,
         u = plug E (term_handler_m m T_B T_R
               (plug P (term_perform (term_cap E_tag m Ts T_R op_bodies) op Ss A v))) /\
+        (exists n_beta op_body,
+           nth_error op_bodies op = Some (n_beta, op_body) /\
+           u' = plug E (subst_list_tm
+                  [v; term_lam (term_handler_m m T_B T_R
+                                  (plug (shift_ectx_tm 1 0 P) (term_var 0))) A]
+                  (subst_list_ty_in_tm Ss op_body))) /\
+        ectx_wf E /\
+        pure_ectx_m m P /\
+        ectx_wf P /\
         ctx_lookup_eff Γ E_tag = Some (n_α, ops) /\
         nth_error ops op = Some (n_β, sig, ret) /\
         sig_inst = inst_op_all_args n_α Ts n_β Ss sig /\
@@ -183,7 +204,7 @@ Theorem source_boundary_step_noloc : forall Γ t T u u' ch v,
   Γ ⊢ₜ t : T ->
   multi_step t u ->
   boundary_step u u' ch v ->
-  boundary_channel_typed Γ u ch v.
+  boundary_channel_typed Γ u u' ch v.
 Proof.
   intros Γ t T u u' ch v Hec Hsrc Hty Hms Hbs.
   destruct (multi_step_preserves_safety_invariants _ _ _ _ Hec
@@ -203,7 +224,8 @@ Proof.
       as (n_α & ops & n_β & sig & ret & Heff & Hnth' & Harg & Hnl).
     exists E, E_tag, m, Ts, T_B, T_R, op_bodies, op, Ss, A, P,
       n_α, ops, n_β, sig, ret, (inst_op_all_args n_α Ts n_β Ss sig).
-    repeat split; try reflexivity; assumption.
+    repeat split; try reflexivity; try assumption.
+    exists n_beta, op_body. split; [exact Hnth | reflexivity].
 Qed.
 
 (* ------------------------------------------------------------------ *)
@@ -213,7 +235,9 @@ Qed.
 
 (* Channel 4: the handler body's result leaving the delimiter          *)
 (* (H_Return) is typed at the delimiter's own declared answer type     *)
-(* T_B, which is noloc.                                                *)
+(* T_B, which is noloc.  The decomposition is the fired event's own:   *)
+(* it is linked to both endpoints of the transition and carries the    *)
+(* rule's ectx_wf side condition.                                      *)
 Corollary source_boundary_result_out_noloc : forall Γ t T u u' v,
   eval_ctx Γ ->
   has_rt_marker t = false ->
@@ -222,6 +246,8 @@ Corollary source_boundary_result_out_noloc : forall Γ t T u u' v,
   boundary_step u u' handler_body_result_out v ->
   exists E m T_B T_R,
     u = plug E (term_handler_m m T_B T_R v) /\
+    u' = plug E v /\
+    ectx_wf E /\
     Γ ⊢ₜ v : T_B /\
     Γ ⊢ₗ lt_of_ty_G Γ T_B <: lt_free.
 Proof.
@@ -232,7 +258,9 @@ Qed.
 (* Channel 1: the operation argument entering the handler clause       *)
 (* (H_Perform) is typed at the operation's instantiated signature      *)
 (* (computed from the effect declaration exactly as T_Perform does),   *)
-(* which is noloc.                                                     *)
+(* which is noloc.  The decomposition is the fired event's own: it is  *)
+(* linked to both endpoints of the transition and carries the rule's   *)
+(* ectx_wf / pure_ectx_m side conditions.                              *)
 Corollary source_boundary_operation_in_noloc : forall Γ t T u u' v,
   eval_ctx Γ ->
   has_rt_marker t = false ->
@@ -242,6 +270,15 @@ Corollary source_boundary_operation_in_noloc : forall Γ t T u u' v,
   exists E E_tag m Ts T_B T_R op_bodies op Ss A P n_α ops n_β sig ret sig_inst,
     u = plug E (term_handler_m m T_B T_R
           (plug P (term_perform (term_cap E_tag m Ts T_R op_bodies) op Ss A v))) /\
+    (exists n_beta op_body,
+       nth_error op_bodies op = Some (n_beta, op_body) /\
+       u' = plug E (subst_list_tm
+              [v; term_lam (term_handler_m m T_B T_R
+                              (plug (shift_ectx_tm 1 0 P) (term_var 0))) A]
+              (subst_list_ty_in_tm Ss op_body))) /\
+    ectx_wf E /\
+    pure_ectx_m m P /\
+    ectx_wf P /\
     ctx_lookup_eff Γ E_tag = Some (n_α, ops) /\
     nth_error ops op = Some (n_β, sig, ret) /\
     sig_inst = inst_op_all_args n_α Ts n_β Ss sig /\

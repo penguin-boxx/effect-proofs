@@ -581,6 +581,24 @@ Definition typed_state_sum_example : Prop :=
 (*   get after the put.                                         *)
 Definition red_state_sum_example : Prop := state_sum_example ==>> five_v.
 
+(* error (the Listing-1 leak):
+     handle st: State<Nat> { op get(u) resume(0); op put(s) resume(Unit()) }
+     in st
+   — the handler body returns the capability ITSELF, so the handle's
+   declared body type T_B is the capability type
+     T_State `Ll (Nat'free)      (local by construction).
+   T_Handle demands `lt_of_ty_G Γ T_B <: lt_free`, which fails on the
+   local capability type, so the term has NO typing derivation at ANY
+   type — [leak_state_rejected] (ExamplesRejection.v).  The clauses
+   are innocuous single-resume answers (get answers 0, put
+   acknowledges), each typable at its T_Handle premise instance: only
+   the escape is at fault.                                            *)
+Definition leak_state : term :=
+  term_handle State_tag [T_Nat `Lf]
+    (T_State `Ll (T_Nat `Lf)) (T_State `Ll (T_Nat `Lf))
+    [(0, ($$ 1) @· zero_v); (0, ($$ 1) @· unit_v)]
+    ($$ 0).
+
 (* fun withException<e <: Any'free, r <: Any'free>(
        f: (Exception<e>'local)'local -> r
    ): Result<e, r> =

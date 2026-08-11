@@ -125,8 +125,15 @@ The header of `safety/BoundaryStep.v` documents a five-channel matrix
 of flows touching a handler boundary: operation argument in, reified
 resumption in, operation result into the resumption, handler body
 result out, and the abortive answer. Channels 1 and 4 are guarded by
-theorems (`source_boundary_operation_in_noloc`,
-`source_boundary_result_out_noloc`); the other three are exempt by
+event-tied theorems (`source_boundary_operation_in_noloc`,
+`source_boundary_result_out_noloc`): each conclusion is the fired
+event's own decomposition — it links both endpoints of the
+transition, source and reduct, under the firing rule's own side
+conditions — not a re-existentialized view of the reached state.
+Both guarded channels are witnessed on concrete executed events of
+the State trace (`state_example_boundary_return_event`,
+`state_example_boundary_perform_event` in
+`examples/ExamplesSafety.v`). The other three channels are exempt by
 design, with the reasons argued in the header. What is *not* proved is
 the matrix's completeness: there is no accounting theorem of the form
 "every step is a frame step, a fresh-delimiter allocation, or exactly
