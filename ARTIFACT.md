@@ -98,6 +98,25 @@ the sources and commit the diff (`make verify` fails otherwise).
 Nothing in them is hand-maintained, so any figure a paper cites can
 be re-derived by running the target.
 
+## Optional: the extracted evaluator
+
+```sh
+make extract-run
+```
+
+The build itself extracts the computational layer to OCaml
+(`src/extraction/Extraction.v` produces `src/extraction/evaluator.ml`,
+a gitignored build product): the certified evaluator
+(`stepf`/`stepf_run`) and the reflected deciders (`lt_subb`, `nolocb`,
+`valueb`, `sourceb`). `make extract-run` compiles it with the
+hand-written smoke driver `src/extraction/main.ml` and runs it — the
+driver re-checks, outside the prover, facts that are gated theorems
+inside it (the Reader run reaches 2, the state-passing sum reaches 5,
+values do not step, …).
+
+This target is the only place an OCaml compiler (`ocamlc`) is needed;
+`make verify` does not depend on it.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs `make verify` inside the pinned Rocq

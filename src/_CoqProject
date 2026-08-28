@@ -2,6 +2,7 @@
 -Q meta ""
 -Q safety ""
 -Q examples ""
+-Q extraction ""
 core/Syntax.v
 core/Substitution.v
 core/Semantics.v
@@ -50,3 +51,4 @@ examples/ExamplesTactics.v
 examples/ExamplesProofs.v
 examples/ExamplesRejection.v
 examples/ExamplesSafety.v
+extraction/Extraction.v

@@ -1,4 +1,4 @@
-.PHONY: all clean check-assumptions theorem-index stats example-matrix check-docs verify help
+.PHONY: all clean check-assumptions theorem-index stats example-matrix check-docs verify extract-run help
 
 COQ_MAKEFILE := src/Makefile.coq
 NPROC := $(shell nproc 2>/dev/null || echo 2)
@@ -47,9 +47,21 @@ check-docs:
 # The one command a reviewer runs: build, axiom gate, docs freshness.
 verify: all check-assumptions check-docs
 
+# Compile the extracted evaluator (src/extraction/evaluator.ml — a
+# build product of Extraction.v) with the hand-written smoke driver
+# and run it.  Optional: needs an OCaml compiler; nothing in
+# `make verify` depends on the OCaml toolchain.
+extract-run: all
+	cd src/extraction && \
+	  ocamlc -o extraction_smoke evaluator.mli evaluator.ml main.ml && \
+	  ./extraction_smoke
+
 clean:
 	[ ! -f $(COQ_MAKEFILE) ] || $(MAKE) -C src -f Makefile.coq cleanall
 	rm -f src/Makefile.coq src/Makefile.coq.conf src/.Makefile.coq.d
+	rm -f src/extraction/evaluator.ml src/extraction/evaluator.mli \
+	  src/extraction/extraction_smoke src/extraction/*.cmi \
+	  src/extraction/*.cmo
 
 help:
 	@echo "make                  build the development (parallel)"
@@ -59,4 +71,5 @@ help:
 	@echo "make stats            regenerate STATS.md"
 	@echo "make example-matrix   regenerate EXAMPLES.md"
 	@echo "make check-docs       fail if the generated docs or the docs references are stale"
+	@echo "make extract-run      compile and run the extracted-evaluator smoke driver (needs OCaml)"
 	@echo "make clean            remove all build artifacts"

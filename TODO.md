@@ -115,13 +115,6 @@ function up to marker permutation; `t ==>* v₁ ∧ t ==>* v₂ ⇒` the values
 are marker-alpha-equivalent; `stepf_run` reaches every value a program
 has.
 
-### 2.3 OCaml extraction — S
-
-`stepf`/`stepf_run` and the deciders (`lt_subb`, `nolocb`, `valueb`,
-`sourceb`) are pure computable definitions; extraction is an
-`Extraction.v` with directives, a small driver, and a Makefile target.
-Only care point: fresh-marker generation at the OCaml boundary.
-
 ## 3. Research-scale programs
 
 ### 3.1 Certified typechecker — L, low falsity risk, high engineering
