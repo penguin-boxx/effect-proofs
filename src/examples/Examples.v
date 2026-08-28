@@ -536,6 +536,60 @@ Definition typed_withReader_example : Prop :=
 (*   withReader<Nat,Nat>(fun(rd) perform rd.ask())(2)  ~~>*  2  *)
 Definition red_withReader_example : Prop := withReader_example ==>> two_v.
 
+(* fun withConsumer<e <: Any'local, r <: Any'free>(
+       env: e,
+       k: (e)'free -> r
+   ): r =
+       handle rd: Reader<e> { op ask() resume(env) }
+       let a: e = perform rd.ask() in
+       k(a) *)
+(* The CONSUMER-PASSING (CPS exit) pattern of the Any'local           *)
+(* playbook: an [e]-value cannot cross the boundary itself (its       *)
+(* lifetime chases to the Any'local bound), so the caller passes a    *)
+(* consumer k : e -free-> r IN, the body applies it INSIDE the        *)
+(* delimiter, and only the escapable result [r] crosses.  Unlike      *)
+(* [withReader], the handle's answer type is the bare variable [r] —  *)
+(* escapable by its own Any'free bound, no arrow annotation needed.   *)
+(* The k-taking arrow is annotated `Ll because that closure captures  *)
+(* [env], whose type's lifetime chases to local.                      *)
+Definition withConsumer : term :=
+  Λt: T_Any `Ll \\
+  Λt: T_Any `Lf \\
+    λ: `T 1 \\
+    λ: (`T 1 -{ `Lf }-> `T 0) \\
+      term_handle Reader_tag [`T 1] (`T 0) (`T 0)
+        [(0, ($$ 1) @· ($$ 3))]
+        (let: `T 1 <- term_perform ($$ 0) 0 [] (`T 1) unit_v in
+         ($$ 2) @· ($$ 0)).
+
+(*   withConsumer : <e <: Any'local, r <: Any'free>.            *)
+(*     e -> ((e)'free -> r)'local -> r                          *)
+Definition typed_withConsumer : Prop :=
+  full_ctx ⊢ₜ withConsumer
+    : type_ty_all (T_Any `Ll) (type_ty_all (T_Any `Lf)
+        (`T 1 -{ `Lf }-> ((`T 1 -{ `Lf }-> `T 0) -{ `Ll }-> `T 0))).
+
+(* let withConsumer_example =
+     withConsumer<Nat'local, Nat'free>(
+       2,
+       fun(x: Nat'local) match x { Suc(_) -> 3 ; _ -> Zero })   -- = 3
+   The environment enters at the CONFINED instantiation Nat'local
+   (the free numeral 2 is subsumed into it); the consumer inspects
+   the local value inside the delimiter and exports only the free
+   numeral it derives from the inspection.                            *)
+Definition withConsumer_example : term :=
+  (withConsumer @ty[ T_Nat `Ll ] @ty[ T_Nat `Lf ])
+    @· two_v
+    @· (λ: T_Nat `Ll \\ term_match ($$ 0) suc_tag 0 1 three_v zero_v).
+
+(*   withConsumer_example : Nat                                 *)
+Definition typed_withConsumer_example : Prop :=
+  full_ctx ⊢ₜ withConsumer_example : T_Nat `Lf.
+
+(*   withConsumer<Nat'local,Nat'free>(2, fun(x) match x {...})  *)
+(*     ~~>*  3                                                  *)
+Definition red_withConsumer_example : Prop := withConsumer_example ==>> three_v.
+
 (* let reader_example =                            *)
 (*   handle r: Reader<Nat> { op ask() resume(2) }  *)
 (*   perform r.ask()                               *)

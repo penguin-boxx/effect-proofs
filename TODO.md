@@ -174,7 +174,9 @@ Current layered story (partly landed, partly = items above):
   comment records why the *result* bound must stay `Any'free`.
 - **Works today — consumer passing**: to "return" an `Any'local`-bounded
   value, take a consumer `α -{free}-> ρ` in instead (CPS exit); only
-  `ρ` crosses. Worth a documented example (see §6).
+  `ρ` crosses — `withConsumer` in `examples/Examples.v` is the landed
+  witness (the handle's answer type is the bare variable `ρ`,
+  escapable by its own `Any'free` bound; no arrow annotation needed).
 - **Needs 1.1**: polymorphic *values* (`∀α<:B. …`) crossing boundaries.
 - **Needs 1.1 + 1.2**: handlers *returning* `α` itself, restricted to
   escapable instantiations.
@@ -199,7 +201,6 @@ Current layered story (partly landed, partly = items above):
 
 ## 6. Examples and documentation
 
-- A worked consumer-passing (CPS exit) example for §4.
 - Artifact polish: AEC "kick the tires" section with expected outputs
   and a Docker one-liner; a paper-claim → theorem mapping table in
   `ARTIFACT.md` (the examples half of that map is now generated —

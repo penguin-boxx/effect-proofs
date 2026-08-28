@@ -145,6 +145,7 @@ The headline programs and the mechanism each one is there to show:
 | `forward_example`          | a `throw` crossing a live, unrelated Reader delimiter                                                                                                                          |
 | `delegate_example`         | an operation clause that performs the OUTER handler's operation — two delimiters of the same effect tag, told apart by markers                                                 |
 | `withReader`               | a handler polymorphic over `Any'local` data, which flows INWARD only (the comment records why the result bound must stay `Any'free`)                                           |
+| `withConsumer`             | the consumer-passing (CPS exit) pattern: an `Any'local`-bounded value cannot cross the boundary, so a consumer `e -free-> r` is passed IN and only the escapable `r` crosses    |
 | `unwrapOr`, `poly_const`   | full F<: at work: a non-`Any` bound reached through `SA_VarCtx`, and DISTINCT contravariant bounds in `SA_TyAll` (`sub_ty_all_bound_contra`) — neither is Kernel-F<: derivable |
 | `foldEndo`, `lazyMap_body` | existential lifetimes in constructor schemas and variance-aware elimination (`elim_ty_n`)                                                                                      |
 | `leak_state`               | the Listing-1 leak: rejected by typing — and its UNTYPED run really does deliver the capability into an empty context                                                          |

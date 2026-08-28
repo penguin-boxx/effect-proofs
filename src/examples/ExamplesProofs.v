@@ -275,6 +275,26 @@ Proof.
       * solve_var.
 Qed.
 
+Theorem typed_withConsumer_proof : typed_withConsumer.
+Proof.
+  unfold typed_withConsumer, withConsumer.
+  apply T_TyLam; [ solve_wf | solve_wf | reflexivity |].
+  apply T_TyLam; [ solve_wf | solve_wf | reflexivity |].
+  open_lam.
+  open_lam.
+  open_handle.
+  - apply SA_Refl. solve_wf.
+  - (* op ask(): resume(env) *)
+    constructor; [| constructor].
+    cbn. eapply T_App; [ solve_var | solve_var ].
+  - (* body: let a = perform rd.ask() in k(a) *)
+    cbn. eapply T_App with (A := `T 1) (l := `Ll) (B := `T 0).
+    + open_lam.
+      eapply T_App with (A := `T 1) (l := `Lf) (B := `T 0);
+        [ solve_var | solve_var ].
+    + solve_perform ltac:(unfold unit_v; solve_ctor).
+Qed.
+
 Theorem typed_withException_proof : typed_withException.
 Proof.
   unfold typed_withException, withException, withException_op_body.
@@ -855,6 +875,36 @@ Proof.
   ms_head EC_hole (apply H_Beta; apply two_v_value).
   ms_head EC_hole (apply H_Return; apply two_v_value).
   apply MS_Refl.
+Qed.
+
+Theorem typed_withConsumer_example_proof : typed_withConsumer_example.
+Proof.
+  unfold typed_withConsumer_example, withConsumer_example.
+  pose proof typed_withConsumer_proof as H. unfold typed_withConsumer in H.
+  eapply T_TyApp with (S := T_Nat `Ll) in H;
+    [ | solve_wf | solve_any_sub ]. cbn in H.
+  eapply T_TyApp with (S := T_Nat `Lf) in H;
+    [ | solve_wf | solve_any_sub ]. cbn in H.
+  eapply T_App.
+  - eapply T_App; [ exact H | ].
+    (* env := 2 at the CONFINED instantiation Nat'local, by the       *)
+    (* covariant data subsumption free <: local *)
+    eapply T_Sub; [ solve_nat | apply SA_Data; [ solve_lt | solve_wf ] ].
+  - (* the consumer inspects the local numeral, exports free data *)
+    open_lam.
+    eapply T_Match with (Ts := []) (lts := []) (Delta := `Ll)
+      (scrut_result_ty := T_Nat `Lf) (result_tag := nat_tag)
+      (result_l := `Lf) (eta := T_Nat `Lf) (elim_result := T_Nat `Lf);
+      cbn; try solve [ reflexivity | discriminate | solve_wf
+                     | solve_lt | solve_var | solve_nat ].
+Qed.
+
+Theorem red_withConsumer_example_proof : red_withConsumer_example.
+Proof.
+  unfold red_withConsumer_example.
+  replace three_v with (stepf_run 100 withConsumer_example)
+    by (vm_compute; reflexivity).
+  apply stepf_run_sound.
 Qed.
 
 Theorem typed_getOrElse_proof : typed_getOrElse.
