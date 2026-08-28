@@ -24,8 +24,12 @@ pipe stage's status unless `pipefail` is set.
   *new capstone file* to `GATED_FILES`. Failures name the offending
   theorems.
 - **Docs gate** (`make check-docs`): the committed THEOREMS.md /
-  STATS.md must match regeneration. After changing any theorem, run
-  `make theorem-index && make stats` and commit the diff. The same
+  STATS.md / EXAMPLES.md must match regeneration. After changing any
+  theorem, run `make theorem-index && make stats && make example-matrix`
+  and commit the diff. `scripts/example_matrix.py` additionally fails
+  when a `typed_*`/`red_*` statement of the examples tier has no
+  matching `*_proof` in `ExamplesProofs.v` — a stated-but-unproved
+  example would otherwise read as a result. The same
   target then runs `scripts/check_docs_refs.py`: every file and
   every declaration-shaped identifier referenced by docs/*.md and
   README.md must still exist in the sources, so a rename cannot

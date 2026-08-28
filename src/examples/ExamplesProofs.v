@@ -1227,10 +1227,15 @@ Proof.
   unfold typed_sum3. solve_sum_fn.
 Qed.
 
+Theorem typed_sum3_example_proof : typed_sum3_example.
+Proof.
+  unfold typed_sum3_example, sum3_example. solve_sum_fn.
+Qed.
+
 Theorem red_sum3_example_proof : red_sum3_example.
 Proof.
   unfold red_sum3_example.
-  replace five_v with (stepf_run 40 ((sum3_fn @· two_v) @· three_v))
+  replace five_v with (stepf_run 40 sum3_example)
     by (vm_compute; reflexivity).
   apply stepf_run_sound.
 Qed.
@@ -1344,5 +1349,115 @@ Proof.
   unfold red_delegate_example.
   replace five_v with (stepf_run 100 delegate_example)
     by (vm_compute; reflexivity).
+  apply stepf_run_sound.
+Qed.
+
+(* ================================================================== *)
+(* Full F<: with a non-trivial type bound: the bound-chase and the    *)
+(* contravariant bound of SA_TyAll.                                   *)
+(* ================================================================== *)
+
+Theorem typed_unwrapOr_proof : typed_unwrapOr.
+Proof.
+  unfold typed_unwrapOr, unwrapOr.
+  apply T_TyLam; [ solve_wf | solve_wf | reflexivity | ].
+  open_lam.
+  eapply T_Match with
+    (Ts := [T_Nat `Lf]) (Delta := `Lf) (arity := 1) (lts := [])
+    (rho_fields := [T_Nat `Lf]) (scrut_result_ty := T_Option `Lf (T_Nat `Lf))
+    (result_tag := option_tag) (result_l := `Lf)
+    (eta := T_Nat `Lf) (elim_result := T_Nat `Lf);
+    cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt | solve_var ].
+  - (* the scrutinee is a VARIABLE: T_Match needs a constructor type, *)
+    (* which only the declared bound supplies (SA_VarCtx).            *)
+    eapply T_Sub; [ solve_var | eapply SA_VarCtx; [ cbn; reflexivity | solve_wf ] ].
+  - (* no branch: 0 *)
+    solve_nat.
+Qed.
+
+Theorem typed_unwrapOr_example_proof : typed_unwrapOr_example.
+Proof.
+  unfold typed_unwrapOr_example, unwrapOr_example.
+  pose proof typed_unwrapOr_proof as H. unfold typed_unwrapOr in H.
+  (* instantiated AT the bound: T_TyApp's check is SA_Refl here *)
+  eapply T_TyApp with (S := T_Option `Lf (T_Nat `Lf)) in H;
+    [ | solve_wf | apply SA_Refl; solve_wf ]. cbn in H.
+  eapply T_App; [ exact H | ].
+  unfold some_v. eapply T_Ctor with
+    (n_lt := 0) (n_ty := 1) (lts := []) (Ts := [T_Nat `Lf])
+    (sigma_fields := [`T 0]) (result_ty_schema := T_Option `Lf (`T 0));
+    cbn; try solve [ reflexivity | discriminate | solve_wf | solve_lt ].
+  - constructor.
+  - constructor; [ solve_nat | constructor ].
+Qed.
+
+Theorem red_unwrapOr_example_proof : red_unwrapOr_example.
+Proof.
+  unfold red_unwrapOr_example.
+  replace three_v with (stepf_run 20 unwrapOr_example)
+    by (vm_compute; reflexivity).
+  apply stepf_run_sound.
+Qed.
+
+Theorem sub_ty_all_bound_contra_proof : sub_ty_all_bound_contra.
+Proof.
+  unfold sub_ty_all_bound_contra.
+  apply SA_TyAll.
+  - solve_wf.
+  - solve_wf.
+  - (* the CONTRAVARIANT direction: Option<Nat>'free <: Any'free *)
+    unfold T_Any. apply SA_Any; [ solve_wf | solve_wf | cbn; solve_lt_sub ].
+  - apply SA_Refl; solve_wf.
+Qed.
+
+Theorem typed_poly_const_at_narrower_bound_proof :
+  typed_poly_const_at_narrower_bound.
+Proof.
+  unfold typed_poly_const_at_narrower_bound, poly_const.
+  eapply T_Sub; [ | exact sub_ty_all_bound_contra_proof ].
+  apply T_TyLam; [ solve_wf | solve_wf | reflexivity | ].
+  open_lam (solve_nat).
+Qed.
+
+(* ================================================================== *)
+(* The Chan example: two operations, one of them β-polymorphic and    *)
+(* instantiated at two different types in the same run.               *)
+(* ================================================================== *)
+
+Theorem typed_chan_example_proof : typed_chan_example.
+Proof.
+  unfold typed_chan_example, chan_example, chan_send_body, chan_poll_body.
+  open_handle.
+  - apply SA_Refl. solve_wf.
+  - (* the TWO operation clauses *)
+    constructor; [ | constructor; [ | constructor ] ].
+    + (* send (index 0, n_β = 0): resume(Unit()) *)
+      cbn. eapply T_App; [ solve_var | unfold unit_v; solve_ctor ].
+    + (* poll (index 1, n_β = 1): resume(None<a>()), a = `T 0 *)
+      cbn. eapply T_App; [ solve_var | unfold none_v; solve_ctor ].
+  - (* body: send(3); poll<Nat>(); poll<Unit>(); the pair of answers *)
+    cbn.
+    eapply T_App with (A := T_Unit) (l := `Ll) (B := T_ChanAnswer).
+    + open_lam. cbn.
+      eapply T_App with (A := T_Option `Lf (T_Nat `Lf)) (l := `Ll)
+        (B := T_ChanAnswer).
+      * open_lam. cbn.
+        eapply T_App with (A := T_Option `Lf T_Unit) (l := `Ll)
+          (B := T_ChanAnswer).
+        -- open_lam (unfold pair_v, T_ChanAnswer; solve_ctor).
+        -- (* third perform: poll, β := Unit *)
+           solve_perform_beta [T_Unit] ltac:(unfold unit_v; solve_ctor).
+      * (* second perform: poll, β := Nat'free *)
+        solve_perform_beta [T_Nat `Lf] ltac:(unfold unit_v; solve_ctor).
+    + (* first perform: send, no β-arguments *)
+      solve_perform solve_nat.
+Qed.
+
+Theorem red_chan_example_proof : red_chan_example.
+Proof.
+  unfold red_chan_example.
+  replace (pair_v (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf T_Unit)
+             (none_v (T_Nat `Lf)) (none_v T_Unit))
+    with (stepf_run 100 chan_example) by (vm_compute; reflexivity).
   apply stepf_run_sound.
 Qed.

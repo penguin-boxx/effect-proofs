@@ -237,6 +237,25 @@ Ltac solve_perform arg :=
   | solve_wf | constructor | cbn; reflexivity | cbn; solve_lt_sub | cbn; reflexivity
   | solve_wf | arg ].
 
+(* [solve_forall_noloc] discharges T_Perform's Forall-premise on the
+   β-type-arguments: every supplied S must be escapable.  Split out
+   because it is the ONE premise that only a β-polymorphic perform
+   has (a monomorphic perform passes Ss = [] and closes it with
+   [constructor]). *)
+Ltac solve_forall_noloc :=
+  repeat first [ apply Forall_nil
+               | apply Forall_cons; [ cbn; solve_lt_sub | ] ].
+
+(* [solve_perform_beta Ss arg] is [solve_perform] for a
+   β-polymorphic operation: [Ss] are the β-type-arguments supplied at
+   the perform site (their noloc premise is discharged by
+   [solve_forall_noloc]), [arg] types the operation argument. *)
+Tactic Notation "solve_perform_beta" constr(Sargs) tactic3(arg) :=
+  eapply T_Perform with (Ss := Sargs);
+  [ solve_var | cbn; reflexivity | cbn; reflexivity | reflexivity | reflexivity
+  | solve_wf | solve_forall_noloc | cbn; reflexivity | cbn; solve_lt_sub
+  | cbn; reflexivity | solve_wf | arg ].
+
 (* [open_handle] applies T_Handle and discharges every computable /
    well-formedness premise, leaving only the interesting ones (clause
    typing, answer subtyping). *)

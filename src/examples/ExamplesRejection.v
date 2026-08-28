@@ -220,6 +220,73 @@ Qed.
 (* State<Nat'free> capability.                                        *)
 
 (* ================================================================== *)
+(* 2b. poll<a>: the β-TYPE-ARGUMENT channel, isolated                 *)
+(*                                                                    *)
+(* T_Perform carries TWO noloc premises: one on the instantiated      *)
+(* signature (refuted by [put_local_reader_rejected] above) and one   *)
+(* on the β-type-arguments the perform site supplies,                 *)
+(*   Forall (fun S => Γ ⊢ₗ lt_of_ty_G Γ S <: lt_free) Ss.             *)
+(* Chan's  op poll<a>(u: Unit): Option<a>  isolates the second: its   *)
+(* signature is Unit at EVERY instantiation, so the sibling premise   *)
+(* holds no matter what [a] is ([poll_local_beta_sig_is_noloc]) and   *)
+(* the Forall is the ONLY premise that can reject.  Instantiating     *)
+(* [a] at a local Reader capability type is rejected at ANY result    *)
+(* type; the identical perform at Nat'free is accepted.               *)
+(*                                                                    *)
+(* Note what the rejection does NOT need: the offending type never    *)
+(* reaches an argument or a result — it is checked where it is        *)
+(* SUPPLIED, so no information about the operation is used.           *)
+(* ================================================================== *)
+
+Lemma chan_ctx_tm_lt_ctx_wf : forall T, lt_ctx_wf (bind_tm T :: chan_ctx).
+Proof. intros T x Δ H; vm_compute in H; discriminate. Qed.
+
+(* The capability binder the performs below sit under.                *)
+Definition chan_cap_ty : type := T_Chan `Ll (T_Nat `Lf).
+
+(* perform c.poll<Reader<Unit>'local>()  — the β-argument is local    *)
+Definition poll_local_beta : term :=
+  term_perform ($$ 0) 1 [T_Reader `Ll T_Unit]
+    (T_Option `Lf (T_Reader `Ll T_Unit)) unit_v.
+
+Theorem poll_local_beta_rejected : forall T,
+  ~ ((bind_tm chan_cap_ty :: chan_ctx) ⊢ₜ poll_local_beta : T).
+Proof.
+  intros T H.
+  apply perform_typing_inv in H.
+  destruct H as (E & Δ & Ts & n_α & ops & n_β & sig & ret & sig_inst &
+                 _ & _ & _ & _ & _ & _ & HnlSs & _).
+  (* the β-arguments are the perform's OWN syntax: no inversion on   *)
+  (* the receiver or the operation is needed to reach the premise.    *)
+  inversion HnlSs as [| S Ss' Hnl _ Heq]; subst.
+  revert Hnl.
+  apply nolocb_false_rejects.
+  - apply chan_ctx_tm_lt_ctx_wf.
+  - cbn. solve_wf.
+  - vm_compute; reflexivity.
+Qed.
+
+(* Isolation, positively: at the SAME local instantiation the sibling *)
+(* premise — noloc of the instantiated signature — is derivable, so   *)
+(* the Forall above is the only reason [poll_local_beta] is rejected. *)
+Lemma poll_local_beta_sig_is_noloc :
+  (bind_tm chan_cap_ty :: chan_ctx) ⊢ₗ
+    lt_of_ty_G (bind_tm chan_cap_ty :: chan_ctx)
+      (inst_op_all_args 1 [T_Nat `Lf] 1 [T_Reader `Ll T_Unit] T_Unit)
+    <: lt_free.
+Proof. cbn. solve_lt_sub. Qed.
+
+(* Positive companion: the identical perform with an escapable        *)
+(* β-argument is accepted, at the result type poll declares.          *)
+Theorem poll_free_beta_typable :
+  (bind_tm chan_cap_ty :: chan_ctx) ⊢ₜ
+    term_perform ($$ 0) 1 [T_Nat `Lf] (T_Option `Lf (T_Nat `Lf)) unit_v
+    : T_Option `Lf (T_Nat `Lf).
+Proof.
+  solve_perform_beta [T_Nat `Lf] ltac:(unfold unit_v; solve_ctor).
+Qed.
+
+(* ================================================================== *)
 (* 3. crashBox: the local payload cannot be coerced free              *)
 (*                                                                    *)
 (* Box's field at a local instantiation, Option'local (Nat'local),    *)

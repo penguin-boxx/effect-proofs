@@ -223,12 +223,11 @@ Current layered story (partly landed, partly = items above):
 
 ## 6. Examples and documentation
 
-- Multi-operation × β-type-arguments example (an operation with
-  `n_β > 0` actually instantiated) and a matching negative companion.
 - A worked consumer-passing (CPS exit) example for §4.
 - Artifact polish: AEC "kick the tires" section with expected outputs
   and a Docker one-liner; a paper-claim → theorem mapping table in
-  `ARTIFACT.md`.
+  `ARTIFACT.md` (the examples half of that map is now generated —
+  `EXAMPLES.md`, `make example-matrix`).
 - Release steps (license done; tag + DOI) live in `ARTIFACT.md`'s TODO
   section — not duplicated here.
 

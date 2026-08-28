@@ -1,4 +1,4 @@
-.PHONY: all clean check-assumptions theorem-index stats check-docs verify help
+.PHONY: all clean check-assumptions theorem-index stats example-matrix check-docs verify help
 
 COQ_MAKEFILE := src/Makefile.coq
 NPROC := $(shell nproc 2>/dev/null || echo 2)
@@ -30,12 +30,18 @@ theorem-index:
 stats:
 	./scripts/stats.py
 
+# Regenerate EXAMPLES.md (per-program type, result, witnessing
+# theorems).  Purely syntactic — deliberately does NOT depend on `all`.
+example-matrix:
+	./scripts/example_matrix.py
+
 # Fail if the committed generated docs are stale vs. the sources, or
 # if the hand-written guides reference files/identifiers that no
 # longer exist (rename rot) — see scripts/check_docs_refs.py.
 check-docs:
 	./scripts/theorem_index.py --check
 	./scripts/stats.py --check
+	./scripts/example_matrix.py --check
 	./scripts/check_docs_refs.py
 
 # The one command a reviewer runs: build, axiom gate, docs freshness.
@@ -51,5 +57,6 @@ help:
 	@echo "make check-assumptions  axiom gate only (builds first)"
 	@echo "make theorem-index    regenerate THEOREMS.md"
 	@echo "make stats            regenerate STATS.md"
-	@echo "make check-docs       fail if THEOREMS.md/STATS.md or docs references are stale"
+	@echo "make example-matrix   regenerate EXAMPLES.md"
+	@echo "make check-docs       fail if the generated docs or the docs references are stale"
 	@echo "make clean            remove all build artifacts"

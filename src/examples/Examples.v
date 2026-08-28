@@ -282,9 +282,16 @@ Definition sum3_fn : term := sum_fn 3.
 Definition typed_sum3 : Prop :=
   data_ctx ⊢ₜ sum3_fn : (T_Nat `Lf -{ `Lf }-> T_Nat `Lf -{ `Lf }-> T_Nat `Lf).
 
+(* sum3(2, 3) — the runnable program; [sum3_fn] itself is already   *)
+(* a value, so the reduction statement is about its application.    *)
+Definition sum3_example : term := (sum3_fn @· two_v) @· three_v.
+
+(*   sum3(2, 3)  :  Nat                                         *)
+Definition typed_sum3_example : Prop :=
+  data_ctx ⊢ₜ sum3_example : T_Nat `Lf.
+
 (*   sum3(2, 3)  ~~>*  5                                        *)
-Definition red_sum3_example : Prop :=
-  (sum3_fn @· two_v) @· three_v ==>> five_v.
+Definition red_sum3_example : Prop := sum3_example ==>> five_v.
 
 (* None<a>() and Some<a>(x) *)
 Definition none_v (A : type) : term := term_ctor none_tag `Lf [] [A] [].
@@ -417,6 +424,68 @@ Definition id_example : term := (id_poly @ty[ T_Unit ]) @· unit_v.
 Definition typed_id_example : Prop := data_ctx ⊢ₜ id_example : T_Unit.
 (*   id<Unit>(Unit())        ~~>*  Unit()                       *)
 Definition red_id_example : Prop := id_example ==>> unit_v.
+
+(* ------------------------------------------------------------------ *)
+(* Full F<: with a NON-TRIVIAL type bound.                            *)
+(*                                                                    *)
+(* Every other bound in this suite is an [Any] type — the escape      *)
+(* lattice's own top at some lifetime — so the bound is doing no      *)
+(* work beyond the lifetime it carries.  Here the bound is a          *)
+(* CONSTRUCTOR type, and the two moves a bound-free (or Kernel-F<:)   *)
+(* system cannot make are both exercised:                             *)
+(*   - the bound-chase [SA_VarCtx]: a value whose type is a VARIABLE  *)
+(*     can be matched on only through the variable's declared bound;  *)
+(*   - the CONTRAVARIANT bound of [SA_TyAll]: the two quantifiers'    *)
+(*     bounds DIFFER, which the Kernel rule (equal bounds) forbids.   *)
+(* ------------------------------------------------------------------ *)
+
+(* fun unwrapOr<a <: Option<Nat>'free>(o: a): Nat =
+     match o { case Some(n) -> n; _ -> 0 }
+   The scrutinee's type is the variable [a]; T_Match demands a
+   constructor type, which only the bound supplies. *)
+Definition unwrapOr : term :=
+  Λt: T_Option `Lf (T_Nat `Lf) \\
+    λ: `T 0 \\
+      term_match ($$ 0) some_tag 0 1 ($$ 0) zero_v.
+
+(*   unwrapOr : <a <: Option<Nat>'free>. a -> Nat               *)
+Definition typed_unwrapOr : Prop :=
+  data_ctx ⊢ₜ unwrapOr
+    : type_ty_all (T_Option `Lf (T_Nat `Lf)) (`T 0 -{ `Lf }-> T_Nat `Lf).
+
+(* let unwrapOrExample = unwrapOr<Option<Nat>>(Some(3))
+   — instantiated AT its own bound (T_TyApp checks the argument
+   against the bound, so the bound is not vacuous here either). *)
+Definition unwrapOr_example : term :=
+  (unwrapOr @ty[ T_Option `Lf (T_Nat `Lf) ]) @· some_v (T_Nat `Lf) three_v.
+
+(*   unwrapOr<Option<Nat>>(Some(3))  :  Nat                     *)
+Definition typed_unwrapOr_example : Prop :=
+  data_ctx ⊢ₜ unwrapOr_example : T_Nat `Lf.
+
+(*   unwrapOr<Option<Nat>>(Some(3))  ~~>*  3                    *)
+Definition red_unwrapOr_example : Prop := unwrapOr_example ==>> three_v.
+
+(* The contravariant bound of SA_TyAll on its own:
+     forall(a <: Any'free).       Unit -> Nat
+  <: forall(a <: Option<Nat>'free). Unit -> Nat
+   derivable because Option<Nat>'free <: Any'free.  The bounds are
+   DISTINCT — this is exactly the full-F<: rule, not the Kernel one. *)
+Definition sub_ty_all_bound_contra : Prop :=
+  data_ctx ⊢ type_ty_all (T_Any `Lf) (T_Unit -{ `Lf }-> T_Nat `Lf)
+        <:: type_ty_all (T_Option `Lf (T_Nat `Lf)) (T_Unit -{ `Lf }-> T_Nat `Lf).
+
+(* let polyConst = fun<a <: Any'free>(u: Unit) 3
+   Its term-level consequence: the polymorphic constant DECLARED with
+   the wider bound is accepted where the narrower-bound forall is
+   demanded (T_Sub over the subtyping above).  (The body is a lambda
+   because T_TyLam is prenex — [is_abs body = true].)               *)
+Definition poly_const : term := Λt: T_Any `Lf \\ λ: T_Unit \\ three_v.
+
+(*   polyConst : <a <: Option<Nat>'free>. Unit -> Nat           *)
+Definition typed_poly_const_at_narrower_bound : Prop :=
+  data_ctx ⊢ₜ poly_const
+    : type_ty_all (T_Option `Lf (T_Nat `Lf)) (T_Unit -{ `Lf }-> T_Nat `Lf).
 
 (* fun withReader<e <: Any'local, r <: Any'free>(
        f: (Reader<e>'local)'local -> r
@@ -598,6 +667,75 @@ Definition leak_state : term :=
     (T_State `Ll (T_Nat `Lf)) (T_State `Ll (T_Nat `Lf))
     [(0, ($$ 1) @· zero_v); (0, ($$ 1) @· unit_v)]
     ($$ 0).
+
+(* ================================================================== *)
+(*   effect Chan<s> { op send(s): Unit ; op poll<a>(): Option<a> }    *)
+(*                                                                    *)
+(* The multi-operation × β-polymorphic combination.  send (index 0)   *)
+(* has no β-parameter and takes the effect's own parameter s; poll    *)
+(* (index 1) is β-polymorphic and is INSTANTIATED at the perform site *)
+(* — twice in one run, at two different types.                        *)
+(*                                                                    *)
+(* poll's β occurs ONLY in its result.  That is what makes it the     *)
+(* isolating test for T_Perform's Forall-premise on the β-arguments:  *)
+(* poll's instantiated signature is Unit at EVERY instantiation, so a *)
+(* local β-argument fails that premise and no other                   *)
+(* ([poll_local_beta_rejected], ExamplesRejection.v).                 *)
+(*                                                                    *)
+(* Schema indices follow [inst_op_all_args]: α-vars innermost         *)
+(* (`T 0 = s), β-vars outermost (`T 1 = a).                           *)
+(* ================================================================== *)
+
+Definition Chan_tag : eff_tag := 106.
+Definition T_Chan (l : lifetime) (S : type) : type := type_ctor Chan_tag l [S].
+
+Definition chan_sig : binding :=
+  bind_eff Chan_tag 1 [(0, `T 0, T_Unit); (1, T_Unit, T_Option `Lf (`T 1))].
+
+(* [chan_ctx]: [full_ctx] extended with the Chan declaration.         *)
+Definition chan_ctx : ctx := chan_sig :: full_ctx.
+
+(* handle c: Chan<Nat> {
+     op send(x)    resume(Unit())        -- clause for index 0
+     op poll<a>(u) resume(None<a>())     -- clause for index 1
+   }
+   (let _ = perform c.send(3)      in    -- fires index 0
+    let o = perform c.poll<Nat>()  in    -- fires index 1 at Nat
+    let p = perform c.poll<Unit>() in    -- ...and again at Unit
+    o)
+   The handler answers every poll with None at the β-argument it was
+   given, so the run delivers the PAIR of the two answers —
+   None<Nat>() and None<Unit>() — each carrying back the type its own
+   perform was instantiated at.  The two instantiations are therefore
+   visible in the normal form, not merely performed: the [poll] clause
+   is typed ONCE against the schema, and the two performs differ only
+   in Ss.                                                             *)
+Definition chan_send_body : term := ($$ 1) @· unit_v.
+Definition chan_poll_body : term := ($$ 1) @· none_v (`T 0).
+
+(* The answer type: the two β-instantiations side by side.           *)
+Definition T_ChanAnswer : type :=
+  T_Pair `Lf (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf T_Unit).
+
+Definition chan_example : term :=
+  term_handle Chan_tag [T_Nat `Lf] T_ChanAnswer T_ChanAnswer
+    [(0, chan_send_body); (1, chan_poll_body)]
+    (let: T_Unit <- term_perform ($$ 0) 0 [] T_Unit three_v in
+     let: T_Option `Lf (T_Nat `Lf) <-
+       term_perform ($$ 1) 1 [T_Nat `Lf] (T_Option `Lf (T_Nat `Lf)) unit_v in
+     let: T_Option `Lf T_Unit <-
+       term_perform ($$ 2) 1 [T_Unit] (T_Option `Lf T_Unit) unit_v in
+     pair_v (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf T_Unit) ($$ 1) ($$ 0)).
+
+(*   chan_example : Pair<Option<Nat>, Option<Unit>>  — two      *)
+(*   operations, one β-polymorphic, instantiated at two types   *)
+Definition typed_chan_example : Prop :=
+  chan_ctx ⊢ₜ chan_example : T_ChanAnswer.
+
+(*   chan_example  ~~>*  Pair(None<Nat>(), None<Unit>())        *)
+Definition red_chan_example : Prop :=
+  chan_example ==>> pair_v (T_Option `Lf (T_Nat `Lf)) (T_Option `Lf T_Unit)
+                     (none_v (T_Nat `Lf)) (none_v T_Unit).
 
 (* fun withException<e <: Any'free, r <: Any'free>(
        f: (Exception<e>'local)'local -> r

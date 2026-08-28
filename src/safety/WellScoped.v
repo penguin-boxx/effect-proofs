@@ -21,13 +21,13 @@ Require Import Subst.
 (*   ws_rt             — the two bundled.                             *)
 (*                                                                    *)
 (* All invariants hold vacuously on source terms                      *)
-(* ([has_rt_marker t = false]).  The traversal laws live in WsRtLaws.v   *)
+(* ([has_rt_marker t = false]).  The traversal laws live in WsRtLaws.v*)
 (* and are stated over the fused [ws_rt] (one induction per traversal *)
 (* covers both conjuncts); the annotation invariants in               *)
 (* MarkerAnnots.v.                                                    *)
 (* ================================================================== *)
 
-(* Closed-type identity laws, shared with MarkerAnnots.v.               *)
+(* Closed-type identity laws, shared with MarkerAnnots.v.             *)
 
 Lemma shift_ty_closed0_id : forall T amount cutoff,
   ty_ty_closed 0 T -> shift_ty amount cutoff T = T.
@@ -61,7 +61,7 @@ Proof.
 Qed.
 
 
-(* has_rt_marker on a constructor reduces to has_rt_marker_list on its       *)
+(* has_rt_marker on a constructor reduces to has_rt_marker_list on its  *)
 (* argument list (the in-body fixpoint equals the named list version).  *)
 Lemma has_rt_marker_ctor_eq : forall K l lts Ts ts,
   has_rt_marker (term_ctor K l lts Ts ts) = has_rt_marker_list ts.
@@ -243,11 +243,11 @@ Qed.
 (* positions of a closed program, so their op-bodies never reference    *)
 (* enclosing term binders — and substitution into a closed subterm is   *)
 (* the identity, so they stay closed.  [rt_closed] records this for     *)
-(* CAPS ONLY: the cap clause of well_scoped is the one place the       *)
+(* CAPS ONLY: the cap clause of well_scoped is the one place the        *)
 (* scope SHRINKS (scope_below), which monotonicity cannot transport     *)
 (* a substituted value across; closedness makes substitution vacuous    *)
 (* there.  handler_m/resume bodies need no such condition — their       *)
-(* clauses only EXTEND the scope, and [well_scoped_mono] transports    *)
+(* clauses only EXTEND the scope, and [well_scoped_mono] transports     *)
 (* the value.  (Indeed resume bodies are NOT term-closed: the reified   *)
 (* continuation body contains the resumption hole [term_var 0], also    *)
 (* inside re-captured handler_m frames.)                                *)
@@ -420,7 +420,7 @@ Proof.
     split; split; assumption.
 Qed.
 
-(* Monotonicity of well_scoped along scope extension: the payoff of    *)
+(* Monotonicity of well_scoped along scope extension: the payoff of     *)
 (* dropping freshness.  A well-scoped value stays well-scoped when its  *)
 (* ambient scope is extended above/between (new delimiters installed    *)
 (* around it, or binders crossed during substitution).                  *)

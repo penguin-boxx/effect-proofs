@@ -111,7 +111,12 @@ values — not about reaching a value.
 The subtype relation is honest full F<:: `SA_TyAll` compares bounds
 contravariantly, and the comment at the rule owns the consequence —
 "full F<:, which is undecidable (Pierce 1992); no complete terminating
-checker is claimed" (`core/Subtyping.v`). No algorithmic typechecker
+checker is claimed" (`core/Subtyping.v`). That the bounds really do
+differ is mechanized, not just permitted by the rule:
+`sub_ty_all_bound_contra` derives
+`∀(a<:Any'free).Unit→Nat <: ∀(a<:Option<Nat>'free).Unit→Nat`, and
+`typed_poly_const_at_narrower_bound` is its term-level consequence —
+neither is derivable by the Kernel rule. No algorithmic typechecker
 for the term language exists. The certified deciders in
 `safety/Decide.v` cover the lifetime lattice (`lt_subb`, reflected by
 `lt_subb_spec`), the noloc escape check (`nolocb`), value-hood

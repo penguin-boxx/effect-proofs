@@ -18,23 +18,23 @@ with multi-operation algebraic effect handlers.
 
 ## Headline theorems
 
-| Theorem                                                                                           | File                               | Statement (informal)                                                                                                                                                                                                                                                                                                 |
-| ------------------------------------------------------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `type_soundness`                                                                                  | `src/safety/Soundness.v`           | A state satisfying the runtime invariants never reaches a stuck state.                                                                                                                                                                                                                                               |
-| `source_type_soundness`                                                                           | `src/safety/Soundness.v`           | A well-typed **source** program (no runtime marker constructs) never gets stuck — from an `eval_ctx` program context and one typing derivation, no runtime-invariant hypotheses.                                                                                                                                     |
-| `source_capability_never_exposed`                                                                 | `src/safety/Escape.v`              | Along any reduction of a well-typed source program, a live capability is never visible outside a delimiter carrying its marker.                                                                                                                                                                                      |
-| `source_effect_safety`                                                                            | `src/safety/Escape.v`              | **No unhandled operation**: along any reduction of a well-typed source program, an active `perform` always finds a delimiter carrying its capability's marker in the surrounding context (runtime form: `effect_safety`).                                                                                            |
-| `source_free_data_result_top_lifetime`                                                            | `src/safety/Escape.v`              | A value a source program computes at an escapable (`free`) data type carries no top-level `local` lifetime annotation (the deep form is `source_noloc_result_no_runtime_forms`).                                                                                                                                     |
-| `source_handler_boundary_noloc`                                                                   | `src/safety/Boundary.v`            | Every value passing a GUARDED handler-boundary data channel — operation argument in, delimiter return out — is typed at the delimiter's declared answer type / the operation's instantiated signature, an escapable (noloc) type; when the delimiter's declared answer type is a data-constructor type, the delivered value is literally a constructor with no top-level `local` (`source_boundary_value_non_local`). |
+| Theorem                                                                                           | File                               | Statement (informal)                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type_soundness`                                                                                  | `src/safety/Soundness.v`           | A state satisfying the runtime invariants never reaches a stuck state.                                                                                                                                                                                                                                                                                                                                                                                              |
+| `source_type_soundness`                                                                           | `src/safety/Soundness.v`           | A well-typed **source** program (no runtime marker constructs) never gets stuck — from an `eval_ctx` program context and one typing derivation, no runtime-invariant hypotheses.                                                                                                                                                                                                                                                                                    |
+| `source_capability_never_exposed`                                                                 | `src/safety/Escape.v`              | Along any reduction of a well-typed source program, a live capability is never visible outside a delimiter carrying its marker.                                                                                                                                                                                                                                                                                                                                     |
+| `source_effect_safety`                                                                            | `src/safety/Escape.v`              | **No unhandled operation**: along any reduction of a well-typed source program, an active `perform` always finds a delimiter carrying its capability's marker in the surrounding context (runtime form: `effect_safety`).                                                                                                                                                                                                                                           |
+| `source_free_data_result_top_lifetime`                                                            | `src/safety/Escape.v`              | A value a source program computes at an escapable (`free`) data type carries no top-level `local` lifetime annotation (the deep form is `source_noloc_result_no_runtime_forms`).                                                                                                                                                                                                                                                                                    |
+| `source_handler_boundary_noloc`                                                                   | `src/safety/Boundary.v`            | Every value passing a GUARDED handler-boundary data channel — operation argument in, delimiter return out — is typed at the delimiter's declared answer type / the operation's instantiated signature, an escapable (noloc) type; when the delimiter's declared answer type is a data-constructor type, the delivered value is literally a constructor with no top-level `local` (`source_boundary_value_non_local`).                                               |
 | `source_boundary_step_noloc` (+ per-channel corollaries)                                          | `src/safety/BoundaryStep.v`        | The same guarantee as labelled transition EVENTS: every executed boundary reduction on a guarded channel carries a value typed at the delimiter's declared answer type / the operation's instantiated signature (both noloc), and the conclusion is the fired event's own decomposition — it links both endpoints of the transition under the firing rule's side conditions; the reified resumption is typed `A -local-> T_R` (`source_boundary_resumption_local`). |
-| `source_noloc_result_no_runtime_forms`                                                            | `src/safety/Escape.v`              | A value delivered at an escapable type contains **no capability and no delimiter at any depth** — under lambdas and inside constructor fields.                                                                                                                                                                       |
-| `source_capability_occurrence_delimited`                                                          | `src/safety/Occurrence.v`          | EVERY syntactic capability occurrence — at any path, including under binders and inside stored operation bodies — has its marker in scope; the active-position theorem is its empty-scope instance.                                                                                                                  |
-| `source_safety_suite`                                                                             | `src/safety/Guarantees.v`          | **The umbrella theorem**: one record bundling type safety, invariant preservation, both confinement forms, capability-free escapable results, guarded-channel safety, and resumption locality — from `eval_ctx`, `sourceb t = true`, and one typing derivation.                                                      |
-| `lt_subb_spec` / `nolocb_spec` / `valueb_spec` / `sourceb_spec`                                   | `src/safety/Decide.v`              | Certified reflected deciders for lifetime subtyping, the REAL noloc premise, values, and source terms.                                                                                                                                                                                                               |
-| `stepf_sound` / `stepf_run_sound`                                                                 | `src/safety/Stepf.v`               | A certified executable reduction strategy (and bounded driver) implementing the semantics.                                                                                                                                                                                                                           |
-| `typing_rename_markers` / `step_rename_markers` / `handle_choice_irrelevant`                      | `src/safety/MarkerRename.v`        | Marker identities are operationally irrelevant: typing/reduction are equivariant under (injective) marker renaming, and the fresh-marker choice yields alpha-equivalent reducts.                                                                                                                                     |
-| `head_step_deterministic` / `step_deterministic_modulo_markers` / `stepf_complete_modulo_markers` | `src/safety/Determinism.v`         | Head reduction is a partial function; any two steps from one state agree up to a marker bijection; the certified evaluator is complete for the step relation modulo the fresh-marker choice.                                                                                                                         |
-| `leak_reader_rejected_at_free`, `crashEndo_match_rejected_at_data`, …                             | `src/examples/ExamplesRejection.v` | Complete offending TERMS have no typing derivation at their escapable interfaces, each paired with a positive companion at its confined interface (a precision evaluation, including the quantified-type false positive).                                                                                            |
+| `source_noloc_result_no_runtime_forms`                                                            | `src/safety/Escape.v`              | A value delivered at an escapable type contains **no capability and no delimiter at any depth** — under lambdas and inside constructor fields.                                                                                                                                                                                                                                                                                                                      |
+| `source_capability_occurrence_delimited`                                                          | `src/safety/Occurrence.v`          | EVERY syntactic capability occurrence — at any path, including under binders and inside stored operation bodies — has its marker in scope; the active-position theorem is its empty-scope instance.                                                                                                                                                                                                                                                                 |
+| `source_safety_suite`                                                                             | `src/safety/Guarantees.v`          | **The umbrella theorem**: one record bundling type safety, invariant preservation, both confinement forms, capability-free escapable results, guarded-channel safety, and resumption locality — from `eval_ctx`, `sourceb t = true`, and one typing derivation.                                                                                                                                                                                                     |
+| `lt_subb_spec` / `nolocb_spec` / `valueb_spec` / `sourceb_spec`                                   | `src/safety/Decide.v`              | Certified reflected deciders for lifetime subtyping, the REAL noloc premise, values, and source terms.                                                                                                                                                                                                                                                                                                                                                              |
+| `stepf_sound` / `stepf_run_sound`                                                                 | `src/safety/Stepf.v`               | A certified executable reduction strategy (and bounded driver) implementing the semantics.                                                                                                                                                                                                                                                                                                                                                                          |
+| `typing_rename_markers` / `step_rename_markers` / `handle_choice_irrelevant`                      | `src/safety/MarkerRename.v`        | Marker identities are operationally irrelevant: typing/reduction are equivariant under (injective) marker renaming, and the fresh-marker choice yields alpha-equivalent reducts.                                                                                                                                                                                                                                                                                    |
+| `head_step_deterministic` / `step_deterministic_modulo_markers` / `stepf_complete_modulo_markers` | `src/safety/Determinism.v`         | Head reduction is a partial function; any two steps from one state agree up to a marker bijection; the certified evaluator is complete for the step relation modulo the fresh-marker choice.                                                                                                                                                                                                                                                                        |
+| `leak_reader_rejected_at_free`, `crashEndo_match_rejected_at_data`, …                             | `src/examples/ExamplesRejection.v` | Complete offending TERMS have no typing derivation at their escapable interfaces, each paired with a positive companion at its confined interface (a precision evaluation, including the quantified-type false positive).                                                                                                                                                                                                                                           |
 
 The classic capstones are witnessed on concrete programs in
 `src/examples/ExamplesSafety.v`; the rejection suite lives in
@@ -57,7 +57,13 @@ and that the committed generated docs match the sources:
 make check-assumptions   # every capstone must be closed under the global context
 make theorem-index       # regenerates THEOREMS.md
 make stats               # regenerates STATS.md
+make example-matrix      # regenerates EXAMPLES.md
 ```
+
+[EXAMPLES.md](EXAMPLES.md) is the per-program view of the examples
+tier: for each example program, the type it is given, the value it
+reduces to, and the gated theorems that speak about it — derived from
+the sources, so it cannot drift from what is actually proved.
 
 See [ARTIFACT.md](ARTIFACT.md) for the full artifact guide,
 [docs/](docs/README.md) for the codebase guide (architecture, module
@@ -116,36 +122,60 @@ preservation engine, and the capstone families:
 
 ## Examples (`src/examples/`)
 
-`Examples.v` declares data types (Option, Result, List, lazy lists with
-existential lifetimes, …) and effects (Reader, Exception with a
-β-polymorphic `throw`, Id, Optionality, and the two-operation `State` —
-`get` at index 0, `put` at index 1 — whose handler exercises one clause
-per operation).
-`ExamplesProofs.v` type-checks them and runs the reduction sequences
-end-to-end (including a **multi-shot** handler that resumes twice and
-sums both results, a **forwarding** example where a `throw` crosses a
-live unrelated Reader delimiter, and **many-performs** Reader/State
-runs whose results are validated by the bounded-addition family
-`sum_fn` — the no-fixpoint workaround — via the certified evaluator
-`stepf_run`). `ExamplesProofs.v` also contains *negative* witnesses:
-the escape checks computationally reject programs that would leak a
-`local` capability. The shared tactic library lives in
-`ExamplesTactics.v`.
-`ExamplesSafety.v` witnesses five of the capstones — eleven theorems:
-ten over three concrete programs plus one type-level confinement
-fact. Both guarded boundary channels are witnessed on concrete
-EXECUTED `boundary_step` events of the State trace (the `H_Return`
-collapse and a get's operation-in perform, each with its event-tied
-channel typing), a reachable capability decomposition shows the
-confinement theorems are not vacuous, and a **delegating** handler
-whose ask-clause itself performs the outer Reader's ask carries
-soundness/confinement/boundary witnesses. `ExamplesRejection.v`
-proves the rejection suite: complete offending terms — including the
-Listing-1-shaped `leak_state`, whose handler body returns the
-capability itself — have **no typing derivation** at their escapable
-interfaces, each paired with a positive companion at its confined
-interface (for `leak_state`: the capability is typable INSIDE the
-handler, `state_capability_typable_inside`).
+`Examples.v` declares data types (Option, Result, List, Pair, lazy
+lists with existential lifetimes, …) and effects (Reader, Exception
+with a β-polymorphic `throw`, Id, Optionality, the two-operation
+`State`, and `Chan`, whose two operations combine a monomorphic `send`
+with a β-polymorphic `poll<a>`). `ExamplesProofs.v` type-checks every
+program and runs its reduction end-to-end, most of them through the
+certified evaluator (`stepf_run` + `stepf_run_sound`); the calculus has
+no fixpoint, so bounded arithmetic comes from the meta-generated family
+`sum_fn`. The shared tactic library lives in `ExamplesTactics.v`.
+
+The headline programs and the mechanism each one is there to show:
+
+| Program                    | What it demonstrates                                                                                                                                                           |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `state_example`            | a two-operation handler (`get`/`put`) driven state-passing run — one clause per operation, selected by `nth_error`                                                             |
+| `chan_example`             | multi-operation × β-polymorphism: one `poll<a>` clause, instantiated at `Nat` and at `Unit` in the same run, with both answers in the result pair                              |
+| `multishot_example`        | a resumption invoked twice, its two results summed                                                                                                                             |
+| `forward_example`          | a `throw` crossing a live, unrelated Reader delimiter                                                                                                                          |
+| `delegate_example`         | an operation clause that performs the OUTER handler's operation — two delimiters of the same effect tag, told apart by markers                                                 |
+| `withReader`               | a handler polymorphic over `Any'local` data, which flows INWARD only (the comment records why the result bound must stay `Any'free`)                                           |
+| `unwrapOr`, `poly_const`   | full F<: at work: a non-`Any` bound reached through `SA_VarCtx`, and DISTINCT contravariant bounds in `SA_TyAll` (`sub_ty_all_bound_contra`) — neither is Kernel-F<: derivable |
+| `foldEndo`, `lazyMap_body` | existential lifetimes in constructor schemas and variance-aware elimination (`elim_ty_n`)                                                                                      |
+| `leak_state`               | the Listing-1 leak: rejected by typing — and its UNTYPED run really does deliver the capability into an empty context                                                          |
+
+[EXAMPLES.md](EXAMPLES.md) is the generated per-program view of the
+whole tier: type, normal form, and the gated theorems about each
+program.
+
+`ExamplesSafety.v` witnesses the capstones on concrete programs. The
+umbrella `source_safety_suite` is instantiated on `state_example`,
+`delegate_example` and `chan_example` (`state_example_guarantees`, …),
+and the fields no earlier witness exposed
+are unpacked from it verbatim — occurrence confinement at ANY depth,
+runtime-form freedom of the result, and the reified resumption's local
+closure lifetime — alongside `source_effect_safety`, which is not a
+field of the record. Both guarded boundary channels are witnessed on
+concrete EXECUTED `boundary_step` events of the State trace (the
+`H_Return` collapse and a `get`'s operation-in perform, each with its
+event-tied channel typing), and a reachable capability decomposition
+(`state_example_cap_reachable`) shows the confinement theorems are not
+vacuous. `leak_state_escape_is_real` runs the rejected program to show
+what the check is for, and `leak_state_untypable_by_confinement`
+re-derives its rejection from the confinement capstone alone.
+
+`ExamplesRejection.v` proves the rejection suite: complete offending
+terms — including the Listing-1-shaped `leak_state`, whose handler body
+returns the capability itself — have **no typing derivation** at their
+escapable interfaces, each paired with a positive companion at its
+confined interface (for `leak_state`: the capability is typable INSIDE
+the handler, `state_capability_typable_inside`).
+`poll_local_beta_rejected` isolates `T_Perform`'s premise on the
+supplied β-type-arguments: `poll`'s instantiated signature is `Unit`
+whatever `a` is (`poll_local_beta_sig_is_noloc`), so that premise is
+the only one that can be at fault.
 
 ## License
 

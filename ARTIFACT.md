@@ -72,8 +72,8 @@ development, then runs two gates:
    a new theorem in a gated file cannot escape the gate.
 
 2. **The docs-freshness gate** (`make check-docs`): the committed
-   generated documents (THEOREMS.md, STATS.md) must match what the
-   sources regenerate — a stale committed index fails CI. It also
+   generated documents (THEOREMS.md, STATS.md, EXAMPLES.md) must
+   match what the sources regenerate — a stale committed index fails CI. It also
    lints the hand-written guides (`scripts/check_docs_refs.py`):
    files and identifiers referenced by docs/*.md and README.md must
    exist in the sources.
@@ -83,13 +83,17 @@ development, then runs two gates:
 ```sh
 make theorem-index   # regenerates THEOREMS.md
 make stats           # regenerates STATS.md (also printed to stdout)
+make example-matrix  # regenerates EXAMPLES.md
 ```
 
 - [THEOREMS.md](THEOREMS.md) — every `Theorem` and `Corollary` in
   the build, with location and the first line of its statement.
 - [STATS.md](STATS.md) — per-directory LOC and declaration counts.
+- [EXAMPLES.md](EXAMPLES.md) — one row per example program: the type
+  it is given, the value it reduces to, and the gated theorems that
+  are about it. The claim-to-theorem map for the examples tier.
 
-Both are committed and deterministic; regenerate them after changing
+All three are committed and deterministic; regenerate them after changing
 the sources and commit the diff (`make verify` fails otherwise).
 Nothing in them is hand-maintained, so any figure a paper cites can
 be re-derived by running the target.

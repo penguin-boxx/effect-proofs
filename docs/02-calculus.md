@@ -40,11 +40,11 @@ ordinary lambda.
 Six shift/subst pairs — the operation matrix is lower-triangular
 because of the sort order:
 
-| sort \ carrier | lifetime | type | term |
-|---|---|---|---|
-| lifetime | `shift_lt`/`subst_lt` | `shift_lt_in_ty`/`subst_lt_in_ty` | `shift_lt_in_tm`/`subst_lt_in_tm` |
-| type | — | `shift_ty`/`subst_ty` | `shift_ty_in_tm`/`subst_ty_in_tm` |
-| term | — | — | `shift_tm`/`subst_tm` |
+| sort \ carrier | lifetime              | type                              | term                              |
+| -------------- | --------------------- | --------------------------------- | --------------------------------- |
+| lifetime       | `shift_lt`/`subst_lt` | `shift_lt_in_ty`/`subst_lt_in_ty` | `shift_lt_in_tm`/`subst_lt_in_tm` |
+| type           | —                     | `shift_ty`/`subst_ty`             | `shift_ty_in_tm`/`subst_ty_in_tm` |
+| term           | —                     | —                                 | `shift_tm`/`subst_tm`             |
 
 Substituting under a binder of a lower sort shifts the replacement in
 that sort (capture avoidance).
@@ -113,16 +113,16 @@ The static semantics is split into dependency-ordered modules, all
 re-exported by `Typing.v` so `Require Import Typing` provides the full
 story:
 
-| Module | Contents |
-|---|---|
-| `Context` | `binding`/`ctx`, the five `ctx_lookup_*` (bounds re-interpreted at the use site by shifting past binders), signature shifting (`shift_{ty,lt}_{ctor,eff}_sig`) |
-| `Wf` | the well-formedness judgments `lt_wf`, `lifetimes_wf`, `ty_wf`/`types_wf` (constructors `LWF_*`, `TWF_*`) |
-| `LtSub` | lifetime subtyping `Γ ⊢ₗ l₁ <: l₂` (`LS_*`; `LS_Join*` are the lattice-join rules) |
-| `LtAnalysis` | the escape analyses: context-free `lt_of_ty`/`lt_of_ty_list`, fuel-based context-aware `lt_of_ty_ctx`/`lt_of_ty_G`, `no_local_lt`, `free_tm_vars`, `capture_lt` |
-| `Elim` | variance (`var_pos/neg/inv`, `flip_variance`) and the fresh-lifetime eliminator `elim_lt`/`elim_ty`/`elim_ty_n` (option-valued; `None` = invariant position) |
-| `Subtyping` | type subtyping `Γ ⊢ S <:: T` (`SA_*`; full F<: — `SA_TyAll` has contravariant bounds; `SA_Any` is the data-lattice top with the `lt_of_ty_G … <: Δ` escape premise) |
+| Module        | Contents                                                                                                                                                                                                                                               |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Context`     | `binding`/`ctx`, the five `ctx_lookup_*` (bounds re-interpreted at the use site by shifting past binders), signature shifting (`shift_{ty,lt}_{ctor,eff}_sig`)                                                                                         |
+| `Wf`          | the well-formedness judgments `lt_wf`, `lifetimes_wf`, `ty_wf`/`types_wf` (constructors `LWF_*`, `TWF_*`)                                                                                                                                              |
+| `LtSub`       | lifetime subtyping `Γ ⊢ₗ l₁ <: l₂` (`LS_*`; `LS_Join*` are the lattice-join rules)                                                                                                                                                                     |
+| `LtAnalysis`  | the escape analyses: context-free `lt_of_ty`/`lt_of_ty_list`, fuel-based context-aware `lt_of_ty_ctx`/`lt_of_ty_G`, `no_local_lt`, `free_tm_vars`, `capture_lt`                                                                                        |
+| `Elim`        | variance (`var_pos/neg/inv`, `flip_variance`) and the fresh-lifetime eliminator `elim_lt`/`elim_ty`/`elim_ty_n` (option-valued; `None` = invariant position)                                                                                           |
+| `Subtyping`   | type subtyping `Γ ⊢ S <:: T` (`SA_*`; full F<: — `SA_TyAll` has contravariant bounds; `SA_Any` is the data-lattice top with the `lt_of_ty_G … <: Δ` escape premise)                                                                                    |
 | `Instantiate` | schema instantiation (`inst_ty_vars`, `multi_subst_lt(_in_ty)`, `inst_lt_vars`, `inst_ctor_type(_open)`, `inst_op_ty_args`, `inst_op_all_args`) and context pushing (`push_lt_vars`, `push_ty_vars`, `push_match_bound`), `any_at_free`, `op_body_ctx` |
-| `Typing` | the typing relation itself |
+| `Typing`      | the typing relation itself                                                                                                                                                                                                                             |
 
 **The typing relation is mutually inductive**: `typing` (`Γ ⊢ₜ t : T`)
 with `typings` (`TS_Nil`/`TS_Cons` — a list of terms against a list of
