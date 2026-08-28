@@ -29,7 +29,7 @@ Require Import WellScoped.
 (* A term with no free variables at/above [c] is untouched by shifts    *)
 (* and substitutions at index >= c.  Runtime marker constructs have     *)
 (* closed bodies ([rt_closed]), so these laws make term substitution    *)
-(* vacuous exactly at the scope-sensitive positions of well_scoped.    *)
+(* vacuous exactly at the scope-sensitive positions of well_scoped.     *)
 (* ==================================================================== *)
 
 Lemma shift_tm_closed_id : forall t c a cutoff,
@@ -163,7 +163,7 @@ Proof.
 Qed.
 
 (* Term/type/lifetime shifts never move markers, so well_scoped is     *)
-(* preserved at the SAME scope.                                         *)
+(* preserved at the SAME scope.                                        *)
 Lemma well_scoped_shift_tm : forall t ms a cutoff,
   well_scoped ms t -> well_scoped ms (shift_tm a cutoff t).
 Proof.

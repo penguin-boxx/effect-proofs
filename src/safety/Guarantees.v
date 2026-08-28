@@ -176,3 +176,40 @@ Proof.
     | apply source_safety_invariants; [exact Hsb | exact Hty]
     | exact Hms ].
 Qed.
+
+(* ================================================================== *)
+(* The stuck verdict, named: [stepf_go_stuck_sound] (Determinism.v)   *)
+(* states the SR_stuck claim operationally; here it meets the         *)
+(* [stuck] predicate of the soundness capstone (Soundness.v).         *)
+(* ================================================================== *)
+
+Corollary stepf_stuck_is_stuck : forall t,
+  stepf_go (marker_bound t) t = SR_stuck ->
+  stuck t.
+Proof.
+  intros t Hgo.
+  destruct (stepf_go_stuck_sound t Hgo) as [Hnv [Hns _]].
+  split; [exact Hnv | intros [u Hs]; exact (Hns u Hs)].
+Qed.
+
+(* The self-test: on a well-typed source program the stuck verdict is *)
+(* unreachable — combined with [source_stepf_none_is_value], the      *)
+(* evaluator halts on source states only by classifying them as       *)
+(* values (never as SR_stuck, and never as an unhandled escape).      *)
+Corollary source_stepf_never_stuck : forall Γ t T u,
+  eval_ctx Γ ->
+  sourceb t = true ->
+  Γ ⊢ₜ t : T ->
+  multi_step t u ->
+  stepf_go (marker_bound u) u <> SR_stuck.
+Proof.
+  intros Γ t T u Hec Hsb Hty Hms Hgo.
+  apply sourceb_spec in Hsb.
+  destruct (multi_step_preserves_safety_invariants _ _ _ _ Hec
+              (source_safety_invariants _ _ _ Hsb Hty) Hms)
+    as [[Hmsafe _] [[Hws _] Htyu]].
+  destruct (stepf_go_stuck_sound _ Hgo) as [Hnv [Hns _]].
+  destruct (progress _ _ _ Hec Hws Hmsafe Htyu) as [Hv | [u' Hs]].
+  - exact (Hnv Hv).
+  - exact (Hns _ Hs).
+Qed.

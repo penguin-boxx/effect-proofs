@@ -124,15 +124,7 @@ are needed" design claim into a mechanized fact. 1.3 first makes the
 annotation-mismatch counterexample unrepresentable — pick conjuncts
 accordingly.
 
-### 2.4 A specification for the evaluator's stuck verdict — S
-
-`stepf_go`'s `SR_stuck` currently carries no claim. Prove `SR_stuck ⇒
-stuck` on closed terms, completing the four-way certified
-classification (value / step / escape / stuck), plus the self-test
-corollary: on well-typed source states the evaluator can never return
-`SR_stuck`.
-
-### 2.5 OCaml extraction — S
+### 2.4 OCaml extraction — S
 
 `stepf`/`stepf_run` and the deciders (`lt_subb`, `nolocb`, `valueb`,
 `sourceb`) are pure computable definitions; extraction is an

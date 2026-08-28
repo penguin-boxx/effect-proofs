@@ -298,7 +298,10 @@ Definition stepf (t : term) : option term :=
 (*               head redex or a handle allocating [fresh];           *)
 (*   SR_esc   -> the subterm is a perform-escape under a pure,        *)
 (*               well-formed context.                                 *)
-(* SR_stuck carries no claim.                                         *)
+(* SR_stuck carries no claim HERE — its meaning is negative (no       *)
+(* value, no step, no escape decomposition) and the no-step half is   *)
+(* evaluator completeness, so its specification lives in              *)
+(* Determinism.v ([stepf_go_stuck_sound], [stepf_classification]).    *)
 (* ------------------------------------------------------------------ *)
 
 Definition handle_alloc (fresh : marker) (r r' : term) : Prop :=

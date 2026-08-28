@@ -265,3 +265,62 @@ Proof.
   eapply marker_alpha_equiv_trans; [exact A1|].
   apply marker_alpha_equiv_sym. exact A2.
 Qed.
+
+(* ------------------------------------------------------------------ *)
+(* The stuck verdict's specification                                  *)
+(*                                                                    *)
+(* [go_spec] (Stepf.v) certifies the value / step / escape verdicts;  *)
+(* SR_stuck carried no claim there because its meaning is NEGATIVE —  *)
+(* no value, no step, no escape decomposition — and the "no step"     *)
+(* half is exactly evaluator completeness, which lives here.  Each    *)
+(* conjunct is the contrapositive of an exactness lemma:              *)
+(* [stepf_go_value], [stepf_complete_modulo_markers],                 *)
+(* [stepf_go_esc_plug].                                               *)
+(* ------------------------------------------------------------------ *)
+
+Theorem stepf_go_stuck_sound : forall t,
+  stepf_go (marker_bound t) t = SR_stuck ->
+  ~ value t /\
+  (forall u, ~ t ==> u) /\
+  (forall e P, esc_ok e P -> t <> plug P (esc_redex e)).
+Proof.
+  intros t Hgo.
+  split; [|split].
+  - intros Hv.
+    rewrite (stepf_go_value (marker_bound t) t Hv) in Hgo. discriminate.
+  - intros u Hs.
+    destruct (stepf_complete_modulo_markers _ _ Hs) as [u' [Hsome _]].
+    unfold stepf in Hsome. rewrite Hgo in Hsome. discriminate.
+  - intros e P Hok Heq.
+    destruct e as [Et m Ts TR ops opix Ss A arg].
+    destruct Hok as (Hpure & Hwf & Hval).
+    simpl in Hpure, Hval.
+    unfold esc_redex in Heq. simpl in Heq.
+    rewrite Heq in Hgo.
+    rewrite (stepf_go_esc_plug _ _ _ _ _ _ _ _ _ _ _ Hpure Hwf Hval)
+      in Hgo.
+    discriminate.
+Qed.
+
+(* The four-way certified classification: EVERY verdict the evaluator *)
+(* can return now carries its meaning.  (The stuck arm restates       *)
+(* [stepf_go_stuck_sound]; the others come from [stepf_go_sound] and  *)
+(* [stepf_sound], Stepf.v.)                                           *)
+Theorem stepf_classification : forall t,
+  match stepf_go (marker_bound t) t with
+  | SR_val     => value t
+  | SR_step u  => t ==> u
+  | SR_esc e P => esc_ok e P /\ t = plug P (esc_redex e)
+  | SR_stuck   => ~ value t /\
+                  (forall u, ~ t ==> u) /\
+                  (forall e P, esc_ok e P -> t <> plug P (esc_redex e))
+  end.
+Proof.
+  intros t.
+  destruct (stepf_go (marker_bound t) t) as [|u|e P|] eqn:Hgo.
+  - destruct (stepf_go_sound (marker_bound t) t) as [Hv _]. auto.
+  - apply stepf_sound. unfold stepf. rewrite Hgo. reflexivity.
+  - destruct (stepf_go_sound (marker_bound t) t) as [_ [_ Hesc]].
+    exact (Hesc _ _ Hgo).
+  - exact (stepf_go_stuck_sound t Hgo).
+Qed.
