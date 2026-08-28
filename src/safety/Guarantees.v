@@ -192,6 +192,26 @@ Proof.
   split; [exact Hnv | intros [u Hs]; exact (Hns u Hs)].
 Qed.
 
+(* The stuckness certificate for hand-built states whose verdict is   *)
+(* an unhandled ESCAPE rather than SR_stuck (an escaped perform with  *)
+(* no matching delimiter above it): a [None] verdict on a non-value   *)
+(* is genuine stuckness, because completeness turns "no stepf result" *)
+(* into "no step".  Both hypotheses are decidable by [vm_compute].    *)
+Corollary stepf_none_nonvalue_stuck : forall t,
+  stepf t = None ->
+  valueb t = false ->
+  stuck t.
+Proof.
+  intros t Hn Hv. split.
+  - intros Hval.
+    assert (Hvb : valueb t = true)
+      by (destruct (valueb_spec t); [reflexivity | contradiction]).
+    congruence.
+  - intros [u Hs].
+    destruct (stepf_complete_modulo_markers _ _ Hs) as [u' [Hs' _]].
+    rewrite Hn in Hs'. discriminate.
+Qed.
+
 (* The self-test: on a well-typed source program the stuck verdict is *)
 (* unreachable — combined with [source_stepf_none_is_value], the      *)
 (* evaluator halts on source states only by classifying them as       *)

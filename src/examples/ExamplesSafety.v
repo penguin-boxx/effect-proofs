@@ -7,6 +7,7 @@ Require Import Substitution.
 Require Import Semantics.
 Require Import Typing.
 Require Import Subst.
+Require Import TypingInv.
 Require Import MarkerAnnots.
 Require Import WellScoped.
 Require Import WsRtLaws.
@@ -647,4 +648,157 @@ Theorem chan_example_cap_confined :
     ~ pure_ectx_m m E.
 Proof.
   exact (sg_capabilities_confined _ _ _ chan_example_guarantees).
+Qed.
+
+(* ================================================================== *)
+(* Invariant-necessity counterexamples: [safety_invariants] is        *)
+(* minimal.                                                           *)
+(*                                                                    *)
+(* The soundness capstone carries a three-conjunct runtime invariant  *)
+(* (Soundness.v): marker-annotation agreement ([marker_annots_ok]),   *)
+(* marker provenance and cap-closedness ([ws_rt]), and typing.  For   *)
+(* EACH conjunct, this section exhibits a hand-built stuck state      *)
+(* satisfying the other two — so no conjunct is implied by the rest,  *)
+(* and each is load-bearing for progress.  Stuckness is decided       *)
+(* computationally: the evaluator's verdict is [vm_compute]d and      *)
+(* certified genuine by [stepf_stuck_is_stuck] /                      *)
+(* [stepf_none_nonvalue_stuck] (Guarantees.v).                        *)
+(*                                                                    *)
+(* These are runtime STATES, not example programs: two of them        *)
+(* contain runtime marker forms a source program cannot write, which  *)
+(* is exactly why they live outside the source-program matrix.        *)
+(* ================================================================== *)
+
+(* (1) Typing is load-bearing.  A marker-free stuck state — the       *)
+(* numeral 2 applied to the numeral 3.  Both marker conjuncts hold    *)
+(* vacuously; no typing derivation exists at ANY type, because the    *)
+(* function position is a constructor value, never a lambda.          *)
+Definition nx_untyped : term := two_v @· three_v.
+
+Theorem typing_conjunct_necessary :
+  stuck nx_untyped /\
+  marker_annots_ok nx_untyped /\
+  ws_rt [] nx_untyped /\
+  (forall T, ~ (data_ctx ⊢ₜ nx_untyped : T)).
+Proof.
+  assert (Hsrc : has_rt_marker nx_untyped = false)
+    by (vm_compute; reflexivity).
+  split; [apply stepf_stuck_is_stuck; vm_compute; reflexivity|].
+  split; [apply marker_annots_ok_no_rt_marker; exact Hsrc|].
+  split; [apply ws_rt_no_rt_marker; exact Hsrc|].
+  intros T Hty. unfold nx_untyped in Hty.
+  destruct (app_typing_inv_p _ _ _ _ Hty) as (A & l & B & Hf & _ & _).
+  assert (Hv : value two_v) by (repeat constructor).
+  destruct (canonical_fun _ _ _ _ _ eval_ctx_data_ctx Hf Hv)
+    as (body & T0 & Heq).
+  unfold two_v, suc_v in Heq. discriminate Heq.
+Qed.
+
+(* (2) Marker provenance ([well_scoped], the first ws_rt half) is     *)
+(* load-bearing.  A well-typed perform on a LITERAL capability with   *)
+(* no delimiter above it: typing accepts it (T_Cap does not consult   *)
+(* the ambient marker scope), the annotations agree trivially, but    *)
+(* the escape finds no matching delimiter — an unhandled operation.   *)
+Definition nx_unscoped_cap : term :=
+  term_cap Reader_tag 0 [T_Nat `Lf] (T_Nat `Lf) [(0, ($$ 1) @· two_v)].
+Definition nx_unscoped : term :=
+  term_perform nx_unscoped_cap 0 [] (T_Nat `Lf) unit_v.
+
+Theorem well_scoped_conjunct_necessary :
+  stuck nx_unscoped /\
+  marker_annots_ok nx_unscoped /\
+  (full_ctx ⊢ₜ nx_unscoped : T_Nat `Lf) /\
+  ~ well_scoped [] nx_unscoped.
+Proof.
+  split; [apply stepf_none_nonvalue_stuck; vm_compute; reflexivity|].
+  split.
+  { split.
+    - (* one annotation entry: agreement is trivial *)
+      intros m T U H1 H2. cbn in H1, H2.
+      destruct H1 as [E1|[]]. destruct H2 as [E2|[]]. congruence.
+    - (* the one annotation is the closed type Nat'free *)
+      cbn. repeat constructor. }
+  split.
+  { unfold nx_unscoped, nx_unscoped_cap.
+    eapply T_Perform with (n_β := 0) (sig := T_Unit) (ret := `T 0).
+    - (* the literal capability types by T_Cap *)
+      eapply T_Cap.
+      + cbn; reflexivity.
+      + reflexivity.
+      + solve_wf.
+      + solve_wf.
+      + reflexivity.
+      + constructor; [| constructor].
+        cbn. eapply T_App; [solve_var | solve_nat].
+    - cbn; reflexivity.
+    - reflexivity.
+    - reflexivity.
+    - reflexivity.
+    - constructor.
+    - constructor.
+    - cbn; reflexivity.
+    - cbn; solve_lt_sub.
+    - cbn; reflexivity.
+    - solve_wf.
+    - unfold unit_v; solve_ctor. }
+  (* the cap's marker is not delimited: In 0 [] is empty *)
+  unfold nx_unscoped, nx_unscoped_cap. cbn. intros [[[] _] _].
+Qed.
+
+(* (3) Marker-annotation agreement ([marker_types_safe]) is           *)
+(* load-bearing.  A delimiter and a same-marker capability whose      *)
+(* answer-type annotations DISAGREE (Nat'free vs Unit): typing        *)
+(* accepts the state — T_Cap's answer annotation is invisible in the  *)
+(* capability's type, and T_HandlerM is transparent — and it is       *)
+(* well-scoped, but H_Perform's contraction demands the two           *)
+(* annotations coincide, so the fired escape jams at its own          *)
+(* delimiter.  This is precisely the agreement Progress needs.        *)
+Definition nx_mismatch_cap : term :=
+  term_cap Reader_tag 0 [T_Nat `Lf] T_Unit [(0, ($$ 1) @· two_v)].
+Definition nx_mismatch : term :=
+  term_handler_m 0 (T_Nat `Lf) (T_Nat `Lf)
+    (term_perform nx_mismatch_cap 0 [] (T_Nat `Lf) unit_v).
+
+Theorem marker_agreement_conjunct_necessary :
+  stuck nx_mismatch /\
+  ws_rt [] nx_mismatch /\
+  (full_ctx ⊢ₜ nx_mismatch : T_Nat `Lf) /\
+  ~ marker_types_safe nx_mismatch.
+Proof.
+  split; [apply stepf_stuck_is_stuck; vm_compute; reflexivity|].
+  split.
+  { unfold nx_mismatch, nx_mismatch_cap. split; cbn; intuition reflexivity. }
+  split.
+  { unfold nx_mismatch, nx_mismatch_cap.
+    apply T_HandlerM.
+    - solve_wf.
+    - solve_wf.
+    - cbn; solve_lt_sub.
+    - apply SA_Refl; solve_wf.
+    - eapply T_Perform with (n_β := 0) (sig := T_Unit) (ret := `T 0).
+      + eapply T_Cap.
+        * cbn; reflexivity.
+        * reflexivity.
+        * solve_wf.
+        * solve_wf.
+        * reflexivity.
+        * constructor; [| constructor].
+          cbn. eapply T_App; [solve_var | solve_nat].
+      + cbn; reflexivity.
+      + reflexivity.
+      + reflexivity.
+      + reflexivity.
+      + constructor.
+      + constructor.
+      + cbn; reflexivity.
+      + cbn; solve_lt_sub.
+      + cbn; reflexivity.
+      + solve_wf.
+      + unfold unit_v; solve_ctor. }
+  (* the two annotations for marker 0 disagree: Nat'free vs Unit *)
+  intros H.
+  assert (E := H 0 (T_Nat `Lf) T_Unit
+                 ltac:(cbn; left; reflexivity)
+                 ltac:(cbn; right; left; reflexivity)).
+  inversion E.
 Qed.

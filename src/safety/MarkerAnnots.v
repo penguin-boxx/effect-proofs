@@ -37,7 +37,7 @@ Require Import WellScoped.
 (*   well_scoped / rt_closed / ws_rt — see WellScoped.v.              *)
 (*                                                                    *)
 (* All invariants hold vacuously on source terms                      *)
-(* ([has_rt_marker t = false]), which is how the source-facing           *)
+(* ([has_rt_marker t = false]), which is how the source-facing        *)
 (* corollaries need only an initial typing.                           *)
 (* ================================================================== *)
 

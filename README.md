@@ -37,8 +37,11 @@ with multi-operation algebraic effect handlers.
 | `leak_reader_rejected_at_free`, `crashEndo_match_rejected_at_data`, …                             | `src/examples/ExamplesRejection.v` | Complete offending TERMS have no typing derivation at their escapable interfaces, each paired with a positive companion at its confined interface (a precision evaluation, including the quantified-type false positive).                                                                                                                                                                                                                                           |
 
 The classic capstones are witnessed on concrete programs in
-`src/examples/ExamplesSafety.v`; the rejection suite lives in
-`src/examples/ExamplesRejection.v`.
+`src/examples/ExamplesSafety.v`, which also proves the three-conjunct
+runtime invariant bundle minimal — for each `safety_invariants`
+conjunct, a hand-built stuck state satisfying the other two
+(`typing_conjunct_necessary` and friends); the rejection suite lives
+in `src/examples/ExamplesRejection.v`.
 
 ## Build and verify
 

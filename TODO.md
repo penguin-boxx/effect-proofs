@@ -115,16 +115,7 @@ function up to marker permutation; `t ==>* v₁ ∧ t ==>* v₂ ⇒` the values
 are marker-alpha-equivalent; `stepf_run` reaches every value a program
 has.
 
-### 2.3 Invariant-necessity counterexamples — S
-
-Hand-built terms violating exactly one `safety_invariants` conjunct and
-getting stuck, with stuckness decided computationally (`stepf … = None`
-+ `valueb … = false` by `vm_compute`). Turns the "all three conjuncts
-are needed" design claim into a mechanized fact. 1.3 first makes the
-annotation-mismatch counterexample unrepresentable — pick conjuncts
-accordingly.
-
-### 2.4 OCaml extraction — S
+### 2.3 OCaml extraction — S
 
 `stepf`/`stepf_run` and the deciders (`lt_subb`, `nolocb`, `valueb`,
 `sourceb`) are pure computable definitions; extraction is an
