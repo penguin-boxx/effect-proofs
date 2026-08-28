@@ -2,7 +2,7 @@
 
 Every direction discussed for this development, with status, effort, and
 risk. Items move out of this file when they land (git history records
-them) or into §7 when a decision closes them. Identifiers in *planned*
+them) or into §6 when a decision closes them. Identifiers in *planned*
 items (e.g. `noloc`, `typecheckb`) do not exist yet by definition; this
 file is deliberately **not** scanned by `scripts/check_docs_refs.py`.
 
@@ -75,7 +75,9 @@ schema-instance annotation) and it is operationally dead — the
 `H_MatchYes`/`H_MatchNo` contractions consume only `lts`/`vs`, and no
 analysis reads it. After the change a constructor term is pure
 instantiation data, annotation-mismatch terms become unrepresentable
-(strengthens 2.3), and erasure (3.4) gets one annotation shorter.
+(the landed invariant-necessity counterexamples avoid this slot
+deliberately, so they survive), and erasure (2.4) gets one annotation
+shorter.
 Pure mechanics, but wide: all six substitution traversals + σ-laws,
 the `EC_ctor` frame (also carries `l`), ws/rt/marker traversals,
 `T_Ctor` + induction + inversions + payloads + `matchyes` preservation,
@@ -88,36 +90,9 @@ is emergent — a binder absent from the result type is existential
 (LazyList's `lh`/`lt`/`ll`), one present in it is a transparent sealing
 parameter (`lr`).
 
-## 2. Theorem-strengthening directions (mechanized, self-contained)
+## 2. Research-scale programs
 
-### 2.1 Boundary-channel completeness / delimiter accounting — M
-
-Make the five-channel matrix (`safety/BoundaryStep.v` header) a
-theorem: every step is (i) a frame step leaving the delimiter spine
-unchanged, (ii) a fresh-delimiter allocation (`S_HandleCtx`), or (iii)
-exactly one `boundary_step` event. Notably cheaper than it was: the
-evaluator's `go_spec` (`safety/Stepf.v`) already classifies every step,
-`stepf_complete_modulo_markers` transports the classification to the
-relation, and the typing kernels `boundary_return_typing` /
-`boundary_operation_typing` (`safety/Boundary.v`) pin the event types.
-Main risk: formulating "spine unchanged" under nested contexts. This is
-a candidate headline contribution — no adjacent mechanization has an
-analog.
-
-### 2.2 Multi-step determinism, unique normal forms, evaluator adequacy — M
-
-All ingredients are proved (`step_rename_markers`,
-`marker_alpha_equiv` as a genuine equivalence with injectivity,
-`stepf_complete_modulo_markers`, `safe_stepf_none_is_value`). Missing:
-"alpha-equivalence is a simulation" plus composition of marker
-bijections in the diagram chase. Yields: evaluation is a partial
-function up to marker permutation; `t ==>* v₁ ∧ t ==>* v₂ ⇒` the values
-are marker-alpha-equivalent; `stepf_run` reaches every value a program
-has.
-
-## 3. Research-scale programs
-
-### 3.1 Certified typechecker — L, low falsity risk, high engineering
+### 2.1 Certified typechecker — L, low falsity risk, high engineering
 
 The classic missing computational piece: no `typecheck`/`infer`
 function and no type-subtyping decider exist. Full completeness is
@@ -130,7 +105,7 @@ in `examples/ExamplesProofs.v` — the one part of the examples tier
 outside any gate. Makes the rejection suite executable end-to-end with
 `stepf`. Subsumes the old "kernelize F<:" alternative.
 
-### 3.2 Strong normalization — L, HIGH risk
+### 2.2 Strong normalization — L, HIGH risk
 
 The grammar has no fixpoint and no recursive types; SN of source
 programs would upgrade `stepf_run` to a fuel-free total evaluator.
@@ -138,7 +113,7 @@ Risk is real research risk: logical relations × multi-shot deep
 handlers that re-install delimiters. The non-claim is already stated in
 `docs/07-limitations.md`; attempt only as its own paper.
 
-### 3.3 Relational confinement — L, HIGH risk
+### 2.3 Relational confinement — L, HIGH risk
 
 A noninterference or contextual-equivalence statement over the boundary
 LTS (naive "local data cannot influence free results" is FALSE —
@@ -147,7 +122,7 @@ independence from the handler's *representation*). The labelled
 transitions of `safety/BoundaryStep.v` are the intended substrate.
 Separate-paper scale.
 
-### 3.4 Erasure / annotation irrelevance — M–L, medium risk
+### 2.4 Erasure / annotation irrelevance — M–L, medium risk
 
 The semantics is type-passing (`H_Perform` reads the perform's carried
 result type to build the resumption lambda). An erased semantics + a
@@ -156,14 +131,14 @@ possible negative outcome — the annotation is semantically essential —
 would itself be a precise characterization. 1.3 shrinks the erasure
 surface first.
 
-### 3.5 Per-region confinement granularity — horizon
+### 2.5 Per-region confinement granularity — horizon
 
 The two-point lattice confines every `local` datum against *every*
 boundary (see `docs/07-limitations.md`). Marker-indexed lifetimes or
 capture-set-style precision would distinguish *whose* boundary a datum
 is confined to — a CC<:-scale redesign, only as a new calculus/paper.
 
-## 4. Expressiveness playbook for `Any'local` polymorphism
+## 3. Expressiveness playbook for `Any'local` polymorphism
 
 Current layered story (partly landed, partly = items above):
 
@@ -180,9 +155,9 @@ Current layered story (partly landed, partly = items above):
 - **Needs 1.1**: polymorphic *values* (`∀α<:B. …`) crossing boundaries.
 - **Needs 1.1 + 1.2**: handlers *returning* `α` itself, restricted to
   escapable instantiations.
-- **Needs 3.5**: anything finer than "confined against all boundaries".
+- **Needs 2.5**: anything finer than "confined against all boundaries".
 
-## 5. Proof-engineering backlog
+## 4. Proof-engineering backlog
 
 - **Traversal-proof migration**: ~68 `term_list_ind` proof sites across
   9 files could ride the `subst_go` rewrite database
@@ -199,7 +174,7 @@ Current layered story (partly landed, partly = items above):
   the blockers are documented in `docs/04-proof-architecture.md`.
   Research-flavored; revisit only after 1.x settle.
 
-## 6. Examples and documentation
+## 5. Examples and documentation
 
 - Artifact polish: AEC "kick the tires" section with expected outputs
   and a Docker one-liner; a paper-claim → theorem mapping table in
@@ -208,7 +183,7 @@ Current layered story (partly landed, partly = items above):
 - Release steps (license done; tag + DOI) live in `ARTIFACT.md`'s TODO
   section — not duplicated here.
 
-## 7. Deliberately not planned (decisions, with reasons)
+## 6. Deliberately not planned (decisions, with reasons)
 
 - **No Autosubst/Tealeaves/GMeta migration**: the two extra sorts with
   lifetime-in-type/term coupling break their payoff model; the

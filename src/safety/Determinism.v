@@ -324,3 +324,173 @@ Proof.
     exact (Hesc _ _ Hgo).
   - exact (stepf_go_stuck_sound t Hgo).
 Qed.
+
+(* ================================================================== *)
+(* Multi-step determinism, unique normal forms, and evaluator         *)
+(* adequacy — all modulo the fresh-marker choice.                     *)
+(*                                                                    *)
+(* The missing piece was "alpha-equivalence is a simulation".  With   *)
+(* [marker_alpha_equiv] carrying an explicit two-sided bijection      *)
+(* (MarkerRename.v), the simulation is [step_rename_markers] applied  *)
+(* to THE SAME bijection — no fresh diagram chase is needed, and the  *)
+(* bijection compositions are exactly the equivalence laws.           *)
+(* ================================================================== *)
+
+(* Alpha-equivalence is a (one-step) simulation: an equivalent state  *)
+(* can answer any step with an equivalent step.                       *)
+Theorem step_marker_alpha_simulation : forall t t' u,
+  marker_alpha_equiv t t' ->
+  t ==> u ->
+  exists u', t' ==> u' /\ marker_alpha_equiv u u'.
+Proof.
+  intros t t' u (f & g & Hgf & Hfg & Heq) Hstep.
+  exists (rename_marker f u). split.
+  - subst t'.
+    apply step_rename_markers;
+      [ exact (marker_left_inverse_inj f g Hgf) | exact Hstep ].
+  - exists f, g. auto.
+Qed.
+
+(* The multi-step closure of the simulation.                          *)
+Theorem multi_step_marker_alpha_simulation : forall t t' u,
+  marker_alpha_equiv t t' ->
+  multi_step t u ->
+  exists u', multi_step t' u' /\ marker_alpha_equiv u u'.
+Proof.
+  intros t t' u Halpha Hms. revert t' Halpha.
+  induction Hms as [t | t w u Hstep Hms IH]; intros t' Halpha.
+  - exists t'. split; [apply MS_Refl | exact Halpha].
+  - destruct (step_marker_alpha_simulation _ _ _ Halpha Hstep)
+      as [w' [Hs' Ha']].
+    destruct (IH _ Ha') as [u' [Hms' Ha'']].
+    exists u'. split; [eapply MS_Step; eassumption | exact Ha''].
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* Normal forms.  A normal form is a state with no successor; values  *)
+(* are normal forms (evaluator completeness turns [stepf_value_none]  *)
+(* into "values do not step"), and normal-form-ness transports along  *)
+(* the simulation.                                                    *)
+(* ------------------------------------------------------------------ *)
+
+Definition normal_form (t : term) : Prop := forall u, ~ t ==> u.
+
+Lemma value_no_step : forall t u, value t -> ~ t ==> u.
+Proof.
+  intros t u Hv Hs.
+  destruct (stepf_complete_modulo_markers _ _ Hs) as [u' [Hsome _]].
+  rewrite (stepf_value_none _ Hv) in Hsome. discriminate.
+Qed.
+
+Lemma value_normal_form : forall t, value t -> normal_form t.
+Proof. intros t Hv u. apply value_no_step. exact Hv. Qed.
+
+Lemma normal_form_marker_alpha : forall t t',
+  marker_alpha_equiv t t' -> normal_form t -> normal_form t'.
+Proof.
+  intros t t' Halpha Hnf u' Hstep.
+  destruct (step_marker_alpha_simulation t' t u'
+              (marker_alpha_equiv_sym _ _ Halpha) Hstep) as [w [Hs _]].
+  exact (Hnf w Hs).
+Qed.
+
+Lemma multi_step_normal_form_refl : forall t u,
+  normal_form t -> multi_step t u -> u = t.
+Proof.
+  intros t u Hnf Hms. inversion Hms; subst.
+  - reflexivity.
+  - exfalso. eapply Hnf. eassumption.
+Qed.
+
+(* The kernel diagram chase, generalized over an alpha-equivalence    *)
+(* between the two starting states: one-step determinism modulo       *)
+(* markers aligns the first steps, the simulation transports the      *)
+(* alignment, transitivity composes the bijections.                   *)
+Lemma multi_step_normal_form_alpha : forall t1 v1,
+  multi_step t1 v1 ->
+  normal_form v1 ->
+  forall t2 v2,
+  marker_alpha_equiv t1 t2 ->
+  multi_step t2 v2 ->
+  normal_form v2 ->
+  marker_alpha_equiv v1 v2.
+Proof.
+  intros t1 v1 Hms1.
+  induction Hms1 as [t1 | t1 u1 v1 Hstep1 Hms1 IH];
+    intros Hnf1 t2 v2 Halpha Hms2 Hnf2.
+  - (* t1 itself is normal, so t2 is too and v2 = t2 *)
+    pose proof (normal_form_marker_alpha _ _ Halpha Hnf1) as Hnf2'.
+    rewrite (multi_step_normal_form_refl _ _ Hnf2' Hms2). exact Halpha.
+  - (* t1 steps; t2 answers with an equivalent step, and one-step     *)
+    (* determinism aligns it with t2's own reduction *)
+    destruct (step_marker_alpha_simulation _ _ _ Halpha Hstep1)
+      as [u2 [Hstep2 Halpha_u]].
+    inversion Hms2; subst.
+    + exfalso. exact (Hnf2 _ Hstep2).
+    + match goal with
+      | Hs : t2 ==> ?w0, Hm : multi_step ?w0 v2 |- _ =>
+          exact (IH Hnf1 w0 v2
+                   (marker_alpha_equiv_trans _ _ _ Halpha_u
+                      (step_deterministic_modulo_markers _ _ _ Hstep2 Hs))
+                   Hm Hnf2)
+      end.
+Qed.
+
+(* Evaluation is a partial function up to marker permutation: any two *)
+(* normal forms reached from one state agree modulo a marker          *)
+(* bijection.                                                         *)
+Theorem multi_step_deterministic_modulo_markers : forall t u1 u2,
+  multi_step t u1 -> normal_form u1 ->
+  multi_step t u2 -> normal_form u2 ->
+  marker_alpha_equiv u1 u2.
+Proof.
+  intros t u1 u2 Hms1 Hnf1 Hms2 Hnf2.
+  exact (multi_step_normal_form_alpha _ _ Hms1 Hnf1 _ _
+           (marker_alpha_equiv_refl t) Hms2 Hnf2).
+Qed.
+
+(* The value form: results are unique modulo the fresh-marker choice. *)
+Corollary value_unique_modulo_markers : forall t v1 v2,
+  multi_step t v1 -> value v1 ->
+  multi_step t v2 -> value v2 ->
+  marker_alpha_equiv v1 v2.
+Proof.
+  intros t v1 v2 Hms1 Hv1 Hms2 Hv2.
+  apply (multi_step_deterministic_modulo_markers t);
+    auto using value_normal_form.
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* Evaluator adequacy: the bounded driver reaches every value the     *)
+(* RELATION can reach, up to a marker bijection — [stepf_run] is not  *)
+(* just sound (stepf_run_sound) but complete for value results.       *)
+(* ------------------------------------------------------------------ *)
+
+Lemma stepf_run_reaches_alpha : forall t v,
+  multi_step t v ->
+  normal_form v ->
+  forall t', marker_alpha_equiv t t' ->
+  exists n, marker_alpha_equiv v (stepf_run n t').
+Proof.
+  intros t v Hms.
+  induction Hms as [t | t u v Hstep Hms IH]; intros Hnf t' Halpha.
+  - exists 0. exact Halpha.
+  - destruct (step_marker_alpha_simulation _ _ _ Halpha Hstep)
+      as [u'' [Hstep' Halpha_u]].
+    destruct (stepf_complete_modulo_markers _ _ Hstep')
+      as [w [Hsome Halpha_w]].
+    destruct (IH Hnf w
+                (marker_alpha_equiv_trans _ _ _ Halpha_u Halpha_w))
+      as [n Hn].
+    exists (S n). simpl. rewrite Hsome. exact Hn.
+Qed.
+
+Theorem stepf_run_complete_modulo_markers : forall t v,
+  multi_step t v ->
+  value v ->
+  exists n, marker_alpha_equiv v (stepf_run n t).
+Proof.
+  intros t v Hms Hv.
+  apply (stepf_run_reaches_alpha t v Hms (value_normal_form v Hv) t).
+  apply marker_alpha_equiv_refl.
+Qed.

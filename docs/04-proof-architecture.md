@@ -32,6 +32,17 @@ conjuncts:
 All three hold vacuously on source terms (`has_rt_marker t = false`),
 which is how every `source_*` corollary needs only an initial typing.
 
+**Why they are needed at all.** Both marker invariants are the price
+of the capability being a first-class value that carries its own `T_R`
+and operation bodies: that duplicates the answer type between the
+capability and its delimiter (which typing cannot reconcile, since
+`T_Cap`'s conclusion mentions neither the marker nor `T_R`), and it
+puts the operation bodies arbitrarily far from the delimiter whose
+outside scope they land in (hence `scope_below`). The alternative —
+keeping both on the delimiter and looking them up by marker — and what
+it would cost instead are argued in [07 —
+Limitations](07-limitations.md#the-marker-invariants-are-the-price-of-a-first-class-capability).
+
 **The fused engine.** The `ws_rt` preservation laws in `WsRtLaws.v`
 are *single* inductions with conjunction motives (`ws_rt_subst_tm`,
 `ws_rt_plug_replace`, …), and `Preservation.v` has one merged

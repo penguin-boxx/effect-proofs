@@ -39,6 +39,15 @@ Require Import WellScoped.
 (* All invariants hold vacuously on source terms                      *)
 (* ([has_rt_marker t = false]), which is how the source-facing        *)
 (* corollaries need only an initial typing.                           *)
+(*                                                                    *)
+(* WHY an annotation invariant is needed at all: [T_R] is duplicated  *)
+(* between a capability and its delimiter, and typing cannot relate   *)
+(* the two — [T_Cap] concludes [type_ctor E_tag lt_local Ts], which   *)
+(* mentions neither the marker nor [T_R], deliberately (marker-free   *)
+(* source types, marker equivariance).  The alternative design        *)
+(* (operation bodies and [T_R] on the delimiter, looked up by marker) *)
+(* would remove this file and [scope_below] at the cost of putting    *)
+(* term payloads inside evaluation-context frames; see docs/07.       *)
 (* ================================================================== *)
 
 

@@ -124,28 +124,67 @@ for the term language exists. The certified deciders in
 subtyping. Example typing derivations are built interactively with the
 tactic layer ([05 — Automation](05-automation.md)), not computed.
 
-## The boundary-flow matrix is prose plus per-channel theorems
+## The marker invariants are the price of a first-class capability
 
-The header of `safety/BoundaryStep.v` documents a five-channel matrix
-of flows touching a handler boundary: operation argument in, reified
-resumption in, operation result into the resumption, handler body
-result out, and the abortive answer. Channels 1 and 4 are guarded by
-event-tied theorems (`source_boundary_operation_in_noloc`,
-`source_boundary_result_out_noloc`): each conclusion is the fired
-event's own decomposition — it links both endpoints of the
-transition, source and reduct, under the firing rule's own side
-conditions — not a re-existentialized view of the reached state.
-Both guarded channels are witnessed on concrete executed events of
-the State trace (`state_example_boundary_return_event`,
-`state_example_boundary_perform_event` in
-`examples/ExamplesSafety.v`). The other three channels are exempt by
-design, with the reasons argued in the header. What is *not* proved is
-the matrix's completeness: there is no accounting theorem of the form
-"every step is a frame step, a fresh-delimiter allocation, or exactly
-one of these boundary events". The per-channel theorems constrain
-every event that fires; that the five channels exhaust the ways a
-value can interact with a delimiter is established by inspection of
-the semantics, in prose, not in Rocq.
+Two of the three runtime invariants ([04 — Proof
+architecture](04-proof-architecture.md)) trace to a single design
+decision: a capability is a first-class *value* that carries its own
+public answer type `T_R` and its operation bodies (`term_cap E m Ts
+T_R op_bodies`, `core/Syntax.v`). Two consequences follow, and each
+costs an invariant.
+
+**The answer type is duplicated.** `T_R` appears both on the
+capability and on its delimiter (`term_handler_m m T_B T_R`), and
+`subst_tm` copies the capability to every occurrence of its binder, so
+one delimiter may face many copies. Typing cannot relate them:
+`T_Cap` concludes `type_ctor E_tag lt_local Ts` — no marker, no `T_R`
+— so two capabilities with different markers are typologically
+indistinguishable, and no rule connects a capability to *its*
+delimiter. The agreement therefore has to be an invariant outside the
+type system: `marker_types_safe`, with `marker_annots_closed` keeping
+it stable under substitution. It is spent in exactly one place, the
+`H_Perform` case of progress
+(`marker_types_ok_handler_perform_annotation_match`), which needs the
+delimiter's and the capability's `T_R` to be syntactically the same
+type. Nor could `T_R` simply be dropped from the capability while the
+operation bodies stay there: `T_Cap` types each body *at* `T_R`, with
+the resumption at `ret_β -local-> T_R`.
+
+**The delimiter has to be found again.** Because a capability may sit
+arbitrarily far from its delimiter, "the scope outside my own
+delimiter" — where an operation body lands when `H_Perform` fires —
+must be *reconstructed* from the ambient scope by searching for the
+marker. That is `scope_below` (`WellScoped.v`) and the `pure_ectx_m`
+induction that goes with it (`well_scoped_pure_cap_confined`).
+
+**The alternative.** Store the operation bodies and `T_R` on the
+delimiter and look them up by marker when the operation fires. The
+capability shrinks to `(E_tag, m, Ts)` — it cannot vanish, since
+`T_Perform` types the receiver at `type_ctor E_tag Δ Ts` and
+`H_Perform` matches delimiters by marker — but nothing is duplicated
+any more. `marker_annots` / `marker_types_safe` /
+`marker_annots_closed` would have nothing to reconcile, and
+`scope_below m ms` would collapse to plain `ms`, because the operation
+bodies would sit at the very delimiter whose outside scope they need.
+
+That is a real prize, and the cost is not zero: it lands in a worse
+layer. `term_handler_m` is also an evaluation-context frame
+(`EC_handler_m`), so `plug`, `comp_ectx`, `shift_ectx_tm`,
+`pure_ectx_m`, `ectx_wf` and their law families would all traverse
+term payloads inside frames, and `rt_closed`'s cutoff-2 closedness
+clause would sit on a frame exactly where `shift_ectx_tm` operates —
+the interaction that already forces `well_scoped_shift_tm` to stay
+single-sided would become systemic rather than a single exception.
+`H_Perform` would also stop being a self-contained redex: preservation
+would have to take the operation body's typing from the delimiter's
+derivation instead of the `T_Cap` sitting in the redex itself.
+
+So this is a trade, not an oversight, and it is recorded here because
+the question "why is there a ~1400-line file about annotations
+agreeing?" deserves the answer: because the capability is first-class
+and the type system *deliberately* forgets markers — which is what
+makes source types marker-free and `safety/MarkerRename.v`'s
+equivariance true in the first place.
 
 ## What is not limited
 
@@ -158,6 +197,24 @@ derivation and `sourceb t = true`, nothing else. Handlers carry one
 clause per declared operation of their effect, not one operation per
 effect; resumptions are genuinely multi-shot (`multishot_example` in
 the examples tier); and the semantics is deterministic modulo the
-fresh-marker choice (`step_deterministic_modulo_markers`,
-`safety/Determinism.v`, with the renaming theory in
-`safety/MarkerRename.v`).
+fresh-marker choice — not just per step
+(`step_deterministic_modulo_markers`) but along whole executions:
+alpha-equivalence is a simulation (`step_marker_alpha_simulation`),
+normal forms are unique up to a marker bijection
+(`multi_step_deterministic_modulo_markers`,
+`value_unique_modulo_markers`), and the bounded evaluator reaches
+every value the relation can reach
+(`stepf_run_complete_modulo_markers`) — `safety/Determinism.v`, with
+the renaming theory in `safety/MarkerRename.v`.
+
+Nor is the boundary-flow matrix of `safety/BoundaryStep.v` prose any
+more: its exhaustiveness is the accounting theorem
+`step_boundary_accounting` — every reduction step is a frame step
+(both endpoints decompose through the same context, so the delimiter
+spine above the contraction is unchanged), a fresh-delimiter
+allocation, or exactly one boundary event, with the event's channel
+and crossing value computed by the certified classifier `classify`
+(so the three classes are mutually exclusive and the event label is
+unique, `boundary_event_unique`). The source-facing form
+`source_step_accounting` adds the guarded-channel typing to the event
+arm.

@@ -1,4 +1,5 @@
 Require Import Stdlib.Lists.List.
+Require Import Stdlib.Arith.PeanoNat.
 Import ListNotations.
 Require Import Syntax.
 Require Import Substitution.
@@ -14,6 +15,9 @@ Require Import Preservation.
 Require Import Soundness.
 Require Import Escape.
 Require Import Boundary.
+Require Import Eqb.
+Require Import Stepf.
+Require Import Determinism.
 
 (* ================================================================== *)
 (*                                                                    *)
@@ -73,6 +77,13 @@ Require Import Boundary.
 (*       answer lands in the outer context at the handler's public    *)
 (*       answer type T_R, which may legitimately be local; T_HandlerM *)
 (*       imposes no noloc premise on T_R.                             *)
+(*                                                                    *)
+(* The matrix's EXHAUSTIVENESS is itself a theorem, not prose: every  *)
+(* reduction step is a frame step (shared context, delimiter spine    *)
+(* above the contraction unchanged), a fresh-delimiter allocation, or *)
+(* exactly one boundary event — [step_boundary_accounting] at the end *)
+(* of this file, with mutual exclusivity and uniqueness of the event  *)
+(* label delivered by the computable classifier [classify].           *)
 (* ================================================================== *)
 
 (* The two guarded channels, as labels on boundary transitions. *)
@@ -374,4 +385,462 @@ Proof.
   repeat split.
   - do 2 eexists. split; [eassumption | reflexivity].
   - eapply boundary_resumption_typing; [exact Hec | exact Hh].
+Qed.
+
+(* ================================================================== *)
+(*        COMPLETENESS OF THE MATRIX: delimiter accounting            *)
+(*                                                                    *)
+(* The matrix above lists every flow that touches a delimiter; this   *)
+(* section makes its EXHAUSTIVENESS a theorem                         *)
+(* (step_boundary_accounting): every reduction step is               *)
+(*                                                                    *)
+(*   (i)   a FRAME step — a pure head contraction under a shared      *)
+(*         context (both endpoints decompose through the SAME E, so   *)
+(*         the delimiter spine above the contraction is unchanged     *)
+(*         verbatim), whose redex is not delimiter-headed;            *)
+(*   (ii)  a fresh-delimiter ALLOCATION (S_HandleCtx); or             *)
+(*   (iii) EXACTLY ONE boundary event — an H_Return / H_Perform       *)
+(*         contraction, i.e. a [boundary_step] on one of the two      *)
+(*         guarded channels, with its crossing value.                 *)
+(*                                                                    *)
+(* Method (same as Determinism.v): no standalone unique-decomposition *)
+(* lemma.  A computable classifier [classify] walks the SAME spine    *)
+(* the evaluator walks — child verdicts are routed through            *)
+(* [stepf_go] — and answers, at the redex, which class fires and (for *)
+(* a boundary event) which value crosses through which channel.  The  *)
+(* exactness lemmas pin the classifier on each redex family, so the   *)
+(* three classes are MUTUALLY EXCLUSIVE and the event label is a      *)
+(* FUNCTION of the state: "exactly one" is by computation, not by     *)
+(* case-bashing decompositions.                                       *)
+(* ================================================================== *)
+
+(* The three classes a step can fall into. *)
+Inductive step_class : Type :=
+  | sc_frame    : step_class
+  | sc_alloc    : step_class
+  | sc_boundary : boundary_channel -> term -> step_class.
+
+(* A redex that is not delimiter-headed: H_Return and H_Perform are   *)
+(* exactly the head rules whose redex is a [term_handler_m].          *)
+Definition frame_redex (r : term) : Prop :=
+  forall m T_B T_R body, r <> term_handler_m m T_B T_R body.
+
+Fixpoint classify (fresh : marker) (t : term) : option step_class :=
+  let fix class_list (ts : list term) : option step_class :=
+    match ts with
+    | [] => None
+    | u :: rest =>
+        match stepf_go fresh u with
+        | SR_val => class_list rest
+        | SR_step _ => classify fresh u
+        | SR_esc _ _ => None
+        | SR_stuck => None
+        end
+    end
+  in
+  match t with
+  | term_var _ => None
+  | term_lam _ _ => None
+  | term_ty_lam _ _ => None
+  | term_lt_lam _ => None
+  | term_cap _ _ _ _ _ => None
+  | term_app t1 t2 =>
+      match stepf_go fresh t1 with
+      | SR_val =>
+          match stepf_go fresh t2 with
+          | SR_val =>
+              match t1 with
+              | term_lam _ _ => Some sc_frame
+              | _ => None
+              end
+          | SR_step _ => classify fresh t2
+          | SR_esc _ _ => None
+          | SR_stuck => None
+          end
+      | SR_step _ => classify fresh t1
+      | SR_esc _ _ => None
+      | SR_stuck => None
+      end
+  | term_ty_app t1 _ =>
+      match stepf_go fresh t1 with
+      | SR_val =>
+          match t1 with
+          | term_ty_lam _ _ => Some sc_frame
+          | _ => None
+          end
+      | SR_step _ => classify fresh t1
+      | SR_esc _ _ => None
+      | SR_stuck => None
+      end
+  | term_lt_app t1 _ =>
+      match stepf_go fresh t1 with
+      | SR_val =>
+          match t1 with
+          | term_lt_lam _ => Some sc_frame
+          | _ => None
+          end
+      | SR_step _ => classify fresh t1
+      | SR_esc _ _ => None
+      | SR_stuck => None
+      end
+  | term_ctor _ _ _ _ ts => class_list ts
+  | term_match scrut K _ arity _ _ =>
+      match stepf_go fresh scrut with
+      | SR_val =>
+          match scrut with
+          | term_ctor K' _ _ _ vs =>
+              if Nat.eqb K' K
+              then if Nat.eqb arity (List.length vs)
+                   then Some sc_frame
+                   else None
+              else Some sc_frame
+          | _ => None
+          end
+      | SR_step _ => classify fresh scrut
+      | SR_esc _ _ => None
+      | SR_stuck => None
+      end
+  | term_handle _ _ _ _ _ _ => Some sc_alloc
+  | term_perform recv _ _ _ arg =>
+      match stepf_go fresh recv with
+      | SR_val =>
+          match stepf_go fresh arg with
+          | SR_val => None
+          | SR_step _ => classify fresh arg
+          | SR_esc _ _ => None
+          | SR_stuck => None
+          end
+      | SR_step _ => classify fresh recv
+      | SR_esc _ _ => None
+      | SR_stuck => None
+      end
+  | term_handler_m m0 _ T_R body =>
+      match stepf_go fresh body with
+      | SR_val => Some (sc_boundary handler_body_result_out body)
+      | SR_step _ => classify fresh body
+      | SR_esc e _ =>
+          if Nat.eqb (esc_mk e) m0
+          then if ty_eqb (esc_TR e) T_R
+               then Some (sc_boundary operation_argument_in (esc_arg e))
+               else None
+          else None
+      | SR_stuck => None
+      end
+  end.
+
+(* Top-level twin of the constructor-spine walk, plus the usual       *)
+(* go-eq unfolding lemma (same pattern as stepf_list, Stepf.v).       *)
+Fixpoint classify_list (fresh : marker) (ts : list term)
+    : option step_class :=
+  match ts with
+  | [] => None
+  | u :: rest =>
+      match stepf_go fresh u with
+      | SR_val => classify_list fresh rest
+      | SR_step _ => classify fresh u
+      | SR_esc _ _ => None
+      | SR_stuck => None
+      end
+  end.
+
+Lemma classify_class_list_eq : forall fresh ts,
+  (fix class_list (ts : list term) : option step_class :=
+     match ts with
+     | [] => None
+     | u :: rest =>
+         match stepf_go fresh u with
+         | SR_val => class_list rest
+         | SR_step _ => classify fresh u
+         | SR_esc _ _ => None
+         | SR_stuck => None
+         end
+     end) ts = classify_list fresh ts.
+Proof.
+  intros fresh; induction ts as [|u rest IH]; simpl.
+  - reflexivity.
+  - destruct (stepf_go fresh u); congruence.
+Qed.
+
+Lemma classify_list_vals_prefix : forall fresh vsl u u0 vsr,
+  Forall value vsl ->
+  stepf_go fresh u = SR_step u0 ->
+  classify_list fresh (vsl ++ u :: vsr) = classify fresh u.
+Proof.
+  intros fresh vsl u u0 vsr Hvals Hu.
+  induction Hvals as [|v vsl' Hv Hvals' IH]; simpl.
+  - rewrite Hu. reflexivity.
+  - rewrite (stepf_go_value fresh v Hv), IH. reflexivity.
+Qed.
+
+(* The classifier is transparent to any well-formed spine above the   *)
+(* redex — the classification is decided AT the redex.                *)
+Lemma classify_plug : forall fresh E r u0,
+  ectx_wf E ->
+  stepf_go fresh r = SR_step u0 ->
+  classify fresh (plug E r) = classify fresh r.
+Proof.
+  intros fresh E r u0 Hwf Hr.
+  induction Hwf; simpl.
+  - reflexivity.
+  - erewrite stepf_go_plug_step by eassumption. exact IHHwf.
+  - rewrite (stepf_go_value fresh v) by assumption.
+    erewrite stepf_go_plug_step by eassumption. exact IHHwf.
+  - erewrite stepf_go_plug_step by eassumption. exact IHHwf.
+  - erewrite stepf_go_plug_step by eassumption. exact IHHwf.
+  - rewrite classify_class_list_eq.
+    erewrite classify_list_vals_prefix;
+      [ exact IHHwf | assumption | eapply stepf_go_plug_step; eassumption ].
+  - erewrite stepf_go_plug_step by eassumption. exact IHHwf.
+  - erewrite stepf_go_plug_step by eassumption. exact IHHwf.
+  - erewrite stepf_go_plug_step by eassumption. exact IHHwf.
+  - rewrite (stepf_go_value fresh v) by assumption.
+    erewrite stepf_go_plug_step by eassumption. exact IHHwf.
+Qed.
+
+(* Exactness on each redex family: the classifier answers sc_frame on *)
+(* every pure head redex, sc_alloc on a handle, and the channel/value *)
+(* label on each boundary redex.                                      *)
+Lemma classify_head_frame : forall fresh r r',
+  r -->h r' ->
+  frame_redex r ->
+  classify fresh r = Some sc_frame.
+Proof.
+  intros fresh r r' Hstep Hfr. destruct Hstep; simpl.
+  - (* H_Beta *)
+    rewrite (stepf_go_value fresh v) by assumption. reflexivity.
+  - (* H_TyBeta *) reflexivity.
+  - (* H_LtBeta *) reflexivity.
+  - (* H_MatchYes *)
+    rewrite stepf_go_list_eq.
+    rewrite (stepf_list_vals fresh vs) by assumption.
+    rewrite !Nat.eqb_refl. reflexivity.
+  - (* H_MatchNo *)
+    rewrite stepf_go_list_eq.
+    rewrite (stepf_list_vals fresh vs) by assumption.
+    assert (Hne : Nat.eqb K' K = false) by (apply Nat.eqb_neq; congruence).
+    rewrite Hne. reflexivity.
+  - (* H_Return *) exfalso. eapply Hfr. reflexivity.
+  - (* H_Perform *) exfalso. eapply Hfr. reflexivity.
+Qed.
+
+Lemma classify_alloc : forall fresh E_tag Ts T_B T_R op_bodies body,
+  classify fresh (term_handle E_tag Ts T_B T_R op_bodies body)
+  = Some sc_alloc.
+Proof. reflexivity. Qed.
+
+Lemma classify_return : forall fresh m T_B T_R v,
+  value v ->
+  classify fresh (term_handler_m m T_B T_R v)
+  = Some (sc_boundary handler_body_result_out v).
+Proof.
+  intros fresh m T_B T_R v Hv. simpl.
+  rewrite (stepf_go_value fresh v Hv). reflexivity.
+Qed.
+
+Lemma classify_perform :
+  forall fresh E_tag m Ts T_B T_R op_bodies op Ss A v P,
+  value v ->
+  pure_ectx_m m P ->
+  ectx_wf P ->
+  classify fresh
+    (term_handler_m m T_B T_R
+       (plug P (term_perform (term_cap E_tag m Ts T_R op_bodies) op Ss A v)))
+  = Some (sc_boundary operation_argument_in v).
+Proof.
+  intros fresh E_tag m Ts T_B T_R op_bodies op Ss A v P Hv Hpure Hwf.
+  simpl.
+  rewrite (stepf_go_esc_plug fresh E_tag m Ts T_R op_bodies op Ss A v P)
+    by assumption.
+  simpl. rewrite Nat.eqb_refl, ty_eqb_refl. reflexivity.
+Qed.
+
+(* Every boundary event computes its own label: the channel and the   *)
+(* crossing value are a FUNCTION of the state.                        *)
+Lemma classify_event : forall t u ch v fresh,
+  boundary_step t u ch v ->
+  classify fresh t = Some (sc_boundary ch v).
+Proof.
+  intros t u ch v fresh Hbs.
+  destruct Hbs as
+    [E m T_B T_R v0 Hval HwfE
+    |E E_tag m Ts T_B T_R op_bodies op n_beta op_body Ss A v0 P
+       Hval Hpure HwfP HwfE Hnth].
+  - rewrite (classify_plug fresh E _ _ HwfE
+      (stepf_go_head_step fresh _ _ (H_Return m T_B T_R v0 Hval))).
+    apply classify_return; exact Hval.
+  - rewrite (classify_plug fresh E _ _ HwfE
+      (stepf_go_head_step fresh _ _
+         (H_Perform E_tag m Ts T_B T_R op_bodies op n_beta op_body Ss A v0 P
+            Hval Hpure HwfP Hnth))).
+    apply classify_perform; assumption.
+Qed.
+
+(* "Exactly one boundary event": the label is unique — any two events *)
+(* fired from the same state agree on both the channel and the        *)
+(* crossing value.                                                    *)
+Theorem boundary_event_unique : forall t u u' ch ch' v v',
+  boundary_step t u ch v ->
+  boundary_step t u' ch' v' ->
+  ch = ch' /\ v = v'.
+Proof.
+  intros t u u' ch ch' v v' H1 H2.
+  pose proof (classify_event _ _ _ _ 0 H1) as E1.
+  pose proof (classify_event _ _ _ _ 0 H2) as E2.
+  rewrite E1 in E2. injection E2 as Ech Ev. subst. split; reflexivity.
+Qed.
+
+(* The classes are mutually exclusive: a pure frame contraction fires *)
+(* no boundary event, and neither does a delimiter allocation.        *)
+Theorem frame_step_no_boundary_event : forall E r r' u ch v,
+  ectx_wf E ->
+  r -->h r' ->
+  frame_redex r ->
+  ~ boundary_step (plug E r) u ch v.
+Proof.
+  intros E r r' u ch v Hwf Hhead Hfr Hbs.
+  pose proof (classify_event _ _ _ _ 0 Hbs) as Ec.
+  rewrite (classify_plug 0 E _ _ Hwf (stepf_go_head_step 0 _ _ Hhead)) in Ec.
+  rewrite (classify_head_frame 0 _ _ Hhead Hfr) in Ec.
+  discriminate Ec.
+Qed.
+
+Theorem alloc_step_no_boundary_event :
+  forall E E_tag Ts T_B T_R op_bodies body u ch v,
+  ectx_wf E ->
+  ~ boundary_step (plug E (term_handle E_tag Ts T_B T_R op_bodies body)) u ch v.
+Proof.
+  intros E E_tag Ts T_B T_R op_bodies body u ch v Hwf Hbs.
+  pose proof (classify_event _ _ _ _ 0 Hbs) as Ec.
+  erewrite classify_plug in Ec; [ | exact Hwf | reflexivity ].
+  rewrite classify_alloc in Ec. discriminate Ec.
+Qed.
+
+Local Ltac acc_frame HwfE Hh0 :=
+  left; split;
+  [ intros ? ? ? ? Hc; discriminate Hc
+  | intros fresh;
+    rewrite (classify_plug fresh _ _ _ HwfE
+               (stepf_go_head_step fresh _ _ Hh0));
+    eapply classify_head_frame;
+      [ exact Hh0 | intros ? ? ? ? Hc; discriminate Hc ] ].
+
+(* The head-level split: a head contraction under a well-formed spine *)
+(* is a frame contraction or a boundary event, never both.            *)
+Lemma head_step_accounting : forall E r r',
+  ectx_wf E ->
+  r -->h r' ->
+  (frame_redex r /\
+   forall fresh, classify fresh (plug E r) = Some sc_frame)
+  \/
+  (exists ch v,
+     boundary_step (plug E r) (plug E r') ch v /\
+     forall fresh, classify fresh (plug E r) = Some (sc_boundary ch v)).
+Proof.
+  intros E r r' HwfE Hh.
+  pose proof Hh as Hh0.
+  destruct Hh;
+    [ acc_frame HwfE Hh0
+    | acc_frame HwfE Hh0
+    | acc_frame HwfE Hh0
+    | acc_frame HwfE Hh0
+    | acc_frame HwfE Hh0
+    | (* H_Return *)
+      right; exists handler_body_result_out, v;
+      split;
+      [ apply BS_Return; assumption
+      | intros fresh; eapply classify_event; apply BS_Return; assumption ]
+    | (* H_Perform *)
+      right; exists operation_argument_in, v;
+      split;
+      [ eapply BS_Perform; eassumption
+      | intros fresh; eapply classify_event; eapply BS_Perform; eassumption ] ].
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* THE COMPLETENESS THEOREM: every step is a frame step (shared       *)
+(* context, delimiter spine above the contraction unchanged), a       *)
+(* fresh-delimiter allocation, or exactly one boundary event.  Each   *)
+(* arm carries its classifier equation, so the arms are mutually      *)
+(* exclusive: [classify] is a function, and no step can satisfy two   *)
+(* arms at once.                                                      *)
+(* ------------------------------------------------------------------ *)
+Theorem step_boundary_accounting : forall t u,
+  t ==> u ->
+  (* (i) frame step *)
+  (exists E r r',
+      ectx_wf E /\ t = plug E r /\ u = plug E r' /\
+      r -->h r' /\ frame_redex r /\
+      forall fresh, classify fresh t = Some sc_frame)
+  \/
+  (* (ii) fresh-delimiter allocation *)
+  (exists E E_tag Ts T_B T_R op_bodies body m,
+      ectx_wf E /\
+      t = plug E (term_handle E_tag Ts T_B T_R op_bodies body) /\
+      u = plug E (term_handler_m m T_B T_R
+             (subst_tm 0 (term_cap E_tag m Ts T_R op_bodies) body)) /\
+      ~ In m (markers_in t) /\
+      forall fresh, classify fresh t = Some sc_alloc)
+  \/
+  (* (iii) exactly one boundary event *)
+  (exists ch v,
+      boundary_step t u ch v /\
+      forall fresh, classify fresh t = Some (sc_boundary ch v)).
+Proof.
+  intros t u Hstep.
+  inversion Hstep; subst.
+  - (* S_step *)
+    match goal with
+    | HwfE : ectx_wf _, Hh : _ -->h _ |- _ =>
+        destruct (head_step_accounting _ _ _ HwfE Hh)
+          as [[Hfr Hcl] | (ch & v & Hbs & Hcl)]
+    end.
+    + left. do 3 eexists.
+      split; [eassumption|]. split; [reflexivity|]. split; [reflexivity|].
+      split; [eassumption|]. split; [exact Hfr|]. exact Hcl.
+    + right; right. exists ch, v. split; [exact Hbs | exact Hcl].
+  - (* S_HandleCtx *)
+    right; left. do 8 eexists.
+    split; [eassumption|]. split; [reflexivity|]. split; [reflexivity|].
+    split; [eassumption|].
+    intros fresh.
+    erewrite classify_plug; [ | eassumption | reflexivity ].
+    apply classify_alloc.
+Qed.
+
+(* Source-facing form: along any execution of a well-typed source     *)
+(* program, every transition is a frame step, an allocation, or a     *)
+(* boundary event whose crossing value is typed at its channel's      *)
+(* declared (escapable) type — the accounting theorem composed with   *)
+(* the guarded-channel guarantee.                                     *)
+Corollary source_step_accounting : forall Γ t T u u',
+  eval_ctx Γ ->
+  has_rt_marker t = false ->
+  Γ ⊢ₜ t : T ->
+  multi_step t u ->
+  u ==> u' ->
+  (exists E r r',
+      ectx_wf E /\ u = plug E r /\ u' = plug E r' /\
+      r -->h r' /\ frame_redex r)
+  \/
+  (exists E E_tag Ts T_B T_R op_bodies body m,
+      ectx_wf E /\
+      u = plug E (term_handle E_tag Ts T_B T_R op_bodies body) /\
+      u' = plug E (term_handler_m m T_B T_R
+             (subst_tm 0 (term_cap E_tag m Ts T_R op_bodies) body)) /\
+      ~ In m (markers_in u))
+  \/
+  (exists ch v,
+      boundary_step u u' ch v /\
+      boundary_channel_typed Γ u u' ch v).
+Proof.
+  intros Γ t T u u' Hec Hsrc Hty Hms Hstep.
+  destruct (step_boundary_accounting _ _ Hstep)
+    as [ (E & r & r' & HwfE & Ht & Hu & Hh & Hfr & _)
+       | [ (E & E_tag & Ts & T_B & T_R & ob & body & m & HwfE & Ht & Hu & Hm & _)
+         | (ch & v & Hbs & _) ] ].
+  - left. exists E, r, r'. repeat split; assumption.
+  - right; left. exists E, E_tag, Ts, T_B, T_R, ob, body, m.
+    repeat split; assumption.
+  - right; right. exists ch, v. split; [exact Hbs|].
+    eapply source_boundary_step_noloc; eassumption.
 Qed.
