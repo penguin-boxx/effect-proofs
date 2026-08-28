@@ -131,9 +131,13 @@ maintainer can make these choices:
 
 1. ~~Choose a license.~~ **Done: MIT** (see `LICENSE`).
 
-2. **Cut the archival release.** Tag the reviewed commit
-   (e.g. `git tag -a v1.0 -m "artifact for <paper>"`), push the tag,
-   and archive it with a DOI — e.g. enable the repository in
-   [Zenodo](https://zenodo.org)'s GitHub integration and create a
-   GitHub release from the tag, which triggers DOI minting. Put the
-   resulting DOI in the paper's artifact statement and in README.md.
+2. **Cut the archival release.** ~~Tag + GitHub release.~~ **Done for
+   the dissertation: tag `dissertation-2026`** (release:
+   <https://github.com/penguin-boxx/effect-proofs/releases/tag/dissertation-2026>;
+   the earlier `submission-iia-2026` tag marks the journal-submission
+   state). Remaining: **mint the DOI** — enable the repository in
+   [Zenodo](https://zenodo.org)'s GitHub integration (Zenodo archives
+   only releases published *after* enabling — re-publish the release,
+   or cut a follow-up one, if it was not enabled yet), then put the
+   resulting DOI in the dissertation's artifact statement and in
+   README.md.
