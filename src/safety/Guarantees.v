@@ -17,7 +17,32 @@ Require Import Boundary.
 Require Import BoundaryStep.
 Require Import Decide.
 Require Import Stepf.
+Require Import MarkerRename.
 Require Import Determinism.
+
+(* ================================================================== *)
+(* The certified evaluator decides termination on safe states: on a   *)
+(* state satisfying the runtime invariants, [stepf] returns [None]    *)
+(* ONLY on values.  Progress supplies value-or-step; evaluator        *)
+(* completeness (Determinism.v) turns the absence of a stepf result   *)
+(* into the absence of a step.                                        *)
+(* ================================================================== *)
+
+Theorem safe_stepf_none_is_value : forall Γ T t,
+  eval_ctx Γ ->
+  safety_invariants Γ T t ->
+  stepf t = None ->
+  value t.
+Proof.
+  intros Γ T t Hec [Hann [Hwr Hty]] Hnone.
+  destruct Hann as [Hsafe _].
+  destruct Hwr as [Hws _].
+  destruct (progress _ _ _ Hec Hws Hsafe Hty) as [Hv | [t' Hs]].
+  - exact Hv.
+  - exfalso.
+    destruct (stepf_complete_modulo_markers _ _ Hs) as [u' [Hsome _]].
+    rewrite Hnone in Hsome. discriminate.
+Qed.
 
 (* ================================================================== *)
 (*                                                                    *)
@@ -29,7 +54,10 @@ Require Import Determinism.
 (* This is the paper's single citation point and the single           *)
 (* Print Assumptions target; each field is delivered by its           *)
 (* dedicated theorem (Soundness.v, Escape.v, Occurrence.v,            *)
-(* Boundary.v, BoundaryStep.v).                                       *)
+(* Boundary.v, BoundaryStep.v, Determinism.v, Stepf.v) — including    *)
+(* the operational story: per-step boundary accounting, the           *)
+(* evaluator halting only on values, uniqueness of the result, and    *)
+(* evaluator completeness, all modulo the fresh-marker choice.        *)
 (*                                                                    *)
 (* The source premise uses the certified decider [sourceb]            *)
 (* (Decide.v): `sourceb t = true` is the executable form of           *)
@@ -102,7 +130,50 @@ Record source_guarantees (Γ : ctx) (t : term) (T : type) : Prop := {
            nth_error op_bodies op = Some (n_beta, op_body) /\
            u' = plug E (subst_list_tm [v; resumption]
                           (subst_list_ty_in_tm Ss op_body))) /\
-        Γ ⊢ₜ resumption : type_fun A lt_local T_R
+        Γ ⊢ₜ resumption : type_fun A lt_local T_R;
+
+  (* Every transition along the run is fully classified: a frame step *)
+  (* (both endpoints share the context, so the delimiter spine above  *)
+  (* the contraction is unchanged), a fresh-delimiter allocation, or  *)
+  (* a boundary event whose crossing value is typed at its channel's  *)
+  (* declared escapable type (step_boundary_accounting +              *)
+  (* boundary_channel_typed, BoundaryStep.v).                         *)
+  sg_step_accounting :
+      forall u u',
+      multi_step t u ->
+      u ==> u' ->
+      (exists E r r',
+          ectx_wf E /\ u = plug E r /\ u' = plug E r' /\
+          r -->h r' /\ frame_redex r)
+      \/
+      (exists E E_tag Ts T_B T_R op_bodies body m,
+          ectx_wf E /\
+          u = plug E (term_handle E_tag Ts T_B T_R op_bodies body) /\
+          u' = plug E (term_handler_m m T_B T_R
+                 (subst_tm 0 (term_cap E_tag m Ts T_R op_bodies) body)) /\
+          ~ In m (markers_in u))
+      \/
+      (exists ch v,
+          boundary_step u u' ch v /\
+          boundary_channel_typed Γ u u' ch v);
+
+  (* The certified evaluator halts along the run only by delivering a *)
+  (* value — never on a stuck state or an unhandled escape.           *)
+  sg_stepf_none_is_value :
+      forall u, multi_step t u -> stepf u = None -> value u;
+
+  (* The result is unique modulo the fresh-marker choice.             *)
+  sg_result_unique_modulo_markers :
+      forall v1 v2,
+      multi_step t v1 -> value v1 ->
+      multi_step t v2 -> value v2 ->
+      marker_alpha_equiv v1 v2;
+
+  (* The bounded driver reaches every value the relation can reach.   *)
+  sg_evaluator_complete_modulo_markers :
+      forall v,
+      multi_step t v -> value v ->
+      exists n, marker_alpha_equiv v (stepf_run n t)
 }.
 
 Theorem source_safety_suite : forall Γ t T,
@@ -128,30 +199,19 @@ Proof.
     eapply source_boundary_step_noloc; eauto.
   - intros u u' v Hms Hbs.
     eapply source_boundary_resumption_local; eauto.
-Qed.
-
-(* ================================================================== *)
-(* The certified evaluator decides termination on safe states: on a   *)
-(* state satisfying the runtime invariants, [stepf] returns [None]    *)
-(* ONLY on values.  Progress supplies value-or-step; evaluator        *)
-(* completeness (Determinism.v) turns the absence of a stepf result   *)
-(* into the absence of a step.                                        *)
-(* ================================================================== *)
-
-Theorem safe_stepf_none_is_value : forall Γ T t,
-  eval_ctx Γ ->
-  safety_invariants Γ T t ->
-  stepf t = None ->
-  value t.
-Proof.
-  intros Γ T t Hec [Hann [Hwr Hty]] Hnone.
-  destruct Hann as [Hsafe _].
-  destruct Hwr as [Hws _].
-  destruct (progress _ _ _ Hec Hws Hsafe Hty) as [Hv | [t' Hs]].
-  - exact Hv.
-  - exfalso.
-    destruct (stepf_complete_modulo_markers _ _ Hs) as [u' [Hsome _]].
-    rewrite Hnone in Hsome. discriminate.
+  - intros u u' Hms Hstep.
+    exact (source_step_accounting _ _ _ _ _ Hec Hsb Hty Hms Hstep).
+  - intros u Hms Hnone.
+    eapply safe_stepf_none_is_value with (T := T);
+      [exact Hec | | exact Hnone].
+    eapply multi_step_preserves_safety_invariants;
+      [ exact Hec
+      | apply source_safety_invariants; eassumption
+      | exact Hms ].
+  - intros v1 v2 Hms1 Hv1 Hms2 Hv2.
+    eapply value_unique_modulo_markers; eassumption.
+  - intros v Hms Hv.
+    apply stepf_run_complete_modulo_markers; assumption.
 Qed.
 
 (* Source-facing trace form: running a well-typed source program with  *)

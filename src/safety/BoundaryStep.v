@@ -412,6 +412,12 @@ Qed.
 (* three classes are MUTUALLY EXCLUSIVE and the event label is a      *)
 (* FUNCTION of the state: "exactly one" is by computation, not by     *)
 (* case-bashing decompositions.                                       *)
+(*                                                                    *)
+(* Scope: the accounting classifies SEMANTICS STEPS.  The matrix's    *)
+(* three exempt flows (resumption in, operation result into the       *)
+(* resumption, abortive answer) are not separate labels — they occur  *)
+(* inside the H_Perform contractum and the frame steps that follow    *)
+(* it, exactly as the matrix header argues.                           *)
 (* ================================================================== *)
 
 (* The three classes a step can fall into. *)
@@ -677,7 +683,9 @@ Qed.
 
 (* "Exactly one boundary event": the label is unique — any two events *)
 (* fired from the same state agree on both the channel and the        *)
-(* crossing value.                                                    *)
+(* crossing value.  (Uniqueness of the LABEL, which is what the       *)
+(* guarantees observe; uniqueness of the full decomposition — the     *)
+(* outer context E and the redex parameters — is not claimed.)        *)
 Theorem boundary_event_unique : forall t u u' ch ch' v v',
   boundary_step t u ch v ->
   boundary_step t u' ch' v' ->

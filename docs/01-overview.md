@@ -38,8 +38,11 @@ The headline theorems (full table in the top-level README):
   — a live capability is never visible outside its delimiter, at the
   active position and at *every* syntactic occurrence respectively.
 - `source_noloc_result_no_runtime_forms`, `source_free_data_result_top_lifetime`
-  — values delivered at escapable types carry no capability, no
-  delimiter, no `local` annotation, at any depth.
+  — values delivered at escapable types carry no capability and no
+  delimiter at any depth, and a data result's top-level lifetime
+  annotation is the declared one. (Inert `local` annotations under
+  lambdas are not excluded — they are harmless, and the theorems do
+  not claim otherwise.)
 - `source_handler_boundary_noloc`, `source_boundary_step_noloc` —
   every value crossing a guarded handler-boundary channel is
   escapably typed, stated on states and on transition events.
