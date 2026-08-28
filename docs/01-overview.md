@@ -51,7 +51,8 @@ The headline theorems (full table in the top-level README):
 - Certified *computation*: reflected deciders for the static checks
   (`Decide.v`), a certified evaluator (`Stepf.v`), and determinism of
   the semantics modulo the fresh-marker choice (`Determinism.v`,
-  `MarkerRename.v`).
+  `MarkerRename.v`). The computational layer is extracted to OCaml
+  (`extraction/Extraction.v`; see [ARTIFACT.md](../ARTIFACT.md)).
 
 ## Shape of the development
 
@@ -64,12 +65,14 @@ src/
   safety/    the deliverables: invariants, preservation, progress,
              soundness, confinement, deciders, evaluator, determinism
   examples/  fully verified example programs, positive and negative
+  extraction/ OCaml extraction of the certified evaluator and the
+             reflected deciders (smoke driver: make extract-run)
 experiments/ unbuilt scratch (see experiments/README.md)
 scripts/     the self-checking artifact tooling
 docs/        this guide
 ```
 
-Roughly 29k lines across 47 files; a flat `-Q <dir> ""` namespace, so
+Roughly 31k lines across 49 files; a flat `-Q <dir> ""` namespace, so
 files import each other by basename.
 
 ## Suggested reading path

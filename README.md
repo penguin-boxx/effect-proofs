@@ -70,6 +70,12 @@ tier: for each example program, the type it is given, the value it
 reduces to, and the gated theorems that speak about it — derived from
 the sources, so it cannot drift from what is actually proved.
 
+The build also extracts the computational layer — the certified
+evaluator and the reflected deciders — to OCaml
+(`src/extraction/Extraction.v`); `make extract-run` compiles it with a
+smoke driver that re-checks, outside the prover, facts that are gated
+theorems inside it (optional; the only target needing OCaml).
+
 See [ARTIFACT.md](ARTIFACT.md) for the full artifact guide,
 [docs/](docs/README.md) for the codebase guide (architecture, module
 map, automation, maintenance), and [TODO.md](TODO.md) for the future
@@ -102,6 +108,7 @@ src/
   meta/      de Bruijn metatheory                      (the proof engine)
   safety/    the safety theorems                       (the deliverables)
   examples/  fully verified example programs
+  extraction/ OCaml extraction of the evaluator and deciders
 experiments/ scratch space, not built by make
 ```
 
