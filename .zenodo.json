@@ -1,0 +1,24 @@
+{
+    "upload_type": "software",
+    "title": "Effects-and-Lifetimes Calculus — Mechanized Safety Proofs",
+    "creators": [
+        {
+            "name": "Stoyan, Andrey"
+        }
+    ],
+    "description": "A Rocq (Coq) formalization of a call-by-value calculus with bounded type polymorphism (full F&lt;:), a separate lifetime sort forming a two-point lattice, algebraic data constructors with existential lifetime/type schemas, and algebraic effect handlers with multi-shot resumptions — the proof-side companion of the Core&#916; calculus. The safety story is lifetime-based capability confinement: effect capabilities are local-annotated values, and the lifetime subtyping discipline guarantees that neither a capability nor any local-confined datum can escape the scope that delimits it. The development is axiom-free — every capstone theorem prints &laquo;Closed under the global context&raquo; under Print Assumptions, enforced by a derived assumption gate (<code>make verify</code>). It includes type soundness, capability confinement at every syntactic occurrence, guarded handler-boundary theorems on states and on labelled transition events with a certified completeness accounting, determinism modulo the fresh-marker choice, certified reflected deciders and a certified evaluator with an OCaml extraction, and a fully verified examples tier with a rejection suite. See README.md for the theorem table and ARTIFACT.md for the build and verification guide.",
+    "access_right": "open",
+    "license": "MIT",
+    "language": "eng",
+    "keywords": [
+        "Rocq",
+        "Coq",
+        "formal verification",
+        "mechanized metatheory",
+        "algebraic effect handlers",
+        "lifetimes",
+        "capability confinement",
+        "type soundness",
+        "bounded polymorphism"
+    ]
+}

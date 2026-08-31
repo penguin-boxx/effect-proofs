@@ -140,4 +140,7 @@ maintainer can make these choices:
    only releases published *after* enabling — re-publish the release,
    or cut a follow-up one, if it was not enabled yet), then put the
    resulting DOI in the dissertation's artifact statement and in
-   README.md.
+   README.md. The deposit metadata (title, author, license, keywords,
+   description) is supplied by `.zenodo.json`, which Zenodo reads from
+   the repository at the *tagged* commit — keep the tag pointing at a
+   commit that contains it.
